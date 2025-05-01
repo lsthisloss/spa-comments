@@ -9,9 +9,7 @@ export default function CommentsPage() {
         <div className="comment-form">
           <CommentForm />
         </div>
-
         <div className="divider"></div>
-
         <div className="comment-list">
           <CommentList />
         </div>
