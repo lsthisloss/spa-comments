@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Dependency directories
+frontend/node_modules/
+backend/node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+
+# Docker
+*.pid
+docker-compose.override.yml
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# TypeScript
+*.tsbuildinfo
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
