@@ -1,0 +1,21 @@
+.comments-page {
+  width: 100%;
+  background-color: #fff;
+  overflow: hidden;
+}
+
+.comments-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.comment-list {
+  padding-top: 16px;
+  padding-bottom: 16px;
+  padding-right: 16px;
+}
+
+.divider {
+  height: 1px;
+  background-color: #e0e0e0;
+}
