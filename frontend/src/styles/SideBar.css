@@ -41,13 +41,22 @@
   font-size: 20px; 
   margin: 0 auto; 
 }
-
-
-.sidebar-menu .ant-menu-item-selected {
-  background: none !important; 
-  font-size: 16px;
-  color: inherit !important; 
+.sidebar-menu .ant-menu-item-selected .ant-menu-title-content {
+  position: relative; 
   font-weight: bold; 
+}
+
+.sidebar-menu .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  bottom: -4px; 
+  left: 50%; 
+  transform: translateX(-50%);
+  width: 50%; 
+  height: 2px; 
+  background-color: #1890ff; 
+  border-radius: 1px; 
+  transition: width 0.3s ease, background-color 0.3s ease; 
 }
 
 

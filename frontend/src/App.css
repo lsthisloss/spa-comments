@@ -1,7 +1,7 @@
 #root {
   width: 100%;
   max-width: 768px; 
-  height: 100vh; 
+  min-height: 100vh; 
   background-color: #fff; 
   display: flex;
   flex-direction: column;
