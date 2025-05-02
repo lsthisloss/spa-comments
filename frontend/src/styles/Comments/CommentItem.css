@@ -16,6 +16,7 @@
   gap: 12px;
   min-height: 48px;
   margin-left: 0;
+  border-radius: 16px;
 }
 
 .comment-avatar {

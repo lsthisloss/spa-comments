@@ -5,7 +5,6 @@ import { useGradientButtonStyle } from '../../styles/GradientButtonStyles';
 
 export default function FormFooter() {
   const { styles } = useGradientButtonStyle();
-
   return (
     <div className="form-footer">
       <div className="icon-group">

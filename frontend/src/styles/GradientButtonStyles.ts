@@ -8,7 +8,7 @@ export const useGradientButtonStyle = createStyles(({ prefixCls, css }) => ({
       color: #fff;
       background: linear-gradient(45deg, #00aaff, #5b09cd, #c91d55);
       background-size: 200% 200%;
-      border-radius: 14px; 
+      border-radius: 16px; 
       transition: background-position 0.5s ease, box-shadow 0.3s ease;
       border: none;
       padding: 8px 16px;
