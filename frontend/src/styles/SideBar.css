@@ -5,7 +5,6 @@
   padding-top: 16px;
   background-color: #fff;
   height: 100vh;
-  border-right: 1px solid #e0e0e0;
   box-sizing: border-box;
   transition: width 0.3s ease; 
 }
@@ -28,6 +27,10 @@
 .sidebar-menu.ant-menu {
 
   text-align: center; 
+}
+.sidebar-menu .ant-menu-title-content {
+  text-align: left;
+  margin-left: 8px;
 }
 .sidebar-menu .ant-menu-item {
   justify-content: center; 

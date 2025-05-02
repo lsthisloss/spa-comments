@@ -1,12 +1,12 @@
 #root {
   width: 100%;
   max-width: 768px; 
-  min-height: 100vh; 
-  background-color: #fff; 
+  height: 100vh; 
   display: flex;
   flex-direction: column;
-  overflow: hidden; 
+  background-color: #fff; 
 }
+
 .logo {
   height: 6em;
   padding: 1.5em;

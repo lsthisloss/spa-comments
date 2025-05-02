@@ -7,7 +7,7 @@ import '../styles/SideBar.css';
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed] = useState(false); 
+  const [collapsed] = useState(false);
 
   const menuItems = [
     {

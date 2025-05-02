@@ -1,13 +1,14 @@
 :root {
-  --sidebar-width: 170px; 
+  --sidebar-width: 150px; 
 }
 
 .main-page {
   display: flex;
+  flex-direction: column;
   width: 100%;
-  min-height: 100vh; 
+  min-height: 100vh;
+  box-sizing: border-box;
 }
-
 .main-sidebar {
   width: var(--sidebar-width); 
   background-color: #fff;
@@ -23,7 +24,8 @@
   flex-direction: column;
   min-width: 0;
   padding: 0;
-  box-sizing: border-box; 
+  box-sizing: border-box;   
+  border-left: 1px solid #e0e0e0;
   border-right: 1px solid #e0e0e0;
 }
 
