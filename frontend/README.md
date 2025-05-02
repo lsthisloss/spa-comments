@@ -4,5 +4,5 @@ Currently in progress.
 <details>
 <summary>Click to expand</summary>   
   
-![Screenshot 2025-05-01 222102](https://github.com/user-attachments/assets/c5ede59d-6c2e-4c4a-bab6-662958ca41cb)
+![image](https://github.com/user-attachments/assets/e334920c-8fb2-437e-a6e5-4d9617a70bac)
 </details>
