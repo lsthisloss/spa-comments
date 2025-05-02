@@ -1,6 +1,6 @@
-import CommentForm from '../components/CommentForm';
-import CommentList from '../components/CommentList';
-import '../styles/CommentsPage.css';
+import CommentForm from '../components/Comments/CommentForm';
+import CommentList from '../components/Comments/CommentList';
+import '../styles/Comments/CommentsPage.css'; // Import your CSS file here
 
 export default function CommentsPage() {
   return (

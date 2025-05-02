@@ -1,6 +1,6 @@
 import { Tooltip, Button, Card, Typography } from 'antd';
 import { LikeOutlined, DislikeOutlined } from '@ant-design/icons';
-import '../styles/CommentItem.css';
+import '../../styles/Comments/CommentItem.css';
 
 const { Text } = Typography;
 

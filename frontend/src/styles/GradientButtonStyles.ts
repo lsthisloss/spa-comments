@@ -4,14 +4,29 @@ export const useGradientButtonStyle = createStyles(({ prefixCls, css }) => ({
   linearGradientButton: css`
     &.${prefixCls}-btn-primary:not([disabled]):not(.${prefixCls}-btn-dangerous) {
       position: relative;
-      overflow: hidden; 
-      color: #fff; 
-      background: linear-gradient(45deg,#00aaff, #5b09cd, #c91d55); 
-      background-size: 200% 200%; 
-      transition: background-position 0.5s ease; 
+      overflow: hidden;
+      color: #fff;
+      background: linear-gradient(45deg, #00aaff, #5b09cd, #c91d55);
+      background-size: 200% 200%;
+      border-radius: 14px; 
+      transition: background-position 0.5s ease, box-shadow 0.3s ease;
+      border: none;
+      padding: 8px 16px;
+      font-size: 16px;
+      font-weight: bold; 
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+      
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center; 
+      line-height: 1; 
 
       &:hover {
         background-position: 100% 0; 
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); 
       }
 
       &::before {
@@ -23,18 +38,6 @@ export const useGradientButtonStyle = createStyles(({ prefixCls, css }) => ({
         z-index: -1; 
         animation: burning-effect 5s infinite; 
       }
-    }
-  `,
-
-  '@keyframes burning-effect': css`
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
     }
   `,
 }));

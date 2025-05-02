@@ -1,5 +1,5 @@
 import CommentItem from './CommentItem';
-import { Comment as CommentType } from '../types/comment';
+import { Comment as CommentType } from '../../types/comment';
 import { JSX } from 'react';
 
 const dummyComments: CommentType[] = [
