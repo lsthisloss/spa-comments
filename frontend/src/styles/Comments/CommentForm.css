@@ -28,55 +28,6 @@
   border-radius: 50%;
 }
 
-.form-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top: 1px solid #e0e0e0;
-  padding-top: 6px;
-}
-
-.icon-group {
-  display: flex;
-  gap: 8px;
-}
-.icon-button {
-  background: none; 
-  border: none; 
-  color: #333; 
-  font-size: 16px; 
-  height: 32px; 
-  padding: 8px; 
-  border-radius: 6px; 
-  display: flex; 
-  align-items: center; 
-  justify-content: center; 
-  transition: background-color 0.3s ease; 
-  cursor: pointer; 
-}
-
-.icon-button:hover {
-  background-color: rgba(100, 108, 255, 0.1); 
-}
-
-.icon-button:focus {
-  outline: none; 
-  box-shadow: none; 
-}
-.submit-button {
-  font-size: 18px;
-  border-radius: 20px;
-  background-color: #333; 
-  color: white; 
-  cursor: pointer;
-  transition: background-color 0.3s;
-  border: none;
-}
-
-.submit-button:hover {
-  background-color: #000; 
-  
-}
 .comment-form:focus-within {
   box-shadow: none; 
 }
