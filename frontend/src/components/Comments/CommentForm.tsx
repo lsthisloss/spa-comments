@@ -5,6 +5,7 @@ import FormFooter from './FormFooter';
 
 export default function CommentForm() {
   const [text, setText] = useState('');
+  const maxLength = 300;
 
   const handleSubmit = () => {
     console.log('Comment submitted:', text);
@@ -21,9 +22,12 @@ export default function CommentForm() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="input-area"
+          maxLength={maxLength}
         />
       </div>
-      <FormFooter />
+      <FormFooter text={text} maxLength={maxLength}>
+        <div className="form-footer-content"></div>
+      </FormFooter>
     </Form>
   );
 }

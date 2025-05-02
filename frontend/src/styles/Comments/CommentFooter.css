@@ -1,22 +1,64 @@
 .comment-footer {
-    display: flex;
-    justify-content: space-between;
-    overflow: hidden; 
+  display: flex;
+  justify-content: flex-start; 
+  align-items: center;
+  flex-wrap: nowrap; 
+  gap: 24px; 
+}
+
+.comment-footer .icon-group {
+  display: flex;
+  gap: 24px; 
+  align-items: center;
+  margin-left: auto; 
+}
+
+.comment-footer .footer-right {
+  display: flex;
+  align-items: center;
+  gap: 24px; 
+  flex-shrink: 0; 
+}
+
+.comment-footer .ant-btn {
+  margin: 0; 
+  padding: 4px; 
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  white-space: nowrap; 
+}
+
+.comment-footer .ant-btn .anticon {
+  font-size: 16px; 
+  margin: 0; 
+}
+
+
+@media (max-width: 768px) {
+  .comment-footer {
+    gap: 16px; 
   }
-  
-  .comment-footer .ant-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 14px;
-    color: #888;
-    transition: color 0.3s ease, background-color 0.3s ease;
-    white-space: nowrap; 
-    margin: 0; 
-    padding: 0; 
+
+  .comment-footer .icon-group {
+    gap: 16px; 
   }
-  
-  .comment-footer .ant-btn:hover {
-    color: #646cff;
-    background-color: rgba(0, 0, 0, 0.05);
+
+  .comment-footer .footer-right {
+    gap: 16px; 
   }
+}
+
+@media (max-width: 480px) {
+  .comment-footer {
+    gap: 8px; 
+  }
+
+  .comment-footer .icon-group {
+    gap: 8px; 
+  }
+
+  .comment-footer .footer-right {
+    gap: 8px; 
+  }
+}
