@@ -1,0 +1,22 @@
+.comment-footer {
+    display: flex;
+    justify-content: space-between;
+    overflow: hidden; 
+  }
+  
+  .comment-footer .ant-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: #888;
+    transition: color 0.3s ease, background-color 0.3s ease;
+    white-space: nowrap; 
+    margin: 0; 
+    padding: 0; 
+  }
+  
+  .comment-footer .ant-btn:hover {
+    color: #646cff;
+    background-color: rgba(0, 0, 0, 0.05);
+  }

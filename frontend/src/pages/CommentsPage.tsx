@@ -1,8 +1,11 @@
+import { useParams } from 'react-router-dom';
 import CommentForm from '../components/Comments/CommentForm';
 import CommentList from '../components/Comments/CommentList';
-import '../styles/Comments/CommentsPage.css'; // Import your CSS file here
+import '../styles/Comments/CommentsPage.css';
 
 export default function CommentsPage() {
+  const { postId } = useParams<{ postId: string }>();
+
   return (
     <section className="comments-page">
       <div className="comments-container">
@@ -11,7 +14,7 @@ export default function CommentsPage() {
         </div>
         <div className="divider"></div>
         <div className="comment-list">
-          <CommentList />
+          <CommentList postId={postId} />
         </div>
       </div>
     </section>

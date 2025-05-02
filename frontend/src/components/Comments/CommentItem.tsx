@@ -1,45 +1,51 @@
-import { Tooltip, Button, Card, Typography } from 'antd';
-import { LikeOutlined, DislikeOutlined } from '@ant-design/icons';
+import { Tooltip, Button, Card, Typography, Dropdown, Menu } from 'antd';
+import { MoreOutlined } from '@ant-design/icons';
 import '../../styles/Comments/CommentItem.css';
+import CommentFooter from './CommentFooter';
 
 const { Text } = Typography;
 
-interface Props {
+interface CommentItemProps {
   comment: {
+    id: string;
     userName: string;
-    createdAt: string | number | Date;
     text: string;
+    createdAt: Date;
   };
   level: number;
-  children?: React.ReactNode;
 }
 
-export default function CommentItem({ comment, level, children }: Props) {
+export default function CommentItem({ comment }: CommentItemProps) {
+  const menu = (
+    <Menu>
+      <Menu.Item key="block">
+        Block @{comment.userName}
+      </Menu.Item>
+    </Menu>
+  );
+
   return (
     <Card className="comment-item">
-      <div className={`comment-header ${level > 0 ? 'nested-header' : ''}`}>
+      <div className="comment-header">
         <div className="comment-avatar">{comment.userName[0]}</div>
         <div className="comment-user-info">
           <Text strong>{comment.userName}</Text>
-          <Tooltip title={new Date(comment.createdAt).toLocaleString()}>
+          <Tooltip title={comment.createdAt.toLocaleString()}>
             <Text type="secondary" className="comment-date">
-              {new Date(comment.createdAt).toLocaleString()}
+              {comment.createdAt.toLocaleString()}
             </Text>
           </Tooltip>
         </div>
         <div className="comment-actions-right">
-          <Tooltip title="Like">
-            <Button type="text" icon={<LikeOutlined />} />
-          </Tooltip>
-          <Tooltip title="Dislike">
-            <Button type="text" icon={<DislikeOutlined />} />
-          </Tooltip>
+          <Dropdown overlay={menu} trigger={['click']}>
+            <Button type="text" icon={<MoreOutlined />} />
+          </Dropdown>
         </div>
       </div>
-
-      <Typography.Paragraph className="comment-text">{comment.text}</Typography.Paragraph>
-
-      <div className="nested-comments">{children}</div>
+      <div className="comment-body">
+        <Typography.Paragraph className="comment-text">{comment.text}</Typography.Paragraph>
+        <CommentFooter postId={comment.id} />
+      </div>
     </Card>
   );
 }

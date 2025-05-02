@@ -1,44 +1,26 @@
 import CommentItem from './CommentItem';
-import { Comment as CommentType } from '../../types/comment';
-import { JSX } from 'react';
+import { Comment } from '../../types/comment';
 
-const dummyComments: CommentType[] = [
-  {
-    id: '1',
-    userName: 'JohnDoe',
-    email: 'john@example.com',
-    text: 'Sapienti sat — латинское крылатое выражение, означающее в переводе «умному достаточно» или для понимающего достаточно и соответствующее русскому аналогу «умный поймёт Впервые встречается в комедии Плавта Перс (IV, 7, 729) ',
-    createdAt: new Date(),
-    parentId: null,
-  },
-  {
-    id: '2',
-    userName: 'JaneDoe',
-    email: 'jane@example.com',
-    text: 'А затем в комедии Теренция «Формион», где юноша Антифон говорит с изворотливым рабом Гетой о спасении своего друга Формиона, который попал в плен к врагам. Они требуют от него выкуп, и он говорит: «Sapienti sat» — «умному достаточно». Указывает на то, что что-то можно понять без объяснений, если у слушателя достаточно мудрости или здравого смысла. Часто расширяется до dictum sapienti sat est (« достаточно сказано для мудрого », обычно переводится как «мудрому достаточно слова»).',
-    createdAt: new Date(),
-    parentId: '1',
-  },
-  {
-    id: '3',
-    userName: 'Alice',
-    email: 'alice@example.com',
-    text: 'С ума сойти, как же это интересно! ', 
-    createdAt: new Date(),
-    parentId: '2',
-  },
+const dummyPosts: Comment[] = [
+  { id: '1', userName: 'Anonymous', email: 'john@example.com', text: 'Veni, vidi, vici (с лат. — «Пришёл, увидел, победил») — крылатое латинское выражение, слова, которыми, как сообщает Плутарх в своих «Изречениях царей и полководцев», Гай Юлий Цезарь в августе 47 года до н. э. уведомил своего друга Гая Мация в Риме о победе, быстро одержанной им при Зеле над Фарнаком, сыном Митридата Понтийского.', createdAt: new Date(), parentId: null },
+  { id: '2', userName: 'JaneDoe', email: 'jane@example.com', text: 'Sapienti sat — латинское крылатое выражение, означающее в переводе «умному достаточно» или «для понимающего достаточно» и соответствующее русскому аналогу «умный поймёт»[1].', createdAt: new Date(), parentId: null },
+  { id: '3', userName: 'Alice', email: 'alice@example.com', text: 'Thats awesome!', createdAt: new Date(), parentId: null },
 ];
 
-export default function CommentList() {
-  const renderComments = (parentId: string | null, level: number = 0): JSX.Element[] => {
-    return dummyComments
-      .filter((comment) => comment.parentId === parentId)
-      .map((comment) => (
-        <CommentItem key={comment.id} comment={comment} level={level}>
-          {renderComments(comment.id, level + 1)}
-        </CommentItem>
-      ));
-  };
+interface CommentListProps {
+  postId?: string;
+}
 
-  return <div>{renderComments(null)}</div>;
+export default function CommentList({ postId }: CommentListProps) {
+  const posts = postId
+    ? dummyPosts.filter((post) => post.id === postId)
+    : dummyPosts.reverse(); 
+
+  return (
+    <div className="posts-container">
+      {posts.map((post) => (
+        <CommentItem key={post.id} comment={post} level={0} />
+      ))}
+    </div>
+  );
 }
