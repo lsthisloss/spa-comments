@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import CommentForm from '../components/Comments/CommentForm';
-import CommentList from '../components/Comments/CommentList';
-import '../styles/Comments/CommentsPage.css';
+import CommentForm from '../components/comments/CommentForm';
+import CommentList from '../components/comments/CommentList';
+import '../styles/main.scss';
 
 export default function CommentsPage() {
   const { postId } = useParams<{ postId: string }>();

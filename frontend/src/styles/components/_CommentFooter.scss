@@ -1,0 +1,27 @@
+@import '../base/variables';
+
+.comment-footer {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: $spacing-xxlarge;
+
+  .ant-btn {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    font-size: $font-size-medium;
+    background: none !important;
+    border: none;
+    box-shadow: none;
+    line-height: 1;
+    height: auto;
+    transition: transform 0.2s ease, color 0.3s ease;
+
+    &:hover .anticon {
+      color: $color-primary;
+      transform: scale(1.2);
+    }
+  }
+}

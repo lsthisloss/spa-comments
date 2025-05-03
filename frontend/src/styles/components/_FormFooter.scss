@@ -1,0 +1,43 @@
+@import '../base/variables';
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  padding: $spacing-medium;
+  background-color: $color-background;
+  gap: $spacing-xlarge;
+
+  .icon-group {
+    display: flex;
+    gap: $spacing-medium;
+    margin-left: 0;
+    .icon-button {
+      font-size: $font-size-large;
+      color: $color-text-primary;
+      transition: color 0.3s ease;
+
+      &:hover {
+        color: $color-primary;
+      }
+    }
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: $spacing-medium;
+    margin-left: auto;
+    .ant-progress-circle {
+      font-size: $font-size-small;
+    }
+
+    .ant-btn-primary {
+      font-size: $font-size-medium;
+      padding: $spacing-small $spacing-medium;
+    }
+  }
+  .ant-progress-circle:where(.ant-progress-status-success) .ant-progress-text {
+  color: #ff4d4f !important;
+}
+}

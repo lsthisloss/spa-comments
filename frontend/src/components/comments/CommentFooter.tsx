@@ -1,8 +1,8 @@
-import { Button, Tooltip } from 'antd';
+import { Button } from 'antd';
 import { MessageOutlined, HeartFilled, HeartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import '../../styles/Comments/CommentFooter.css';
+import '../../styles/main.scss';
 
 interface CommentFooterProps {
   postId: string;
@@ -18,7 +18,6 @@ export default function CommentFooter({ postId }: CommentFooterProps) {
 
   return (
     <div className="comment-footer">
-      <Tooltip title="Likes" placement="bottom">
         <Button
           type="text"
           icon={
@@ -32,8 +31,6 @@ export default function CommentFooter({ postId }: CommentFooterProps) {
         >
           357
         </Button>
-      </Tooltip>
-      <Tooltip title="Comments" placement="bottom">
         <Button
           type="text"
           icon={<MessageOutlined />}
@@ -41,7 +38,6 @@ export default function CommentFooter({ postId }: CommentFooterProps) {
         >
           93
         </Button>
-      </Tooltip>
     </div>
   );
 }

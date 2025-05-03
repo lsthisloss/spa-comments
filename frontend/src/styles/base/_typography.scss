@@ -1,0 +1,20 @@
+@import '../base/variables';
+h1, h2, h3, h4, h5, h6 {
+    font-weight: bold;
+    margin-bottom: $spacing-medium;
+  }
+  
+  p {
+    margin-bottom: $spacing-medium;
+    font-size: $font-size-large;
+    color: $color-text-primary;
+  }
+  
+  a {
+    color: $color-primary;
+    text-decoration: none;
+  
+    &:hover {
+      text-decoration: underline;
+    }
+  }

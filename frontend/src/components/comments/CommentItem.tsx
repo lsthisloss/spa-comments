@@ -1,5 +1,5 @@
 import { Tooltip, Card, Typography} from 'antd';
-import '../../styles/Comments/CommentItem.css';
+import '../../styles/main.scss';
 import CommentFooter from './CommentFooter';
 
 const { Text } = Typography;
@@ -21,8 +21,6 @@ export default function CommentItem({ comment }: CommentItemProps) {
         <div className="comment-layout">
           <div className="comment-avatar">{comment.userName[0]}</div>
           <div className="comment-content">
-            <div className="comment-header">
-              <div className="comment-header-content">
                 <div className="comment-user-info">
                   <Text strong>{comment.userName}</Text>
                   <span className="comment-separator">·</span>
@@ -32,8 +30,6 @@ export default function CommentItem({ comment }: CommentItemProps) {
                     </Text>
                   </Tooltip>
                 </div>
-              </div>
-            </div>
             <div className="comment-body">
               <Typography.Paragraph className="comment-text">{comment.text}</Typography.Paragraph>
             </div>

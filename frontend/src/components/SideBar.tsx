@@ -2,7 +2,7 @@ import { Menu } from 'antd';
 import { HomeOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import '../styles/SideBar.css';
+import '../styles/main.scss';
 
 export default function Sidebar() {
   const navigate = useNavigate();

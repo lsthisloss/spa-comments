@@ -1,0 +1,13 @@
+@import '../base/variables';
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+  
+  body {
+    font-family: $font-family-base;
+    line-height: 1.5;
+    color: $color-text-primary;
+    background-color: $color-background;
+  }

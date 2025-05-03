@@ -1,6 +1,6 @@
-import { Button, Tooltip, Upload, Progress } from 'antd';
+import { Button, Upload, Progress } from 'antd';
 import { UploadOutlined, PictureOutlined, SmileOutlined } from '@ant-design/icons';
-import '../../styles/Comments/FormFooter.css';
+import '../../styles/main.scss';
 import { useGradientButtonStyle } from '../../styles/GradientButtonStyles';
 import { ReactNode } from 'react';
 
@@ -19,31 +19,37 @@ export default function FormFooter({ children, text, maxLength }: FormFooterProp
     <div className="form-footer">
       {children}
       <div className="icon-group">
-        <Tooltip title="Upload" placement="bottom">
           <Upload>
-            <Button type="text" icon={<UploadOutlined />} className="icon-button" />
+            <Button
+              type="text"
+              icon={<UploadOutlined />}
+              className="icon-button"
+            />
           </Upload>
-        </Tooltip>
-        <Tooltip title="Picture" placement="bottom">
-          <Button type="text" icon={<PictureOutlined />} className="icon-button" />
-        </Tooltip>
-        <Tooltip title="Emoji" placement="bottom">
-          <Button type="text" icon={<SmileOutlined />} className="icon-button" />
-        </Tooltip>
+          <Button
+            type="text"
+            icon={<PictureOutlined />}
+            className="icon-button"
+          />
+          <Button
+            type="text"
+            icon={<SmileOutlined />}
+            className="icon-button"
+          />
       </div>
       <div className="footer-right">
-        <Tooltip title={`Remaining characters: ${remainingCharacters}`} placement="bottom">
           <Progress
             type="circle"
             percent={remainingPercentage}
-            width={28} 
-            strokeColor={
-              remainingCharacters <= 0 ? '#ff4d4f' : '#1890ff'
-            }
+            width={28}
+            strokeColor={remainingCharacters <= 0 ? '#ff4d4f' : '#1890ff'}
             format={() => `${remainingCharacters}`}
           />
-        </Tooltip>
-        <Button type="primary" htmlType="submit" className={styles.linearGradientButton}>
+        <Button
+          type="primary"
+          htmlType="submit"
+          className={styles.linearGradientButton}
+        >
           Post
         </Button>
       </div>

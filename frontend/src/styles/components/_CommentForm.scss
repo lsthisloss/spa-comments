@@ -1,0 +1,60 @@
+@import '../base/variables';
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  border: none;
+  padding-left: $spacing-medium;
+  padding-right: $spacing-medium;
+
+  &:focus-within {
+    box-shadow: none;
+  }
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.comment-avatar {
+  align-self: flex-start;
+  width: 32px;
+  height: 32px;
+  background-color: $color-avatar-bg;
+  color: white;
+  font-size: $font-size-medium;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.input-area.ant-input {
+  font-size: $font-size-xlarge;
+  line-height: 1.1;
+  border: none;
+  box-shadow: none;
+  resize: none;
+
+  &:focus {
+    outline: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  &::placeholder {
+    font-size: $font-size-xlarge;
+    color: $color-text-secondary;
+  }
+}
+
+.character-counter {
+  font-size: $font-size-small;
+  color: $color-text-secondary;
+  text-align: right;
+  margin-top: $spacing-small;
+}

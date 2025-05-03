@@ -1,0 +1,67 @@
+@import '../base/variables';
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background-color: $color-sidebar-bg;
+  box-sizing: border-box;
+  transition: width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, #fffb00, $color-primary, #fffb00);
+  }
+
+  &.collapsed {
+    width: 60px;
+  }
+}
+
+.sidebar-menu {
+  width: 100%;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-medium;
+  font-size: $font-size-large;
+  padding: 0;
+
+  .ant-menu-item {
+    justify-content: center;
+
+    span {
+      display: inline;
+    }
+
+    .sidebar-icon {
+      font-size: 20px;
+      margin: 0 auto;
+    }
+
+    &.ant-menu-item-selected {
+      background: none !important;
+      font-weight: bold;
+    }
+  }
+
+  @media (max-width: $breakpoint-tablet) {
+    .ant-menu-item span {
+      display: none;
+    }
+
+    .ant-menu-item {
+      justify-content: center;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+  }
+}

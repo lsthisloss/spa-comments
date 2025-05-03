@@ -1,6 +1,6 @@
 import { Form, Input, Avatar } from 'antd';
 import { useState } from 'react';
-import '../../styles/Comments/CommentForm.css';
+import '../../styles/main.scss';
 import FormFooter from './FormFooter';
 
 export default function CommentForm() {
