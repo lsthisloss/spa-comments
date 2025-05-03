@@ -1,42 +1,62 @@
 .comment-item {
+  display: flex;
+  flex-direction: column;
   border: none;
   max-width: 100%;
   overflow: hidden;
   border-bottom: 1px solid #e0e0e0; 
   border-radius: 0; 
+  position: relative; 
+}
+
+.comment-item:last-child::after {
+  display: none; 
+}
+.comment-layout {
+  display: flex;
+  align-items: stretch; 
+  padding-left: 16px;
+}
+.comment-content {
+  flex: 1; 
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px; 
+  gap: 0; 
 }
 
 .comment-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  padding: 0px 1rem; 
-  gap: 12px;
+  display: flex;
+  align-items: flex-start; 
+  padding: 0; 
+  margin: 0; 
 }
-
-
 .comment-user-info {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-direction: row; 
+  align-items: baseline; 
+  padding: 0; 
+  margin: 0; 
 }
-
-
-.comment-date {
-  font-size: 12px;
-  color: #888;
-}
-
 
 .comment-actions-right {
   display: flex;
-  align-items: center;
+  align-items: flex-start; 
   gap: 12px; 
+  margin: 0; 
+  padding: 0; 
+}
+.comment-date {
+  font-size: 10px;
+  color: #888;
 }
 
+.comment-separator {
+  margin: 0 4px; 
+  color: #888; 
+  font-size: 12px; 
+  line-height: 1; 
+}
 
 
 .comment-actions-left {
@@ -52,7 +72,7 @@
   padding-right: 0;
   padding-left: 0px;
   padding-top: 8px;
-  padding-bottom: 4px;
+  padding-bottom: 8px;
 }
 
 .nested-comments .ant-card-body {
@@ -73,6 +93,16 @@
 .comment-body {
   display: flex;
   flex-direction: column;
-  padding: 0 16px 0 60px;
-}
+  position: relative; 
+  z-index: 1; 
+  padding-bottom: 6px;
+ }
 
+.comment-header-content {
+  display: flex;
+  justify-content: space-between; 
+  align-items: flex-start; 
+  gap: 8px; 
+  padding: 0; 
+  margin: 0; 
+}

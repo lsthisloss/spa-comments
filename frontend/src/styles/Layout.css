@@ -37,6 +37,7 @@
 
   .main-content {
     margin-left: var(--sidebar-width); 
+    border-right: 0;
   }
 }
 

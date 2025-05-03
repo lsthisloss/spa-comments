@@ -1,5 +1,4 @@
-import { Tooltip, Button, Card, Typography, Dropdown, Menu } from 'antd';
-import { MoreOutlined } from '@ant-design/icons';
+import { Tooltip, Card, Typography} from 'antd';
 import '../../styles/Comments/CommentItem.css';
 import CommentFooter from './CommentFooter';
 
@@ -16,37 +15,32 @@ interface CommentItemProps {
 }
 
 export default function CommentItem({ comment }: CommentItemProps) {
-  const menu = (
-    <Menu>
-      <Menu.Item key="block">
-        Block @{comment.userName}
-      </Menu.Item>
-    </Menu>
-  );
-
   return (
-    <Card className="comment-item">
-      <div className="comment-header">
-        <div className="comment-avatar">{comment.userName[0]}</div>
-        <div className="comment-user-info">
-          <Text strong>{comment.userName}</Text>
-          <Tooltip title={comment.createdAt.toLocaleString()}>
-            <Text type="secondary" className="comment-date">
-              {comment.createdAt.toLocaleString()}
-            </Text>
-          </Tooltip>
+    <>
+      <Card className="comment-item">
+        <div className="comment-layout">
+          <div className="comment-avatar">{comment.userName[0]}</div>
+          <div className="comment-content">
+            <div className="comment-header">
+              <div className="comment-header-content">
+                <div className="comment-user-info">
+                  <Text strong>{comment.userName}</Text>
+                  <span className="comment-separator">·</span>
+                  <Tooltip title={comment.createdAt.toLocaleString()}>
+                    <Text type="secondary" className="comment-date">
+                      {comment.createdAt.toLocaleString()}
+                    </Text>
+                  </Tooltip>
+                </div>
+              </div>
+            </div>
+            <div className="comment-body">
+              <Typography.Paragraph className="comment-text">{comment.text}</Typography.Paragraph>
+            </div>
+            <CommentFooter postId={comment.id} />
+          </div>
         </div>
-        <div className="comment-actions-right">
-         
-          <Dropdown overlay={menu} trigger={['click']}>
-            <Button type="text" icon={<MoreOutlined />} />
-          </Dropdown>
-        </div>
-      </div>
-      <div className="comment-body">
-        <Typography.Paragraph className="comment-text">{comment.text}</Typography.Paragraph>
-        <CommentFooter postId={comment.id} />
-      </div>
-    </Card>
+      </Card>
+    </>
   );
 }

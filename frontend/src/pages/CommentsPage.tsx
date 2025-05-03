@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import CommentForm from '../components/Comments/CommentForm';
 import CommentList from '../components/Comments/CommentList';
@@ -5,10 +6,19 @@ import '../styles/Comments/CommentsPage.css';
 
 export default function CommentsPage() {
   const { postId } = useParams<{ postId: string }>();
+  const totalPosts = 42; 
+  const [activeTab, setActiveTab] = useState('Posts'); 
 
   return (
     <section className="comments-page">
-      <div className="comments-container">
+      <div className="tabs">
+        <div
+          className={`tab ${activeTab === 'Posts' ? 'active-tab' : ''}`}
+          onClick={() => setActiveTab('Posts')}>
+            {totalPosts} Posts
+        </div>
+      </div>
+      <div className="comment-container">
         <div className="comment-form">
           <CommentForm />
         </div>

@@ -1,9 +1,14 @@
 .comment-footer {
+  padding: 0; 
   display: flex;
-  justify-content: flex-start; 
-  align-items: center;
-  flex-wrap: nowrap; 
-  gap: 24px; 
+  align-items: center; 
+  gap: 16px; 
+  
+  }
+
+
+.comment-footer span {
+  font-size: 12px; 
 }
 
 .comment-footer .icon-group {
@@ -19,22 +24,48 @@
   gap: 24px; 
   flex-shrink: 0; 
 }
-
 .comment-footer .ant-btn {
   margin: 0; 
-  padding: 4px; 
+  padding: 0; 
   display: flex;
-  align-items: center;
+  align-items: center; 
   font-size: 12px;
-  white-space: nowrap; 
+  background: none !important; 
+  border: none;
+  box-shadow: none;
+  line-height: 1; 
+  height: auto; 
+  transition: transform 0.2s ease, color 0.3s ease;
+}
+
+.comment-footer .ant-btn:hover .anticon {
+  color: #1890ff; 
+  transform: scale(1.2); 
+}
+.heart-icon {
+  font-size: 16px;
+  transition: transform 0.2s ease, color 0.3s ease;
+}
+
+.heart-icon.liked {
+  color: #ff4d4f; 
+  transform: scale(1.2); 
+}
+
+.comment-footer .ant-btn:focus {
+  outline: none; 
+  box-shadow: none; 
+}
+
+.comment-footer .ant-btn:hover .heart-icon {
+  color: #ff7875; 
+  transform: scale(1.2); 
 }
 
 .comment-footer .ant-btn .anticon {
   font-size: 16px; 
-  margin: 0; 
+  transition: transform 0.2s ease, color 0.3s ease;
 }
-
-
 @media (max-width: 768px) {
   .comment-footer {
     gap: 16px; 
@@ -61,4 +92,12 @@
   .comment-footer .footer-right {
     gap: 8px; 
   }
+}
+.ant-tooltip {
+  font-size: 12px; 
+}
+
+
+.ant-tooltip-inner {
+  font-size: 12px; 
 }

@@ -7,5 +7,6 @@ html, body {
   justify-content: center; /* Центрируем по горизонтали */
   align-items: center; /* Центрируем по вертикали */
   overflow: auto; /* Включаем прокрутку для браузера */
+  font-family: 'Roboto', Arial, sans-serif; /* Используем Roboto как основной шрифт */
 }
 
