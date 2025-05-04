@@ -21,14 +21,17 @@
         color: $color-primary;
       }
     }
-  }
 
+  }
+}
+  
   .footer-right {
     display: flex;
     align-items: center;
     gap: $spacing-medium;
     margin-left: auto;
-    .ant-progress-circle {
+
+        .ant-progress-circle {
       font-size: $font-size-small;
     }
 
@@ -36,8 +39,23 @@
       font-size: $font-size-medium;
       padding: $spacing-small $spacing-medium;
     }
-  }
-  .ant-progress-circle:where(.ant-progress-status-success) .ant-progress-text {
-  color: #ff4d4f !important;
-}
+    .ant-form-item {
+      margin-inline-end: 0; 
+      padding-right: $spacing-small; 
+
+      &:last-child {
+        padding-right: 9px; 
+      }
+    }
+    .ant-form.ant-form-inline {
+      border-right: 1px solid $color-border; 
+    }
+  
+    .ant-input {
+      width: 78px; 
+      height: 28px;
+    } 
+    .ant-progress-circle:where(.ant-progress-status-success) .ant-progress-text {
+      color: #ff4d4f !important;
+    }
 }

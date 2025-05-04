@@ -1,4 +1,3 @@
-// Цвета
 $color-primary: #1890ff;
 $color-secondary: #888;
 $color-border: #e0e0e0;
@@ -27,7 +26,11 @@ $spacing-xxlarge: 32px;
 
 $breakpoint-tablet: 768px;
 $breakpoint-mobile: 480px;
+$breakpoint-mobile-captcha: 568px;
 
 $transition-fast: 0.2s ease;
 $transition-medium: 0.3s ease;
 $transition-slow: 0.5s ease;
+
+$border-radius-small: 4px;
+$border-radius-medium: 8px;

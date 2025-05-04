@@ -11,7 +11,10 @@ export default function Layout({ children }: LayoutProps) {
       <aside className="main-sidebar">
         <Sidebar />
       </aside>
-      <main className="main-content">{children}</main>
+      <main className="main-content">
+        {children}
+        
+      </main>
     </div>
   );
 }

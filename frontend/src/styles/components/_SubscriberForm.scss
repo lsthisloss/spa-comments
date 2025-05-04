@@ -1,0 +1,15 @@
+.subscriber-form {
+  width: 300px;
+  padding: $spacing-xlarge;
+  padding-bottom: 0;
+  background-color: $color-background;
+  border: 1px solid $color-border;
+  border-radius: $border-radius-small;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  h3 {
+    font-size: $font-size-large;
+    margin-bottom: $spacing-medium;
+    color: $color-text-primary;
+  }
+}
