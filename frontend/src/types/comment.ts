@@ -1,9 +1,9 @@
 export interface Comment {
-    id: string;
-    userName: string;
-    email: string;
-    homePage?: URL;
-    text: string;
-    createdAt: Date;
-    parentId?: string | null;
-  }
+  id: string;
+  userName: string;
+  email: string;
+  homePage?: string;
+  text: string;
+  createdAt: Date;
+  parentId?: string | null;
+}

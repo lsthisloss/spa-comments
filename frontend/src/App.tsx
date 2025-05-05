@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import MainPage from './pages/MainPage';
-import CommentsPage from './pages/CommentsPage';
+import WhoAmIPage from './pages/WhoAmIPage';
+import CommentsPage from './pages/CommentsPage'; // Импортируем CommentsPage
 import './App.scss';
 
 export default function App() {
@@ -10,8 +11,9 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<MainPage />} />
-          <Route path="/post/:postId" element={<CommentsPage />} />
-        </Routes>
+          <Route path="/whoami" element={<WhoAmIPage />} />
+          <Route path="/post/:parentId" element={<CommentsPage comments={[]} />} />
+          </Routes>
       </Layout>
     </BrowserRouter>
   );

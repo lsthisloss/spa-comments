@@ -1,15 +1,23 @@
 import { Modal, Form, Input, Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useState } from 'react';
-import '../../styles/main.scss';
+
+interface UserInfo {
+  userName?: string;
+  email?: string;
+}
 
 interface CaptchaModalProps {
   visible: boolean;
   onClose: () => void;
+  onSubmit: (data: { text: string; userInfo: UserInfo; captcha: string }) => void;
+  text: string;
+  userInfo: UserInfo;
 }
 
-export default function CaptchaModal({ visible, onClose }: CaptchaModalProps) {
+export default function CaptchaModal({ visible, onClose, onSubmit, text, userInfo }: CaptchaModalProps) {
   const [captcha, setCaptcha] = useState(generateCaptcha());
+  const [inputValue, setInputValue] = useState('');
 
   function generateCaptcha() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -18,17 +26,22 @@ export default function CaptchaModal({ visible, onClose }: CaptchaModalProps) {
 
   const refreshCaptcha = () => {
     setCaptcha(generateCaptcha());
+    setInputValue('');
   };
 
-  const handleSubmit = (values: Record<string, string>) => {
-    console.log('CAPTCHA submitted:', values);
-    onClose(); 
+  const handleSubmit = () => {
+    if (inputValue === captcha) {
+      onSubmit({ text, userInfo, captcha: inputValue });
+      onClose();
+    } else {
+      alert('Captcha is incorrect. Please try again.');
+    }
   };
 
   return (
     <Modal
       title="CAPTCHA Verification"
-      visible={visible}
+      open={visible}
       onCancel={onClose}
       footer={null}
       centered
@@ -45,14 +58,13 @@ export default function CaptchaModal({ visible, onClose }: CaptchaModalProps) {
             />
           </div>
         </Form.Item>
-        <Form.Item
-          name="captcha"
-          rules={[
-            { required: true, message: 'Please enter the CAPTCHA!' },
-            { pattern: new RegExp(`^[a-zA-Z0-9]{6}$`), message: 'CAPTCHA must be 6 characters!' },
-          ]}
-        >
-          <Input maxLength={6} placeholder="Enter CAPTCHA" />
+        <Form.Item>
+          <Input
+            maxLength={6}
+            placeholder="Enter CAPTCHA"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+          />
         </Form.Item>
         <Form.Item>
           <Button type="primary" htmlType="submit" block>

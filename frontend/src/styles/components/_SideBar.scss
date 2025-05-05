@@ -34,6 +34,8 @@
   gap: $spacing-medium;
   font-size: $font-size-large;
   padding: 0;
+  border-inline-end: 0 !important;
+
 
   .ant-menu-item {
     justify-content: center;

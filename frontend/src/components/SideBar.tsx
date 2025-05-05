@@ -1,5 +1,5 @@
 import { Menu } from 'antd';
-import { HomeOutlined, SearchOutlined } from '@ant-design/icons';
+import { HomeOutlined, /*SearchOutlined */} from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import '../styles/main.scss';
@@ -14,14 +14,14 @@ export default function Sidebar() {
       key: '/',
       icon: <HomeOutlined className="sidebar-icon" />,
       label: !collapsed && <span className={location.pathname === '/' ? 'active-menu-item' : ''}>Home</span>,
-      onClick: () => navigate('/'),
+      onClick: () => navigate('/', { state: { resetPage: true } }),
     },
-    {
+   /* {
       key: '/search',
       icon: <SearchOutlined className="sidebar-icon" />,
       label: !collapsed && <span className={location.pathname === '/search' ? 'active-menu-item' : ''}>Search</span>,
       onClick: () => navigate('/search'),
-    },
+    },*/
   ];
 
   return (

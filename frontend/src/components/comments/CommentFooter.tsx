@@ -36,7 +36,7 @@ export default function CommentFooter({ postId }: CommentFooterProps) {
           icon={<MessageOutlined />}
           onClick={() => navigate(`/post/${postId}`)}
         >
-          93
+          Reply
         </Button>
     </div>
   );

@@ -1,15 +1,18 @@
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+import io from 'socket.io-client';
+
+const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
 
 export const createWebSocket = () => {
-  const socket = new WebSocket(WS_URL);
+  const socket = io(WS_URL, {
+    transports: ['websocket'], // Используем только WebSocket
+  });
 
-  socket.onopen = () => console.log('WebSocket connected');
-  socket.onclose = (event) => {
-    console.warn('WebSocket disconnected:', event.reason || 'Unknown reason');
-  };
-  socket.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
+  socket.on('connect', () => console.log('WebSocket connected'));
+  socket.on('disconnect', (reason: string) => console.warn('WebSocket disconnected:', reason));
+  socket.on('connect_error', (error: Error) => console.error('WebSocket error:', error));
+
+  console.log('Setting up WebSocket event listeners');
+
 
   return socket;
 };

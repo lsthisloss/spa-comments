@@ -10,11 +10,22 @@
   }
 }
 
-.main-page {
+.loading-container {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.ant-pagination {
+  justify-content: center;
+}
+
+
+.main-page-section {
   width: 100%;
-  min-height: 100vh;
+  padding: $spacing-medium 0;
+  border-bottom: 1px solid #e0e0e0;
   box-sizing: border-box;
 }
 
@@ -36,6 +47,7 @@
   box-sizing: border-box;
   border-left: 1px solid $color-border;
   border-right: 1px solid $color-border;
+  min-height: 100vh;
 
   @media (max-width: $breakpoint-tablet) {
     border-right: 0;
