@@ -2,8 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import MainPage from './pages/MainPage';
 import WhoAmIPage from './pages/WhoAmIPage';
-import CommentsPage from './pages/CommentsPage'; // Импортируем CommentsPage
 import './App.scss';
+import NestedCommentsPage from './pages/NestedCommentsPage';
 
 export default function App() {
   return (
@@ -12,8 +12,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<MainPage />} />
           <Route path="/whoami" element={<WhoAmIPage />} />
-          <Route path="/post/:parentId" element={<CommentsPage comments={[]} />} />
-          </Routes>
+          <Route path="/post/:parentId" element={<NestedCommentsPage />} />
+        </Routes>
       </Layout>
     </BrowserRouter>
   );

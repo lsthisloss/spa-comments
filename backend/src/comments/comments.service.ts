@@ -40,4 +40,11 @@ export class CommentsService {
     });
     return [data, total];
   }
+
+  async getCommentsByParentId(parentId: string): Promise<Comment[]> {
+    return this.commentRepository.find({
+      where: { parentId },
+      order: { createdAt: 'ASC' },
+    });
+  }
 }

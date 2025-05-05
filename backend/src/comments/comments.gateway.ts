@@ -28,6 +28,15 @@ export class CommentsGateway {
     );
     return { comments, total };
   }
+  @SubscribeMessage('fetchNestedComments')
+  async handleFetchNestedComments(@MessageBody() data: { parentId: string }) {
+    console.log(`Fetching nested comments for parentId: ${data.parentId}`);
+    const parent = await this.commentsService.getCommentById(data.parentId);
+    const children = await this.commentsService.getCommentsByParentId(
+      data.parentId,
+    );
+    return { parent, children };
+  }
 
   @SubscribeMessage('addComment')
   async handleAddComment(@MessageBody() createCommentDto: CreateCommentDto) {
