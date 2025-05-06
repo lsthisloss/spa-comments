@@ -44,9 +44,14 @@ services:
       - ./backend:/app
     depends_on:
       - postgres
+      - rabbitmq
     environment:
       DATABASE_URL: ${DATABASE_URL}
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_HOST: rabbitmq
+      RABBITMQ_DEFAULT_PORT: 5672
 
   frontend:
     build: ./frontend

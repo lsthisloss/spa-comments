@@ -38,3 +38,6 @@ docker-compose.override.yml
 # Miscellaneous
 .DS_Store
 Thumbs.db
+
+*.env
+*.env.local

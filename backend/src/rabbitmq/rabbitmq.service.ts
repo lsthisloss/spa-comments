@@ -1,8 +1,15 @@
 import { OnModuleInit, OnModuleDestroy, Injectable } from '@nestjs/common';
 import * as amqp from 'amqplib';
+import { env } from 'node:process';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 @Injectable()
 export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    console.log('RabbitMQService instance created');
+  }
   private static isInitialized = false;
   private static connection: amqp.Connection;
   private static channel: amqp.Channel;
@@ -23,8 +30,15 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
     while (true) {
       try {
+        console.log('Connecting to RabbitMQ...');
+        console.log('ENV:', {
+          RABBITMQ_DEFAULT_USER: process.env.RABBITMQ_DEFAULT_USER,
+          RABBITMQ_DEFAULT_PASS: process.env.RABBITMQ_DEFAULT_PASS,
+          RABBITMQ_DEFAULT_HOST: process.env.RABBITMQ_DEFAULT_HOST,
+          RABBITMQ_DEFAULT_PORT: process.env.RABBITMQ_DEFAULT_PORT,
+        });
         this.connection = await amqp.connect(
-          `amqp://guest:guest@rabbitmq:5672`,
+          `amqp://${process.env.RABBITMQ_DEFAULT_USER}:${process.env.RABBITMQ_DEFAULT_PASS}@${process.env.RABBITMQ_DEFAULT_HOST}:${process.env.RABBITMQ_DEFAULT_PORT}`,
         );
         this.channel = await this.connection.createChannel();
 
@@ -111,16 +125,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
   }
   public getQueueName(queueName: string): string {
-    if (!process.env.COUNTRY_CODE || process.env.COUNTRY_CODE.trim() === '') {
-      throw new Error('Environment variable COUNTRY_CODE is empty.');
-    }
-
-    if (!process.env.ENV || process.env.ENV.trim() === '') {
-      throw new Error('Environment variable ENV is empty.');
-    }
-
-    const queuePrefix = `${process.env.COUNTRY_CODE}_${process.env.ENV}_`;
-    return `${queuePrefix}${queueName}`;
+    return `${'local'}${queueName}`;
   }
 
   async sendMessage(queueName: string, message: any): Promise<void> {

@@ -1,9 +1,9 @@
 const { Worker } = require('worker_threads');
 const path = require('path');
 
-const API_URL = 'http://localhost:3001/comments'; // URL вашего API
+const API_URL = VITE_API_URL + '/comments'; // URL API для тестирования
 const TOTAL_REQUESTS = 10000; // Общее количество запросов
-const THREAD_COUNT = 16; // Количество потоков
+const THREAD_COUNT = 8; // Количество потоков
 const REQUESTS_PER_THREAD = Math.ceil(TOTAL_REQUESTS / THREAD_COUNT); // Запросов на поток
 
 const startWorker = (threadIndex) => {
