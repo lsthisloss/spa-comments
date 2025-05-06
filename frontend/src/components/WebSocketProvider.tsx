@@ -8,11 +8,6 @@ export default function WebSocketProvider({ children }: { children: React.ReactN
   useEffect(() => {
     const socket = socketRef.current;
   
-    socket.on('connect', () => {
-      console.log('WebSocket connected');
-    });
-  
-
     return () => {
       console.log('Cleaning up WebSocket event listeners');
       socket.off('heartbeat');

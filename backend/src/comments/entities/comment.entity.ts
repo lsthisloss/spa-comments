@@ -27,6 +27,18 @@ export class Comment {
   @CreateDateColumn()
   createdAt: Date;
 
+  @Column({ nullable: true })
+  imageUrl: string;
+
+  @Column({ nullable: true })
+  fileUrl?: string;
+
+  @Column({ nullable: true })
+  fileName?: string;
+
+  @Column({ nullable: true })
+  fileType?: string;
+
   @ManyToOne(() => Comment, (comment) => comment.id, {
     nullable: true,
     onDelete: 'CASCADE',
@@ -36,4 +48,7 @@ export class Comment {
 
   @Column({ nullable: true })
   parentId?: string | null;
+
+  @Column({ default: 0 })
+  likes: number;
 }

@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Comment } from './entities/comment.entity';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { AppGateway } from '../app.gateway';
+import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 
 @Injectable()
 export class CommentsService {
@@ -11,7 +12,16 @@ export class CommentsService {
     @InjectRepository(Comment)
     private readonly commentRepository: Repository<Comment>,
     private readonly appGateway: AppGateway,
+    private readonly rabbitMQService: RabbitMQService, // Внедрение RabbitMQService
   ) {}
+
+  async sendCommentToQueue(createCommentDto: CreateCommentDto): Promise<void> {
+    const queueName = 'add_comment_queue';
+    await this.rabbitMQService.sendToQueue(queueName, {
+      createCommentDto: createCommentDto,
+    });
+    console.log(`Comment sent to queue "${queueName}":`, createCommentDto);
+  }
 
   async createComment(createCommentDto: CreateCommentDto): Promise<Comment> {
     const comment = this.commentRepository.create(createCommentDto);
@@ -20,6 +30,7 @@ export class CommentsService {
     this.appGateway.broadcastEvent('newComment', comment);
     return comment;
   }
+
   async getAllComments(): Promise<Comment[]> {
     return this.commentRepository.find();
   }
@@ -46,5 +57,22 @@ export class CommentsService {
       where: { parentId },
       order: { createdAt: 'ASC' },
     });
+  }
+
+  async findTopLevelComments(
+    page: number,
+    limit: number,
+  ): Promise<[Comment[], number]> {
+    const [data, total] = await this.commentRepository.findAndCount({
+      where: { parentId: IsNull() },
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { createdAt: 'DESC' },
+    });
+    return [data, total];
+  }
+
+  async saveComment(comment: Comment): Promise<Comment> {
+    return this.commentRepository.save(comment);
   }
 }

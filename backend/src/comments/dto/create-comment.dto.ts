@@ -11,5 +11,30 @@ export class CreateCommentDto {
   text: string;
 
   @IsOptional()
+  homePage?: string;
+
+  @IsOptional()
   parentId?: string | null;
+
+  @IsOptional()
+  imageUrl?: string;
+
+  @IsOptional()
+  file?: {
+    name: string;
+    type: string;
+    base64: string;
+  };
+
+  @IsOptional()
+  fileUrl?: string;
+
+  @IsOptional()
+  fileName?: string;
+
+  @IsOptional()
+  fileType?: string;
+
+  @IsOptional()
+  likes?: number;
 }

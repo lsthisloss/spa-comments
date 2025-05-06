@@ -35,7 +35,7 @@ export default function WhoAmIPage() {
           <div className="who-am-i-text">
             <h1>Who Am I</h1>
             <p>
-              This is a simple form to collect your name and email. This is not necessary for using your real name and email ;)
+              This is a simple form to collect your data. This is not necessary for using your real name and email ;)
             </p>
           </div>
         )}

@@ -1,16 +1,15 @@
 import { Comment } from '../types/comment';
 import CommentList from '../components/comments/CommentList';
 import CommentForm from '../components/comments/CommentForm';
+import React from 'react';
 
 interface CommentsPageProps {
-  comments: Comment[];
+  comments: Comment[];  
+  newCommentsBar?: React.ReactNode;
+
 }
 
-const CommentsPage = ({ comments }: CommentsPageProps) => {
-  if (!comments || comments.length === 0) {
-    return <p>No comments available.</p>;
-  }
-
+const CommentsPage = React.memo(({ comments, newCommentsBar }: CommentsPageProps) => {
   return (
     <section className="comments-page">
       <div className="comment-container">
@@ -18,12 +17,12 @@ const CommentsPage = ({ comments }: CommentsPageProps) => {
           <CommentForm />
         </div>
         <div className="divider"></div>
+        {newCommentsBar && <div className="new-comments-bar-container">{newCommentsBar}</div>}
         <div className="comment-list">
           <CommentList comments={comments} />
         </div>
       </div>
     </section>
   );
-};
-
+});
 export default CommentsPage;

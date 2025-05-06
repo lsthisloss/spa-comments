@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   postgres:
@@ -23,6 +22,19 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672" # Порт для RabbitMQ
+      - "15672:15672" # Порт для RabbitMQ Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      
   backend:
     build: ./backend
     container_name: backend
@@ -49,3 +61,4 @@ services:
 volumes:
   postgres_data:
   elasticsearch_data:
+  rabbitmq_data:

@@ -10,9 +10,6 @@
   position: relative;
   border-radius: 0;
 
-  &:last-child::after {
-    display: none;
-  }
 }
 .comment-layout {
   display: flex;
@@ -20,9 +17,45 @@
   padding-left: $spacing-large;
 }
 .comment-body {
+  &.collapsed {
+    max-height: calc(1.5em * 5); 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 5; 
+    -webkit-box-orient: vertical;
+  }
+
+  &.expanded {
+    max-height: none; 
+    -webkit-line-clamp: unset;
+  }
+  .show-more-container {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff);
+    padding-left: 8px;
+  }
+
   display: flex;
+  flex-direction: column;
   .ant-typography, .ant-typography p {
     margin-bottom: 4px;
+  }
+
+  .ant-btn-link {
+    padding: 0;
+    font-size: $font-size-medium;
+    color: $color-primary;
+    padding-bottom: 14px;
+    justify-content: flex-start;
+    width: 15%;
+    margin: 0;
+    
+    &:hover {
+      text-decoration: underline;
+    }
   }
 }
 
@@ -56,4 +89,26 @@
 }
 .ant-card .ant-card-body {
   padding: 12px 12px 12px 0px;
+}
+.comment-image-container {
+  display: flex;
+  justify-content: flex-start; 
+  margin-top: 10px;
+}
+
+.comment-image {
+  width: auto; 
+  height: auto; 
+  max-width: 320px; 
+  max-height: 240px; 
+  object-fit: contain; 
+  object-position: left;
+}
+.ant-image-mask {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5); 
+  color: #fff;
+  border-radius: 8px; 
 }

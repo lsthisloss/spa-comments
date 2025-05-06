@@ -6,6 +6,7 @@
   border: none;
   padding-left: $spacing-medium;
   padding-right: $spacing-medium;
+  padding-top: 6px;
 
   &:focus-within {
     box-shadow: none;
@@ -34,7 +35,6 @@
 
 .input-area.ant-input {
   font-size: $font-size-xlarge;
-  line-height: 1.1;
   border: none;
   box-shadow: none;
   resize: none;

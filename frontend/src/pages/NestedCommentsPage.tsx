@@ -5,6 +5,7 @@ import CommentItem from '../components/comments/CommentItem';
 import CommentForm from '../components/comments/CommentForm';
 import { Comment } from '../types/comment';
 import '../styles/main.scss';
+import { Spin } from 'antd';
 
 export default function NestedCommentsPage() {
   const { parentId } = useParams<{ parentId: string }>();
@@ -43,8 +44,10 @@ export default function NestedCommentsPage() {
   }, [socket]);
 
   if (loading) {
-    return <div className="loading-container">Loading...</div>;
-  }
+      <div className="loading-container">
+      <Spin tip="Loading..." size="large" />
+    </div>
+    }
 
   return (
     <section className="nested-comments-page">
@@ -54,7 +57,7 @@ export default function NestedCommentsPage() {
         </div>
       )}
       <div className="comment-form">
-        <CommentForm parentId={parentId} />
+        <CommentForm parentId={parentId} placeholder="Post your reply..." />
       </div>
       <div className="child-comments">
         {childComments.map((comment) => (

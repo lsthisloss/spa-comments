@@ -4,7 +4,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
 
 export const createWebSocket = () => {
   const socket = io(WS_URL, {
-    transports: ['websocket'], // Используем только WebSocket
+    transports: ['websocket'],
   });
 
   socket.on('connect', () => console.log('WebSocket connected'));

@@ -1,4 +1,4 @@
-html, body {
+body {
   margin: 0;
   padding: 0;
   width: 100%;
@@ -6,9 +6,16 @@ html, body {
   display: flex;
   justify-content: center; 
   align-items: center; 
-  overflow: auto; 
+  overflow-y: scroll !important; 
   font-family: 'Roboto', Arial, sans-serif; 
   -webkit-tap-highlight-color: transparent; 
 
   }
 
+  html {
+    margin: 0;
+    padding: 0;
+    width: 100% !important;
+    height: 100%;
+    overflow-y: auto; // Ensure the scrollbar is always visible
+  }

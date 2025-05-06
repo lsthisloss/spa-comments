@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CommentsModule } from './comments/comments.module';
 import { AppGateway } from './app.gateway';
+import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AppGateway } from './app.gateway';
       synchronize: true,
     }),
     CommentsModule,
+    RabbitMQModule,
   ],
   providers: [AppGateway],
   exports: [AppGateway],

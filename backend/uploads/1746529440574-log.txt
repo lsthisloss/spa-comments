@@ -1,0 +1,746 @@
+[2025.05.02 11:00:46] Launched version: 5014001, install beta: [FALSE], alpha: 0, debug mode: [FALSE]
+[2025.05.02 11:00:46] Executable dir: C:/Users/johnson/Documents/Telegram/, name: Telegram.exe
+[2025.05.02 11:00:46] Initial working dir: C:/Users/johnson/Documents/Telegram/
+[2025.05.02 11:00:46] Working dir: C:/Users/johnson/Documents/Telegram/
+[2025.05.02 11:00:46] Command line: C:\Users\johnson\Documents\Telegram\Telegram.exe -noupdate
+[2025.05.02 11:00:46] Executable path before check: C:/Users/johnson/Documents/Telegram/Telegram.exe
+[2025.05.02 11:00:46] Logs started
+[2025.05.02 11:00:46] AppUserModelID: Telegram.TelegramDesktop.cd484d618d75835f5ab414df09c7bd10
+[2025.05.02 11:00:46] Using DirectX compiler 'C:\Users\johnson\Documents\Telegram\modules\x64\d3d\d3dcompiler_47.dll'.
+[2025.05.02 11:00:46] Connecting local socket to Global\ead3f71fc48d35b667f725070e9a37bb-{87A94AB0-E370-4cde-98D3-ACC110C5967D}...
+[2025.05.02 11:00:46] This is the only instance of Telegram, starting server and app...
+[2025.05.02 11:00:46] Moved logging from 'C:/Users/johnson/Documents/Telegram/log_start4.txt' to 'C:/Users/johnson/Documents/Telegram/log.txt'!
+[2025.05.02 11:00:46] Old start log 'log_start0.txt' found, deleted: [TRUE]
+[2025.05.02 11:00:46] Old start log 'log_start1.txt' found, deleted: [TRUE]
+[2025.05.02 11:00:46] Old start log 'log_start2.txt' found, deleted: [TRUE]
+[2025.05.02 11:00:46] Old start log 'log_start3.txt' found, deleted: [TRUE]
+[2025.05.02 11:00:46] Global devicePixelRatio: 1
+[2025.05.02 11:00:46] QT_DPI_ADJUSTMENT_POLICY: AdjustDpi
+[2025.05.02 11:00:46] Primary screen DPI: 96, Base: 96.
+[2025.05.02 11:00:46] Computed screen scale: 100
+[2025.05.02 11:00:46] DevicePixelRatio: 1
+[2025.05.02 11:00:46] ScreenScale: 100
+[2025.05.02 11:00:46] Media Info: Type Playback, default: {0.0.0.00000000}.{d6c656d6-a70b-43b3-9249-819a6cd0a87f}, list: { "Headphones (High Definition Audio Device)" <{0.0.0.00000000}.{0ec19402-cd87-4f95-9b7d-188b0ec5c4a4}>, "Digital Audio (HDMI) (High Definition Audio Device)" <{0.0.0.00000000}.{129b7fa4-d028-4cac-be3a-6ccb3f6aca94}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.0.00000000}.{1d34d0a2-4b5b-4e13-8481-635160f6a04a}>, "NVIDIA Output (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{2606991e-93b3-400f-92bc-c5e593269cf1}>, "NVIDIA Output (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{3789a5ea-0846-4299-a941-079da044323b}>, "Headset (AirPods Oleh #2 - Find My Hands-Free)" <{0.0.0.00000000}.{3c6dd67e-5fed-4c9d-a423-7d02b6be446a}>, "Headphones (AirPods Oleh #2 - Find My)" <{0.0.0.00000000}.{43c0117f-e006-4c8d-a8cb-dc841c86558e}>, "Digital Audio (HDMI) (High Definition Audio Device)" <{0.0.0.00000000}.{5a9bd87a-72a1-4035-8feb-f644e4528115}>, "NVIDIA Output (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{5c2bdc9f-f268-4f1c-801e-788e12b1621d}>, "Digital Audio (S/PDIF) (High Definition Audio Device)" <{0.0.0.00000000}.{612417d6-b4cb-4a05-8c42-aaf7a191904c}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.0.00000000}.{8df1c4fb-774e-49d7-94a4-d577ca345432}>, "Digital Audio (HDMI) (High Definition Audio Device)" <{0.0.0.00000000}.{9cf9058f-36f0-417b-88ee-c0731929cf30}>, "C27Q165Plus (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{a41ce341-60c9-43b1-ba8b-866c61897168}>, "NVIDIA Output (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{b7d507ac-a5c4-419e-ac86-42a5a93a9c06}>, "C27Q165Plus (NVIDIA High Definition Audio)" <{0.0.0.00000000}.{c157b38d-82ce-437e-a002-7b18caff6588}>, "Headphones (Baseus Encok W04)" <{0.0.0.00000000}.{cc450c34-ce01-4567-ae2d-f2b7f4c23df4}>, "Digital Audio (HDMI) (High Definition Audio Device)" <{0.0.0.00000000}.{cf3c7a9c-3966-426d-85a5-936c38f41cb4}>, "Speakers (High Definition Audio Device)" <{0.0.0.00000000}.{d6c656d6-a70b-43b3-9249-819a6cd0a87f}>, "Headset (Baseus Encok W04 Hands-Free)" <{0.0.0.00000000}.{d7455fa8-45d1-4c1c-8335-fd93b6e7bec7}> }, full list refresh: false
+[2025.05.02 11:00:46] Media Info: Type Capture, default: {0.0.1.00000000}.{d8a68394-a8d7-46d0-8774-05abc92d6d5d}, list: { "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{09c599a4-05fe-42be-8ec7-6296d34ad3dc}>, "Internal AUX Jack (NVIDIA High Definition Audio)" <{0.0.1.00000000}.{1484d58c-65cc-44b6-98a8-1e68150084cc}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{20303805-a4e5-49b3-9ce8-ffcee6981ee9}>, "Headset (AirPods Oleh #2 - Find My Hands-Free)" <{0.0.1.00000000}.{2b84ecaf-6df3-4c43-9775-67bd5ebb91ef}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{2ccb07a2-4fbf-4fb3-b7ba-0c43650d4fb8}>, "Internal AUX Jack (NVIDIA High Definition Audio)" <{0.0.1.00000000}.{358c53e1-a55c-411b-b8f6-6609879c8bcf}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{3e10b105-5072-494c-9f55-40721f7a3186}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{7845fe05-f2af-4d54-94d1-67fdb7c515b6}>, "Microphone (High Definition Audio Device)" <{0.0.1.00000000}.{aac35c12-3804-4f7a-9c4b-d89e13d1617b}>, "Internal AUX Jack (NVIDIA High Definition Audio)" <{0.0.1.00000000}.{bb23005d-5f86-4178-b443-153ccf0c85c9}>, "Microphone (High Definition Audio Device)" <{0.0.1.00000000}.{cb7cac1f-ed2b-4547-bd74-409d65e6bfda}>, "Microphone (HATOR Signify)" <{0.0.1.00000000}.{d8a68394-a8d7-46d0-8774-05abc92d6d5d}>, "Line In (High Definition Audio Device)" <{0.0.1.00000000}.{dc8f348d-9131-48b4-af07-4bcfe51a8198}>, "Headset (Baseus Encok W04 Hands-Free)" <{0.0.1.00000000}.{e553fc8d-35ed-4804-b138-79e7f2068240}>, "Internal AUX Jack (High Definition Audio Device)" <{0.0.1.00000000}.{ecda45f0-e564-4707-98f3-524d57eb51dc}>, "Internal AUX Jack (NVIDIA High Definition Audio)" <{0.0.1.00000000}.{fbe411c1-870b-44bf-90ed-11f82dfcf181}> }, full list refresh: false
+[2025.05.02 11:00:46] Media Error: Can't sync default device for type Camera, default: , list: {  }
+[2025.05.02 11:00:46] App Info: reading settings...
+[2025.05.02 11:00:46] App Info: reading encrypted settings...
+[2025.05.02 11:00:46] Lang Info: Loaded cached, keys: 8388
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/OpenSans-Italic.ttf' loaded 'Open Sans'
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/OpenSans-Regular.ttf' loaded 'Open Sans'
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/OpenSans-SemiBold.ttf' loaded 'Open Sans Semibold'
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/OpenSans-SemiBoldItalic.ttf' loaded 'Open Sans Semibold'
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/Vazirmatn-UI-NL-Regular.ttf' loaded 'Vazirmatn UI NL'
+[2025.05.02 11:00:46] Font: from ':/gui/fonts/Vazirmatn-UI-NL-SemiBold.ttf' loaded 'Vazirmatn UI NL SemiBold'
+[2025.05.02 11:00:46] OpenAL Logging Level: (not set)
+[2025.05.02 11:00:46] App Info: reading accounts info...
+[2025.05.02 11:00:46] App Info: bad decrypt key, data not decrypted - incorrect password?
+[2025.05.02 11:00:46] App Info: could not decrypt pass-protected key from info file, maybe bad password...
+[2025.05.02 11:00:46] OpenGL: Using custom 'gpu_driver_bug_list.json'.
+[2025.05.02 11:00:47] OpenGL Profile: OpenGLES.
+[2025.05.02 11:00:47] OpenGL Renderer: ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11-32.0.15.7602)
+[2025.05.02 11:00:47] OpenGL Vendor: Google Inc. (NVIDIA)
+[2025.05.02 11:00:47] OpenGL Version: OpenGL ES 3.0.0 (ANGLE 2.1.10 git hash: e3f59e8d0c3e)
+[2025.05.02 11:00:47] OpenGL Extensions: GL_EXT_sRGB, GL_ANGLE_provoking_vertex, GL_KHR_debug, GL_OES_depth24, GL_OES_compressed_EAC_RG11_signed_texture, GL_ANGLE_multi_draw, GL_OES_draw_buffers_indexed, GL_EXT_draw_buffers_indexed, GL_OES_texture_border_clamp, GL_CHROMIUM_bind_uniform_location, GL_EXT_read_format_bgra, GL_OES_compressed_EAC_R11_signed_texture, GL_OES_texture_npot, GL_ANGLE_framebuffer_blit, GL_OES_EGL_image_external_essl3, GL_CHROMIUM_sync_query, GL_OES_EGL_image_external, GL_CHROMIUM_lose_context, GL_EXT_instanced_arrays, GL_EXT_clip_control, GL_EXT_texture_border_clamp, GL_EXT_unpack_subimage, GL_OES_fbo_render_mipmap, GL_EXT_blend_func_extended, GL_EXT_shader_texture_lod, GL_ANGLE_depth_texture, GL_EXT_texture_storage, GL_OES_compressed_ETC2_punchthroughA_RGBA8_texture, GL_OES_rgb8_rgba8, GL_ANGLE_multiview_multisample, GL_ANGLE_base_vertex_base_instance_shader_builtin, GL_OES_mapbuffer, GL_ANGLE_memory_size, GL_OES_compressed_ETC2_sRGB8_alpha8_texture, GL_CHROMIUM_bind_generates_resource, GL_ANGLE_get_tex_level_parameter, GL_EXT_disjoint_timer_query, GL_OES_EGL_image, GL_OES_compressed_ETC2_sRGB8_texture, GL_EXT_depth_clamp, GL_EXT_polygon_offset_clamp, GL_CHROMIUM_copy_texture, GL_EXT_float_blend, GL_OES_texture_half_float, , GL_OES_sample_variables, GL_APPLE_clip_distance, GL_OES_compressed_EAC_R11_unsigned_texture, GL_ANGLE_texture_compression_dxt5, GL_ANGLE_shader_pixel_local_storage_coherent, GL_ANGLE_pack_reverse_row_order, GL_EXT_color_buffer_float, GL_EXT_texture_compression_rgtc, GL_EXT_render_snorm, GL_EXT_texture_rg, GL_OES_texture_half_float_linear, GL_ANGLE_texture_multisample, GL_EXT_blend_minmax, GL_OES_texture_float_linear, GL_NV_pixel_buffer_object, GL_NV_fence, GL_EXT_color_buffer_half_float, GL_ANGLE_client_arrays, GL_WEBGL_video_texture, GL_ANGLE_shader_pixel_local_storage, GL_OES_packed_depth_stencil, GL_EXT_texture_mirror_clamp_to_edge, GL_NV_shader_noperspective_interpolation, GL_OES_depth32, GL_ANGLE_translated_shader_source, GL_EXT_draw_elements_base_vertex, GL_OES_compressed_ETC2_RGB8_texture, GL_OES_element_index_uint, GL_OES_shader_multisample_interpolation, GL_EXT_clip_cull_distance, GL_ANGLE_clip_cull_distance, GL_OES_surfaceless_context, GL_EXT_multi_draw_indirect, GL_OES_vertex_array_object, GL_ANGLE_framebuffer_multisample, GL_NV_framebuffer_blit, GL_EXT_texture_compression_s3tc_srgb, GL_EXT_texture_format_BGRA8888, GL_EXT_debug_marker, GL_EXT_frag_depth, GL_OVR_multiview2, GL_EXT_draw_buffers, GL_EXT_texture_type_2_10_10_10_REV, GL_EXT_base_instance, GL_ANGLE_polygon_mode, GL_OES_texture_float, GL_OES_draw_elements_base_vertex, GL_EXT_map_buffer_range, GL_KHR_parallel_shader_compile, GL_ANGLE_base_vertex_base_instance, GL_EXT_EGL_image_external_wrap_modes, GL_OES_texture_stencil8, GL_ANGLE_request_extension, GL_OES_compressed_ETC2_RGBA8_texture, GL_ANGLE_renderability_validation, GL_OES_compressed_ETC2_punchthroughA_sRGB8_alpha_texture, GL_OES_get_program_binary, GL_OES_standard_derivatives, GL_ANGLE_robust_client_memory, GL_EXT_multisampled_render_to_texture, GL_ANGLE_texture_usage, GL_ANGLE_instanced_arrays, GL_OES_compressed_EAC_RG11_unsigned_texture, GL_EXT_texture_filter_anisotropic, GL_ANGLE_stencil_texturing, GL_NV_EGL_stream_consumer_external, GL_AMD_performance_monitor, GL_EXT_discard_framebuffer, GL_NV_pack_subimage, GL_ANGLE_copy_texture_3d, GL_CHROMIUM_copy_compressed_texture, GL_EXT_robustness, GL_EXT_texture_norm16, GL_ANGLE_program_cache_control, GL_EXT_conservative_depth, GL_OVR_multiview, GL_ANGLE_get_serialized_context_string, GL_ANGLE_lossy_etc_decode, GL_ANGLE_texture_compression_dxt3, GL_EXT_texture_compression_dxt1, GL_EXT_debug_label, GL_EXT_texture_compression_bptc, GL_EXT_occlusion_query_boolean
+[2025.05.02 11:00:47] EGL Extensions: EGL_EXT_create_context_robustness, EGL_ANGLE_d3d_share_handle_client_buffer, EGL_ANGLE_d3d_texture_client_buffer, EGL_ANGLE_surface_d3d_texture_2d_share_handle, EGL_ANGLE_query_surface_pointer, EGL_ANGLE_window_fixed_size, EGL_ANGLE_keyed_mutex, EGL_ANGLE_surface_orientation, EGL_ANGLE_direct_composition, EGL_ANGLE_windows_ui_composition, EGL_NV_post_sub_buffer, EGL_KHR_create_context, EGL_KHR_image, EGL_KHR_image_base, EGL_KHR_gl_texture_2D_image, EGL_KHR_gl_texture_cubemap_image, EGL_KHR_gl_renderbuffer_image, EGL_KHR_get_all_proc_addresses, EGL_KHR_stream, EGL_KHR_stream_consumer_gltexture, EGL_NV_stream_consumer_gltexture_yuv, EGL_ANGLE_stream_producer_d3d_texture, EGL_ANGLE_create_context_webgl_compatibility, EGL_CHROMIUM_create_context_bind_generates_resource, EGL_CHROMIUM_sync_control, EGL_EXT_pixel_format_float, EGL_KHR_surfaceless_context, EGL_ANGLE_display_texture_share_group, EGL_ANGLE_display_semaphore_share_group, EGL_ANGLE_create_context_client_arrays, EGL_ANGLE_program_cache_control, EGL_ANGLE_robust_resource_initialization, EGL_ANGLE_create_context_extensions_enabled, EGL_ANDROID_blob_cache, EGL_ANDROID_recordable, EGL_ANGLE_image_d3d11_texture, EGL_ANGLE_create_context_backwards_compatible, EGL_KHR_no_config_context, EGL_KHR_create_context_no_error, EGL_KHR_reusable_sync, 
+[2025.05.02 11:00:47] OpenGL: QOpenGLContext created, version: 3.3.
+[2025.05.02 11:00:47] OpenGL: [TRUE] (Window)
+[2025.05.02 11:00:49] App Info: reading accounts info...
+[2025.05.02 11:00:49] App Info: reading encrypted info...
+[2025.05.02 11:00:49] App Info: reading map...
+[2025.05.02 11:00:49] App Info: reading encrypted map...
+[2025.05.02 11:00:49] App Info: reading encrypted user settings...
+[2025.05.02 11:00:49] App Info: encrypted user settings read.
+[2025.05.02 11:00:49] App Info: reading encrypted mtp data...
+[2025.05.02 11:00:49] MTP Info: read keys, current: 5, to destroy: 0
+[2025.05.02 11:00:49] Map read time: 15
+[2025.05.02 11:00:49] App Info: reading encrypted mtp config...
+[2025.05.02 11:00:49] Export Info: Destroy top bar by controller removal.
+[2025.05.02 11:00:50] Skipping message, because it is already in blocks!
+[2025.05.02 11:00:50] RPC Error: request 44 got fail with code 400, error CHANNEL_PRIVATE
+[2025.05.02 11:03:36] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:07:18] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:07:19] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:08:08] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:13:15] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:15:11] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:26:53] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:33:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:39:51] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:49:34] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 11:49:36] Audio Info: Closing audio playback device.
+[2025.05.02 11:49:38] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:49:47] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 11:49:49] Audio Info: Closing audio playback device.
+[2025.05.02 11:49:53] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:52:07] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 11:52:09] Audio Info: Closing audio playback device.
+[2025.05.02 11:52:10] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 11:52:12] Audio Info: Closing audio playback device.
+[2025.05.02 11:52:16] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 11:52:18] Audio Info: Closing audio playback device.
+[2025.05.02 11:53:08] API Warning: not loaded minimal channel applied.
+[2025.05.02 11:55:38] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:05:23] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:05:34] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:05:34] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:05:34] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:07:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:08:02] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:08:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:09:59] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:13:10] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:13:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:18:04] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:20:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:21:05] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:27:02] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:27:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:31:21] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 12:31:23] Audio Info: Closing audio playback device.
+[2025.05.02 12:31:30] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:34:22] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:34:38] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:42:20] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:43:50] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:43:51] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:50:11] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:51:32] RPC Error: request 1356 got fail with code 400, error FILE_ID_INVALID
+[2025.05.02 12:51:32] RPC Error: request 1358 got fail with code 400, error FILE_ID_INVALID
+[2025.05.02 12:52:20] API Warning: not loaded minimal channel applied.
+[2025.05.02 12:52:46] Skipping message, because it is already in blocks!
+[2025.05.02 13:01:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:05:21] RPC Error: request 1588 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.02 13:08:06] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:08:08] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:11:30] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:17:24] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:20:59] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:21:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:21:14] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:27:49] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:33:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:33:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:33:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:36:46] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:36:47] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:45:46] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:47:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:57:07] API Warning: not loaded minimal channel applied.
+[2025.05.02 13:58:45] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:05:24] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:08:51] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:09:25] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:14:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:22:39] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:25:45] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:25:56] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:34:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:36:13] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:36:54] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:37:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:37:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:37:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:37:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:37:45] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.02 14:37:47] Audio Info: Closing audio playback device.
+[2025.05.02 14:46:37] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:49:31] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:49:47] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:49:47] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:49:47] API Warning: not loaded minimal channel applied.
+[2025.05.02 14:50:19] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:03:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:09:08] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:09:42] Skipping message, because it is already in blocks!
+[2025.05.02 15:12:03] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:12:24] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:14:20] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:16:27] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:24:10] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:26:46] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:43:37] RPC Error: request 3489 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.02 15:44:55] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:46:11] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:48:08] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:53:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:54:02] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:54:02] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:56:40] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:57:14] API Warning: not loaded minimal channel applied.
+[2025.05.02 15:58:36] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:00:58] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:02:49] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:10:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:17:06] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:36:09] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:36:09] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:43:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 16:43:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:04:27] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:04:27] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:13:53] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:15:20] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:20:57] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:52:22] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:53:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 17:56:54] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:11:31] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:12:29] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:19:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:20:07] Skipping message, because it is already in blocks!
+[2025.05.02 18:38:50] API Warning: not loaded minimal channel applied.
+[2025.05.02 18:47:53] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:00:34] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:01:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:01:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:01:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:11:26] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:20:36] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:27:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:27:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:27:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:27:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:27:43] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:32:05] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:32:50] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:41:15] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:44:15] API Warning: not loaded minimal channel applied.
+[2025.05.02 19:51:24] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:02:27] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:06:59] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:10:21] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:17:14] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:27:22] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:38:54] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:43:24] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:44:35] API Warning: not loaded minimal channel applied.
+[2025.05.02 20:44:35] API Warning: not loaded minimal channel applied.
+[2025.05.02 21:34:30] API Warning: not loaded minimal channel applied.
+[2025.05.02 21:56:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:03:37] RPC Error: request 6747 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.02 22:03:44] Skipping message, because it is already in blocks!
+[2025.05.02 22:03:53] Skipping message, because it is already in blocks!
+[2025.05.02 22:04:47] Skipping message, because it is already in blocks!
+[2025.05.02 22:05:56] RPC Error: request 6830 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.02 22:06:07] Skipping message, because it is already in blocks!
+[2025.05.02 22:07:21] Skipping message, because it is already in blocks!
+[2025.05.02 22:09:14] Skipping message, because it is already in blocks!
+[2025.05.02 22:10:27] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:21:25] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:27:09] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:30:33] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:42:42] API Warning: not loaded minimal channel applied.
+[2025.05.02 22:57:49] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:01:35] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:17:13] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:17:13] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:18:18] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:28:01] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:37:32] API Warning: not loaded minimal channel applied.
+[2025.05.02 23:39:25] API Warning: not loaded minimal channel applied.
+[2025.05.03 00:39:28] API Warning: not loaded minimal channel applied.
+[2025.05.03 00:39:28] API Warning: not loaded minimal channel applied.
+[2025.05.03 10:37:25] Update Error: could not get current version 3
+[2025.05.03 10:37:49] RPC Error: request 8467 got fail with code 400, error PEER_ID_INVALID
+[2025.05.03 10:40:28] API Warning: not loaded minimal channel applied.
+[2025.05.03 10:41:33] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 10:41:35] Audio Info: Closing audio playback device.
+[2025.05.03 10:41:50] Skipping message, because it is already in blocks!
+[2025.05.03 10:43:25] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 10:43:26] Audio Info: Closing audio playback device.
+[2025.05.03 10:52:25] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:00:23] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:00:52] MTP Info: -404 error received in 2 with temporary key, assuming it was destroyed.
+[2025.05.03 11:01:14] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:01:14] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:01:15] MTP Info: -404 error received in 160002 with temporary key, assuming it was destroyed.
+[2025.05.03 11:06:11] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:11:17] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:14:45] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 11:14:47] Audio Info: Closing audio playback device.
+[2025.05.03 11:14:49] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 11:14:51] Audio Info: Closing audio playback device.
+[2025.05.03 11:14:53] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 11:14:55] Audio Info: Closing audio playback device.
+[2025.05.03 11:15:57] MTP Info: -404 error received in 160004 with temporary key, assuming it was destroyed.
+[2025.05.03 11:17:27] RPC Error: request 8845 got fail with code 400, error PEER_ID_INVALID
+[2025.05.03 11:17:29] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:17:29] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:17:29] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:31:16] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:31:16] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:35:37] RPC Error: request 9037 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.03 11:38:06] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:40:34] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:40:34] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:46:25] API Warning: not loaded minimal channel applied.
+[2025.05.03 11:48:04] RPC Error: request 9220 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.03 11:50:55] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 11:50:57] Audio Info: Closing audio playback device.
+[2025.05.03 11:55:43] API Warning: not loaded minimal channel applied.
+[2025.05.03 12:07:13] API Warning: not loaded minimal channel applied.
+[2025.05.03 12:19:06] API Warning: not loaded minimal channel applied.
+[2025.05.03 12:25:01] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 12:25:03] Audio Info: Closing audio playback device.
+[2025.05.03 12:25:39] Skipping message, because it is already in blocks!
+[2025.05.03 12:25:59] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 12:26:01] Audio Info: Closing audio playback device.
+[2025.05.03 12:26:01] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 12:26:03] Audio Info: Closing audio playback device.
+[2025.05.03 12:30:01] MTP Info: -404 error received in 160001 with temporary key, assuming it was destroyed.
+[2025.05.03 12:38:11] API Warning: not loaded minimal channel applied.
+[2025.05.03 12:39:41] API Warning: not loaded minimal channel applied.
+[2025.05.03 12:42:08] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.03 12:42:09] Audio Info: Closing audio playback device.
+[2025.05.03 12:44:00] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:12:55] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:25:32] RPC Error: request 10147 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.03 13:46:15] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:48:00] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:48:00] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:57:18] API Warning: not loaded minimal channel applied.
+[2025.05.03 13:57:47] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:21:43] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:25:47] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:25:48] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:34:56] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:38:23] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:46:18] API Warning: not loaded minimal channel applied.
+[2025.05.03 14:52:02] API Warning: not loaded minimal channel applied.
+[2025.05.03 15:35:31] API Warning: not loaded minimal channel applied.
+[2025.05.03 15:57:32] API Warning: not loaded minimal channel applied.
+[2025.05.03 16:01:50] API Warning: not loaded minimal channel applied.
+[2025.05.03 16:01:50] API Warning: not loaded minimal channel applied.
+[2025.05.03 16:09:38] API Warning: not loaded minimal channel applied.
+[2025.05.03 16:56:12] API Warning: not loaded minimal channel applied.
+[2025.05.03 16:57:45] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:03:44] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:03:44] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:03:44] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:03:44] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:03:44] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:34:01] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:41:08] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:50:48] API Warning: not loaded minimal channel applied.
+[2025.05.03 17:55:42] RPC Error: request 11818 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.03 17:56:56] Skipping message, because it is already in blocks!
+[2025.05.03 18:07:41] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:08:19] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:08:19] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:08:19] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:17:51] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:26:21] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:26:57] API Warning: not loaded minimal channel applied.
+[2025.05.03 18:36:43] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:03:15] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:09:04] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:09:04] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:09:04] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:10:11] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:27:02] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:37:02] API Warning: not loaded minimal channel applied.
+[2025.05.03 19:46:57] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:06:03] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:06:38] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:11:24] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:11:34] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:17:43] RPC Error: request 12966 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.03 20:30:17] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:35:17] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:35:52] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:41:27] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:53:43] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:57:55] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:57:55] API Warning: not loaded minimal channel applied.
+[2025.05.03 20:57:55] API Warning: not loaded minimal channel applied.
+[2025.05.03 21:04:42] API Warning: not loaded minimal channel applied.
+[2025.05.03 21:12:46] API Warning: not loaded minimal channel applied.
+[2025.05.03 21:25:24] API Warning: not loaded minimal channel applied.
+[2025.05.03 22:13:29] RPC Error: request 14038 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.03 22:13:29] RPC Error: request 14037 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.03 22:33:15] API Warning: not loaded minimal channel applied.
+[2025.05.03 22:47:00] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:12:34] Update Error: could not get current version 3
+[2025.05.04 09:12:42] RPC Error: request 14520 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 09:15:04] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:23:46] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:30:24] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:32:35] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.04 09:32:37] Audio Info: Closing audio playback device.
+[2025.05.04 09:34:08] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:40:12] API Warning: not loaded minimal channel applied.
+[2025.05.04 09:45:19] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:04:08] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:13:53] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:18:59] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:45:32] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:48:27] API Warning: not loaded minimal channel applied.
+[2025.05.04 10:50:09] API Warning: not loaded minimal channel applied.
+[2025.05.04 11:00:56] MTP Info: -404 error received in 320002 with temporary key, assuming it was destroyed.
+[2025.05.04 11:05:21] MTP Info: -404 error received in 160002 with temporary key, assuming it was destroyed.
+[2025.05.04 11:09:23] API Warning: not loaded minimal channel applied.
+[2025.05.04 11:12:16] API Warning: not loaded minimal channel applied.
+[2025.05.04 11:12:47] API Warning: not loaded minimal channel applied.
+[2025.05.04 11:21:13] MTP Info: -404 error received in 160004 with temporary key, assuming it was destroyed.
+[2025.05.04 11:47:14] API Warning: not loaded minimal channel applied.
+[2025.05.04 11:53:46] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:07:02] RPC Error: request 15745 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.04 12:14:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:24:54] RPC Error: request 15859 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 12:24:54] RPC Error: request 15860 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 12:24:56] RPC Error: request 15877 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 12:24:56] RPC Error: request 15880 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 12:25:01] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:25:41] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.04 12:25:43] Audio Info: Closing audio playback device.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:26:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:40:05] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:40:05] API Warning: not loaded minimal channel applied.
+[2025.05.04 12:40:50] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:10:40] MTP Info: -404 error received in 160005 with temporary key, assuming it was destroyed.
+[2025.05.04 13:14:39] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:15:14] RPC Error: request 16532 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 13:24:21] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:25:39] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:41:31] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:42:01] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:49:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:49:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:49:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:49:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:54:08] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:55:16] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:57:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 13:58:23] API Warning: not loaded minimal channel applied.
+[2025.05.04 14:12:26] API Warning: not loaded minimal channel applied.
+[2025.05.04 14:15:45] API Warning: not loaded minimal channel applied.
+[2025.05.04 14:17:24] API Warning: not loaded minimal channel applied.
+[2025.05.04 15:09:58] API Warning: not loaded minimal channel applied.
+[2025.05.04 15:40:35] API Warning: not loaded minimal channel applied.
+[2025.05.04 15:49:46] API Warning: not loaded minimal channel applied.
+[2025.05.04 16:02:42] RPC Error: request 17725 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.04 16:17:37] MTP Info: -404 error received in 160001 with temporary key, assuming it was destroyed.
+[2025.05.04 16:35:14] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.04 16:35:16] Audio Info: Closing audio playback device.
+[2025.05.04 16:38:45] RPC Error: request 18048 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 16:39:19] API Warning: not loaded minimal channel applied.
+[2025.05.04 16:42:47] RPC Error: request 18081 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 16:51:37] RPC Error: request 18166 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 16:51:37] RPC Error: request 18167 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:36] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:37] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:37] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:01:37] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:16:50] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:16:50] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:16:50] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:16:50] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:21:39] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:22:57] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:23:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:37:08] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:42:20] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:42:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:44:37] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:44:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:46:31] API Warning: not loaded minimal channel applied.
+[2025.05.04 17:58:19] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:02:53] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:08:03] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:20:06] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:40:43] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:50:04] API Warning: not loaded minimal channel applied.
+[2025.05.04 18:56:59] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:04:24] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:05:08] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:30:41] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:31:15] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:39:02] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 19:56:48] API Warning: not loaded minimal channel applied.
+[2025.05.04 20:09:17] API Warning: not loaded minimal channel applied.
+[2025.05.04 21:05:44] API Warning: not loaded minimal channel applied.
+[2025.05.04 21:29:27] RPC Error: request 20223 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.04 21:34:04] API Warning: not loaded minimal channel applied.
+[2025.05.04 21:44:38] API Warning: not loaded minimal channel applied.
+[2025.05.04 21:44:54] API Warning: not loaded minimal channel applied.
+[2025.05.04 21:48:59] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:23:03] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:29:27] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:35:22] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:56:27] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:56:27] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:56:27] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:59:19] API Warning: not loaded minimal channel applied.
+[2025.05.04 22:59:19] API Warning: not loaded minimal channel applied.
+[2025.05.05 00:03:00] API Warning: not loaded minimal channel applied.
+[2025.05.05 01:14:27] API Warning: not loaded minimal channel applied.
+[2025.05.05 01:22:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 01:22:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 04:43:33] API Warning: not loaded minimal channel applied.
+[2025.05.05 05:36:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 05:36:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 06:48:38] RPC Error: request 24327 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.05 07:21:38] RPC Error: request 24512 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.05 07:48:46] API Warning: not loaded minimal channel applied.
+[2025.05.05 08:02:31] API Warning: not loaded minimal channel applied.
+[2025.05.05 08:09:30] API Warning: not loaded minimal channel applied.
+[2025.05.05 08:20:24] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:40:56] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:40:56] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:42:15] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:01] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 09:55:03] Audio Info: Closing audio playback device.
+[2025.05.05 09:55:06] RPC Error: request 24960 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 09:55:06] RPC Error: request 24959 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 09:55:06] RPC Error: request 24957 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 09:55:06] RPC Error: request 24958 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 09:55:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 10:05:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 10:05:20] API Warning: not loaded minimal channel applied.
+[2025.05.05 10:05:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 10:17:42] RPC Error: request 25134 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 10:20:07] RPC Error: request 25150 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 10:21:40] RPC Error: request 25165 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 10:25:04] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 10:25:06] Audio Info: Closing audio playback device.
+[2025.05.05 10:27:48] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 10:27:50] Audio Info: Closing audio playback device.
+[2025.05.05 10:33:14] API Warning: not loaded minimal channel applied.
+[2025.05.05 10:35:29] RPC Error: request 25299 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 11:00:56] MTP Info: -404 error received in 2 with temporary key, assuming it was destroyed.
+[2025.05.05 11:02:22] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 11:02:24] Audio Info: Closing audio playback device.
+[2025.05.05 11:05:34] MTP Info: -404 error received in 160002 with temporary key, assuming it was destroyed.
+[2025.05.05 11:22:03] MTP Info: -404 error received in 160004 with temporary key, assuming it was destroyed.
+[2025.05.05 11:26:34] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:26:34] RPC Error: request 25588 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 11:36:52] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:37:15] RPC Error: request 25671 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 11:40:41] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:43:11] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 11:43:13] Audio Info: Closing audio playback device.
+[2025.05.05 11:43:29] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:43:30] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:44:51] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 11:44:53] Audio Info: Closing audio playback device.
+[2025.05.05 11:45:30] RPC Error: request 25755 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 11:49:13] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:52:05] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:54:38] API Warning: not loaded minimal channel applied.
+[2025.05.05 11:54:52] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 11:54:54] Audio Info: Closing audio playback device.
+[2025.05.05 11:59:15] RPC Error: request 25889 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 12:01:55] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:12:39] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:12:39] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:13:48] RPC Error: request 26045 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 12:18:57] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:34:36] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:55:38] API Warning: not loaded minimal channel applied.
+[2025.05.05 12:57:58] API Warning: not loaded minimal channel applied.
+[2025.05.05 13:07:08] RPC Error: request 26400 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 13:29:11] API Warning: not loaded minimal channel applied.
+[2025.05.05 13:34:00] API Warning: not loaded minimal channel applied.
+[2025.05.05 13:39:30] RPC Error: request 26613 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 13:43:08] RPC Error: request 26669 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 13:58:32] RPC Error: request 26762 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:02:01] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:16:36] RPC Error: request 26895 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:22:12] RPC Error: request 26921 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:29:09] RPC Error: request 26968 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:31:09] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:31:09] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:40:16] RPC Error: request 27034 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:41:10] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:44:59] RPC Error: request 27066 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:47:04] RPC Error: request 27079 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:47:50] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:49:54] RPC Error: request 27099 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 14:52:09] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:52:09] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:52:09] API Warning: not loaded minimal channel applied.
+[2025.05.05 14:53:16] RPC Error: request 27129 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 15:07:39] API Warning: not loaded minimal channel applied.
+[2025.05.05 15:07:50] API Warning: not loaded minimal channel applied.
+[2025.05.05 15:13:34] RPC Error: request 27303 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 15:15:40] API Warning: not loaded minimal channel applied.
+[2025.05.05 15:15:43] RPC Error: request 27318 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 15:19:07] RPC Error: request 27347 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 15:52:05] API Warning: not loaded minimal channel applied.
+[2025.05.05 15:52:05] API Warning: not loaded minimal channel applied.
+[2025.05.05 15:55:00] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 15:55:02] Audio Info: Closing audio playback device.
+[2025.05.05 15:56:43] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 15:56:45] Audio Info: Closing audio playback device.
+[2025.05.05 15:57:39] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:19:13] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 16:19:15] Audio Info: Closing audio playback device.
+[2025.05.05 16:25:43] RPC Error: request 27809 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 16:25:43] RPC Error: request 27810 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 16:30:06] RPC Error: request 27840 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 16:30:29] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:36:46] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:37:59] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:48:28] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:52:45] API Warning: not loaded minimal channel applied.
+[2025.05.05 16:53:08] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:12:16] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:13:25] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:22:14] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:36:12] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:44:53] API Warning: not loaded minimal channel applied.
+[2025.05.05 17:44:54] MTP Info: -404 error received in 160001 with temporary key, assuming it was destroyed.
+[2025.05.05 18:01:48] Skipping message, because it is already in blocks!
+[2025.05.05 18:03:53] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:14:18] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:19:43] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:20:55] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:23:04] RPC Error: request 28660 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 18:33:42] RPC Error: request 28714 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.05 18:34:06] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:34:06] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:34:06] API Warning: not loaded minimal channel applied.
+[2025.05.05 18:56:34] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:13:50] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:13:50] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:15:13] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:30:29] RPC Error: request 29192 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:36:24] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:41:43] RPC Error: request 29306 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29308 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29310 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29311 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29312 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29313 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29309 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29307 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29314 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29318 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29316 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29320 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29315 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:43] RPC Error: request 29319 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29357 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29359 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29354 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29353 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29356 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29358 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29355 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29352 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:44] RPC Error: request 29390 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:47] RPC Error: request 29426 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:47] RPC Error: request 29427 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.05 19:41:51] RPC Error: request 29456 got fail with code 400, error BOT_ADMIN_REQUIRED
+[2025.05.05 19:41:51] RPC Error: request 29457 got fail with code 400, error PEER_ID_INVALID
+[2025.05.05 19:54:36] API Warning: not loaded minimal channel applied.
+[2025.05.05 19:58:00] API Warning: not loaded minimal channel applied.
+[2025.05.05 20:10:34] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 20:10:36] Audio Info: Closing audio playback device.
+[2025.05.05 20:12:18] API Warning: not loaded minimal channel applied.
+[2025.05.05 21:54:34] Config Error: Bad date frame for simple config: 1714581615-1746117615, our time is 1746471275.
+[2025.05.05 21:54:34] Config Error: Bad date frame for simple config: 1714581615-1746117615, our time is 1746471275.
+[2025.05.05 21:54:35] Config Error: Bad date frame for simple config: 1583323746-1585915746, our time is 1746471276.
+[2025.05.05 21:55:22] API Warning: not loaded minimal channel applied.
+[2025.05.05 21:55:23] API Warning: not loaded minimal channel applied.
+[2025.05.05 21:56:06] API Warning: not loaded minimal channel applied.
+[2025.05.05 22:01:46] API Warning: not loaded minimal channel applied.
+[2025.05.05 22:06:41] API Warning: not loaded minimal channel applied.
+[2025.05.05 22:08:34] RPC Error: request 29910 got fail with code 400, error WEBFILE_NOT_AVAILABLE
+[2025.05.05 22:40:19] API Warning: not loaded minimal channel applied.
+[2025.05.05 22:40:19] API Warning: not loaded minimal channel applied.
+[2025.05.05 22:55:18] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:13:52] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:20:49] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:26:49] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.05 23:26:51] Audio Info: Closing audio playback device.
+[2025.05.05 23:31:41] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:34:54] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:35:45] API Warning: not loaded minimal channel applied.
+[2025.05.05 23:41:37] RPC Error: request 31043 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 00:18:20] RPC Error: request 31511 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 12:01:21] Update Error: could not get current version 3
+[2025.05.06 12:01:29] MTP Info: -404 error received in 320002 with temporary key, assuming it was destroyed.
+[2025.05.06 12:01:29] Config Error: Bad date frame for simple config: 1714581615-1746117615, our time is 1746522091.
+[2025.05.06 12:01:30] Config Error: Bad date frame for simple config: 1714581615-1746117615, our time is 1746522091.
+[2025.05.06 12:01:38] API Warning: not loaded minimal channel applied.
+[2025.05.06 12:01:38] MTP Info: -404 error received in 190002 with temporary key, assuming it was destroyed.
+[2025.05.06 12:01:38] MTP Info: -404 error received in 220002 with temporary key, assuming it was destroyed.
+[2025.05.06 12:41:14] MTP Info: -404 error received in 160004 with temporary key, assuming it was destroyed.
+[2025.05.06 13:06:12] RPC Error: request 32514 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 13:10:14] RPC Error: request 32539 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 13:17:22] RPC Error: request 32563 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 13:39:04] API Warning: not loaded minimal channel applied.
+[2025.05.06 13:39:04] API Warning: not loaded minimal channel applied.
+[2025.05.06 13:40:48] API Warning: not loaded minimal channel applied.
+[2025.05.06 13:46:30] RPC Error: request 32716 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 13:46:30] RPC Error: request 32717 got fail with code 400, error FILE_REFERENCE_EXPIRED
+[2025.05.06 13:57:08] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.06 13:57:10] Audio Info: Closing audio playback device.
+[2025.05.06 13:57:26] Audio Info: recreating audio device and reattaching the tracks
+[2025.05.06 13:57:27] Audio Info: Closing audio playback device.
+[2025.05.06 14:02:36] RPC Error: request 32817 got fail with code 400, error FILE_REFERENCE_EXPIRED

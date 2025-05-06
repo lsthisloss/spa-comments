@@ -1,11 +1,8 @@
 import { Modal, Form, Input, Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useState } from 'react';
-
-interface UserInfo {
-  userName?: string;
-  email?: string;
-}
+import { useState, useContext, useEffect } from 'react';
+import { WebSocketContext } from '../WebSocketContext';
+import { UserInfo } from '../../types/comment';
 
 interface CaptchaModalProps {
   visible: boolean;
@@ -16,25 +13,47 @@ interface CaptchaModalProps {
 }
 
 export default function CaptchaModal({ visible, onClose, onSubmit, text, userInfo }: CaptchaModalProps) {
-  const [captcha, setCaptcha] = useState(generateCaptcha());
+  const socket = useContext(WebSocketContext);
+  const [captchaImage, setCaptchaImage] = useState('');
   const [inputValue, setInputValue] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
 
-  function generateCaptcha() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  }
+  // Очищаем поле и загружаем новую капчу при каждом открытии
+  useEffect(() => {
+    if (visible && socket) {
+      setInputValue('');
+      socket.emit('generateCaptcha', {}, (response: { image: string }) => {
+        setCaptchaImage(response.image);
+      });
+    }
+  }, [visible, socket]);
 
   const refreshCaptcha = () => {
-    setCaptcha(generateCaptcha());
-    setInputValue('');
+    if (socket) {
+      setInputValue('');
+      socket.emit('generateCaptcha', {}, (response: { image: string }) => {
+        setCaptchaImage(response.image);
+      });
+    }
   };
 
   const handleSubmit = () => {
-    if (inputValue === captcha) {
-      onSubmit({ text, userInfo, captcha: inputValue });
-      onClose();
-    } else {
-      alert('Captcha is incorrect. Please try again.');
+    if (socket) {
+      socket.emit('validateCaptcha', { captcha: inputValue }, (response: { valid: boolean }) => {
+        if (response.valid) {
+          onSubmit({ text, userInfo, captcha: inputValue });
+          onClose();
+        } else {
+            if (response.valid) {
+              setCaptchaError('');
+              onSubmit({ text, userInfo, captcha: inputValue });
+              onClose();
+            } else {
+              setCaptchaError('Captcha is incorrect. Please try again.');
+              refreshCaptcha();
+            }          refreshCaptcha(); // Перезагружаем капчу при ошибке
+          }
+      });
     }
   };
 
@@ -47,17 +66,25 @@ export default function CaptchaModal({ visible, onClose, onSubmit, text, userInf
       centered
     >
       <Form layout="vertical" onFinish={handleSubmit}>
-        <Form.Item>
-          <div className="captcha-container">
-            <span className="captcha">{captcha}</span>
-            <Button
-              type="text"
-              icon={<ReloadOutlined />}
-              onClick={refreshCaptcha}
-              className="refresh-button"
-            />
+      <Form.Item>
+        <div className="captcha-container" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src={`data:image/svg+xml;base64,${btoa(captchaImage)}`} alt="CAPTCHA" />
+          <Button
+            type="text"
+            icon={<ReloadOutlined />}
+            onClick={refreshCaptcha}
+            className="refresh-button"
+          />
+          <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
+            Captcha is case-sensitive
+          </span>
+        </div>
+        {captchaError && (
+          <div style={{ color: '#d4380d', fontSize: 13, marginTop: 6 }}>
+            {captchaError}
           </div>
-        </Form.Item>
+        )}
+      </Form.Item>
         <Form.Item>
           <Input
             maxLength={6}
