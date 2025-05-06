@@ -142,7 +142,7 @@ export class CommentsGateway {
     if (comment && comment.likes > 0) {
       comment.likes -= 1;
       await this.commentsService.saveComment(comment);
-      this.appGateway.broadcastEvent('commentLiked', {
+      this.appGateway.broadcastEvent('commentUnliked', {
         commentId: comment.id,
         likes: comment.likes,
       });
