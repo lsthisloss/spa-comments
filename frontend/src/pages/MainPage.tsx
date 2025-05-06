@@ -51,6 +51,10 @@ export default function MainPage() {
       const handleNewComment = (newComment: FullComment) => {
         console.log('New comment received via WebSocket:', newComment);
 
+        if (newComment.parentId !== null) {
+          console.log('New comment is a reply, ignoring');
+          return; 
+        }
         commentBuffer.current.push({
           ...newComment,
           createdAt: new Date(newComment.createdAt),
