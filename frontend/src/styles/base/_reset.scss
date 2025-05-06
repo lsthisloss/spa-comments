@@ -126,6 +126,10 @@
     font-size: 14px;
     line-height: 1.5;
     padding-bottom: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
     i {
       font-style: italic;
     }
@@ -214,4 +218,24 @@
     background: none !important;
     border: none !important;
     color: #555 !important;
+  }
+  .error-toast {
+    position: fixed;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #ff4d4f;
+    color: #fff;
+    padding: 18px 32px;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    z-index: 9999;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    opacity: 0.98;
+    text-align: center;
+    animation: fadeIn 0.3s;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 0.98; }
   }

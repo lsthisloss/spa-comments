@@ -19,7 +19,7 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
-
+  
   useEffect(() => {
     if (successMessage) {
       const timer = setTimeout(() => setSuccessMessage(''), 2000);
@@ -27,6 +27,13 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
     }
   }, [successMessage]);
   
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(''), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
   const handleImageUpload = (base64: string, file?: File) => {
     setImagePreview(base64);
     if (file) setSelectedImageFile(file);
@@ -39,7 +46,8 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
       return;
     }
     if (!text.trim()) {
-      alert('Form cannot be empty');
+      console.log('Form is empty');
+      setTimeout(() => setErrorMessage('Form is empty'), 0);
       return;
     }
     setCaptchaVisible(true);
@@ -64,7 +72,6 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
       setErrorMessage('Invalid XHTML in comment text.');
       return;
     }
-    setErrorMessage('');
   
     const sendComment = (imageUrl: string | null, file: File | null) => {
       if (file) {
@@ -152,6 +159,7 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
   return (
     <>
       <Form className="comment-form">
+        
         <div className="form-header">
         <Avatar
             className="comment-avatar"
@@ -171,13 +179,20 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
             maxLength={maxLength}
           />
         </div>
-        {errorMessage && <span className="error-message">{errorMessage}</span>}
-
+        
         <FormFooter
           text={text}
           maxLength={600}
           onPostClick={handlePostClick}
-          onInsertTag={(tag) => setText((prev) => `${prev}<${tag}></${tag}>`)}
+          onInsertTag={(tag) => {
+            const tagTemplate = `<${tag}></${tag}>`;
+            setText((prev) => {
+              const available = 600 - prev.length;
+              console.log('Available space:', available, 'prev:', prev.length, 'tag:', tagTemplate.length);
+              if (available <= 0) return prev;
+              return prev + tagTemplate.slice(0, available);
+            });
+          }}
           onImageUpload={(base64, file) => handleImageUpload(base64, file)}
           onFileUpload={(file) => setSelectedFile(file)}
         />
@@ -200,6 +215,12 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
           </div>
         )}
       </Form>
+      {errorMessage && (
+        <div className="error-toast show">
+          {errorMessage}
+        </div>
+      )}
+      
       {successMessage && (
         <div className={`success-toast show`}>
           {successMessage}

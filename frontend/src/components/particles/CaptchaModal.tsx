@@ -18,7 +18,6 @@ export default function CaptchaModal({ visible, onClose, onSubmit, text, userInf
   const [inputValue, setInputValue] = useState('');
   const [captchaError, setCaptchaError] = useState('');
 
-  // Очищаем поле и загружаем новую капчу при каждом открытии
   useEffect(() => {
     if (visible && socket) {
       setInputValue('');
@@ -51,7 +50,7 @@ export default function CaptchaModal({ visible, onClose, onSubmit, text, userInf
             } else {
               setCaptchaError('Captcha is incorrect. Please try again.');
               refreshCaptcha();
-            }          refreshCaptcha(); // Перезагружаем капчу при ошибке
+            }          refreshCaptcha();
           }
       });
     }

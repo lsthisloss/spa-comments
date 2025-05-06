@@ -74,20 +74,23 @@ export default function FormFooter({ text, maxLength, onPostClick, onInsertTag, 
             <Button type="text" icon={<FileTextOutlined />} className="icon-button" />
           </Upload>
           <Dropdown
-          menu={{
-            onClick: ({ key }) => onInsertTag(key),
-            items: [
-              { key: 'b', label: <b>Bold</b> },
-              { key: 'i', label: <i>Italic</i> },
-              { key: 'u', label: <u>Underline</u> },
-              { key: 'code', label: <code>Code</code> },
-            ],
-          }}
-          trigger={['click']}
-          placement="bottom"
-        >
-          <Button type="text" icon={<CodeOutlined />} className="icon-button" />
-        </Dropdown>
+            menu={{
+              items: [
+                { key: 'b', label: <b>Bold</b> },
+                { key: 'i', label: <i>Italic</i> },
+                { key: 'u', label: <u>Underline</u> },
+                { key: 'code', label: <code>Code</code> },
+              ],
+              onClick: ({ key }) => {
+                console.log('Dropdown tag click:', key);
+                onInsertTag(key);
+              },
+            }}
+            trigger={['click']}
+            placement="bottom"
+          >
+            <Button type="text" icon={<CodeOutlined />} className="icon-button" />
+          </Dropdown>
       </div>
       <div className="footer-right">
         <Progress
