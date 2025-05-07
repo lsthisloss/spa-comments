@@ -168,6 +168,6 @@ Input action number >  1
 ![image](https://github.com/user-attachments/assets/71ad490a-7514-406a-af11-179028e35882)
 
   
-</details>details>
+</details>
 
 ---
