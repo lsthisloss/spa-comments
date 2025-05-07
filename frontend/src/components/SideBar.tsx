@@ -1,27 +1,25 @@
 import { Menu } from 'antd';
-import { HomeOutlined, /*SearchOutlined */} from '@ant-design/icons';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { HomeOutlined, IdcardOutlined } from '@ant-design/icons';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import '../styles/main.scss';
 
 export default function Sidebar() {
-  const navigate = useNavigate();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed] = useState(false);
 
   const menuItems = [
     {
       key: '/',
       icon: <HomeOutlined className="sidebar-icon" />,
-      label: !collapsed && <span className={location.pathname === '/' ? 'active-menu-item' : ''}>Home</span>,
-      onClick: () => navigate('/', { state: { resetPage: true } }),
+      label: '',
     },
-   /* {
-      key: '/search',
-      icon: <SearchOutlined className="sidebar-icon" />,
-      label: !collapsed && <span className={location.pathname === '/search' ? 'active-menu-item' : ''}>Search</span>,
-      onClick: () => navigate('/search'),
-    },*/
+    {
+      key: '/whoami',
+      icon: <IdcardOutlined className="sidebar-icon" />,
+      label: '',
+    },
   ];
 
   return (
@@ -31,6 +29,7 @@ export default function Sidebar() {
         className="sidebar-menu"
         items={menuItems}
         selectedKeys={[location.pathname]}
+        onClick={({ key }) => navigate(key)}
       />
     </nav>
   );

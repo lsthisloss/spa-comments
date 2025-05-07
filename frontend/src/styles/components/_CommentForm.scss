@@ -7,7 +7,20 @@
   padding-left: $spacing-medium;
   padding-right: $spacing-medium;
   padding-top: 6px;
-
+  @media (max-width: 600px) {
+    .form-header {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .input-area {
+      font-size: 16px;
+      min-width: 0;
+      width: 100%;
+    }
+    .comment-avatar {
+      margin-bottom: 8px;
+    }
+  }
   &:focus-within {
     box-shadow: none;
   }

@@ -23,7 +23,25 @@
   &.collapsed {
     width: 60px;
   }
+  @media (max-width: $breakpoint-tablet) {
+    .ant-menu-title-content {
+      display: none;
+    }
+  
+    .ant-menu-item {
+      justify-content: center;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      width: 100%;
+  
+      // Увеличиваем кликабельную область
+      display: flex;
+      align-items: center;
+      min-height: 48px; // или ваша высота
+    }
+  }
 }
+
 
 .sidebar-menu {
   width: 100%;
@@ -46,24 +64,15 @@
 
     .sidebar-icon {
       font-size: 20px;
+      display: block;
       margin: 0 auto;
+      width: 100%;
+      text-align: center;
     }
 
     &.ant-menu-item-selected {
       background: none !important;
       font-weight: bold;
-    }
-  }
-
-  @media (max-width: $breakpoint-tablet) {
-    .ant-menu-item span {
-      display: none;
-    }
-
-    .ant-menu-item {
-      justify-content: center;
-      padding-left: 0 !important;
-      padding-right: 0 !important;
     }
   }
 }
