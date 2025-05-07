@@ -161,6 +161,23 @@ Input action number >  1
 - WebSocket: ws://localhost:3001
 </details>
 
+## A multithreaded test
+
+### `/backend/test/worker.js`
+```ts
+npm i axios 
+node load-test.js
+```
+A Node.js worker script for load testing the comments API.
+
+**Purpose:**  
+Simulates multiple users adding comments in parallel threads to test API performance and stability, using jest and POST requests to the comments API.
+
+**How it works:**  
+- Receives parameters (`apiUrl`, `requests`, `threadIndex`) via `workerData`.
+- Reports success or error for each request back to the parent thread.
+- Used in conjunction with a parent script that spawns multiple workers for concurrent load.
+
 ## Demo
 <details>
 <summary>Click to expand</summary>
