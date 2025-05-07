@@ -1,10 +1,11 @@
 const { Worker } = require('worker_threads');
 const path = require('path');
 
-const API_URL = VITE_API_URL + '/comments'; // URL API для тестирования
-const TOTAL_REQUESTS = 10000; // Общее количество запросов
-const THREAD_COUNT = 8; // Количество потоков
-const REQUESTS_PER_THREAD = Math.ceil(TOTAL_REQUESTS / THREAD_COUNT); // Запросов на поток
+const API_URL = 'http://localhost:3001/comments'; // или ваш реальный backend-URL
+// const TOTAL_REQUESTS = 10000; // Общее количество запросов
+const THREAD_COUNT = 5;
+const TOTAL_REQUESTS = 100;
+const REQUESTS_PER_THREAD = Math.ceil(TOTAL_REQUESTS / THREAD_COUNT);
 
 const startWorker = (threadIndex) => {
   return new Promise((resolve, reject) => {
