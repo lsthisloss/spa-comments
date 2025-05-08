@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createWebSocket } from '../services/websocket';
+import { createWebSocket } from './websocket';
 import { WebSocketContext } from './WebSocketContext';
 
 export default function WebSocketProvider({ children }: { children: React.ReactNode }) {

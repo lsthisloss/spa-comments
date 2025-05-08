@@ -2,7 +2,7 @@ import { Form, Input, Avatar, Image } from 'antd';
 import { useState, useContext, useEffect } from 'react';
 import FormFooter from './FormFooter';
 import CaptchaModal from '../particles/CaptchaModal';
-import { WebSocketContext } from '../WebSocketContext';
+import { WebSocketContext } from '../../services/WebSocketContext';
 import { useNavigate } from 'react-router-dom';
 import { UserInfo } from '../../types/comment';
 import { getAvatarColor } from '../particles/avatarColor';

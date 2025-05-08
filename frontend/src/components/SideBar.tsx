@@ -13,12 +13,10 @@ export default function Sidebar() {
     {
       key: '/',
       icon: <HomeOutlined className="sidebar-icon" />,
-      label: '',
     },
     {
       key: '/whoami',
       icon: <IdcardOutlined className="sidebar-icon" />,
-      label: '',
     },
   ];
 

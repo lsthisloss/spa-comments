@@ -1,7 +1,7 @@
 import { Modal, Form, Input, Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useState, useContext, useEffect } from 'react';
-import { WebSocketContext } from '../WebSocketContext';
+import { WebSocketContext } from '../../services/WebSocketContext';
 import { UserInfo } from '../../types/comment';
 
 interface CaptchaModalProps {

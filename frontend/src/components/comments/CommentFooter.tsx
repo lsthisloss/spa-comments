@@ -2,7 +2,7 @@ import { useEffect, useState, useContext } from 'react';
 import { Button } from 'antd';
 import { MessageOutlined, HeartFilled, HeartOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { WebSocketContext } from '../WebSocketContext';
+import { WebSocketContext } from '../../services/WebSocketContext';
 import { setLikedPost, isPostLiked, removeLikedPost } from '../../services/likeStorage';
 
 export default function CommentFooter({ postId, initialLikes = 0 }: { postId: string; initialLikes?: number }) {

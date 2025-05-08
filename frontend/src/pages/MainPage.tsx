@@ -1,19 +1,19 @@
 import { useEffect, useState, useContext, useRef } from 'react';
 import { Pagination, Spin, Button } from 'antd';
 import CommentsPage from './CommentsPage';
-import { WebSocketContext } from '../components/WebSocketContext';
+import { WebSocketContext } from '../services/WebSocketContext';
 import '../styles/main.scss';
 import { useLocation } from 'react-router-dom';
-import { Comment as FullComment } from '../types/comment'; // Импортируем существующий тип
+import { Comment as FullComment } from '../types/comment';
 import { DownOutlined } from '@ant-design/icons';
-type CommentNo = Omit<FullComment, 'homePage'>; // Исключаем поле homePage
+type CommentNo = Omit<FullComment, 'homePage'>;
 
 export default function MainPage() {
   const [comments, setComments] = useState<CommentNo[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalComments, setTotalComments] = useState(0);
-  const [newCommentsCount, setNewCommentsCount] = useState(0); // Количество новых комментариев
+  const [newCommentsCount, setNewCommentsCount] = useState(0);
   const [manualUpdateMode, setManualUpdateMode] = useState(false); // Режим ручного обновления
   const socket = useContext(WebSocketContext);
   const location = useLocation();

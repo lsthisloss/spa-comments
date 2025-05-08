@@ -25,7 +25,7 @@ export default function Layout({ children }: LayoutProps) {
       <aside className="main-sidebar">
         <Sidebar />
       </aside>
-      <main className="main-content">
+      <div className="main-area">
         <div className="tabs">
           <div
             className={`tab ${activeTab === 'Posts' ? 'active-tab' : ''}`}
@@ -40,8 +40,10 @@ export default function Layout({ children }: LayoutProps) {
             Who Am I
           </div>
         </div>
-        {children}
-      </main>
+        <main className="main-content">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

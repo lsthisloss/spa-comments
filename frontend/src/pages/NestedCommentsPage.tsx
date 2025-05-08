@@ -1,6 +1,6 @@
 import { useEffect, useState, useContext } from 'react';
 import { useParams } from 'react-router-dom';
-import { WebSocketContext } from '../components/WebSocketContext';
+import { WebSocketContext } from '../services/WebSocketContext';
 import CommentItem from '../components/comments/CommentItem';
 import CommentForm from '../components/comments/CommentForm';
 import { Comment } from '../types/comment';
