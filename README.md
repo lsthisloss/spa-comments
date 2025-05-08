@@ -1,4 +1,5 @@
 ## A TypeScript-based fullstack SPA Comments application with real-time updates, RabbitMQ, and nested replies, follows SOLID principles
+Web-application on the NestJS, PostgreSQL, RabbitMQ stack, React frontend and WebSocket for exchanging comments in real time with the ability to use tags, add a txt file, image, captcha on adding posts, processing scripts on the back and front.
 
 ## Features
 - Uses TypeScript (NestJS backend, React frontend)    
