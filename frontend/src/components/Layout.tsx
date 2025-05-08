@@ -22,9 +22,6 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="main-page">
-      <aside className="main-sidebar">
-        <Sidebar />
-      </aside>
       <div className="main-area">
         <div className="tabs">
           <div
@@ -44,6 +41,9 @@ export default function Layout({ children }: LayoutProps) {
           {children}
         </main>
       </div>
+      <nav className="main-sidebar">
+        <Sidebar />
+      </nav>
     </div>
   );
 }

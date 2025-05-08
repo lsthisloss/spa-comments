@@ -1,13 +1,15 @@
 @import './styles/main.scss';
 
+
+
 #root {
+  min-height: 100dvh;
   width: 100%;
-  max-width: 768px; 
-  min-width: 320px; 
-  height: 100vh; 
+  max-width: 768px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
-  background-color: $color-background; 
+  background-color: $color-background;
 }
 
 .logo {

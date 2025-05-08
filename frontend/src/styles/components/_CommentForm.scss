@@ -7,7 +7,7 @@
   padding-left: $spacing-medium;
   padding-right: $spacing-medium;
   padding-top: 6px;
-  @media (max-width: 600px) {
+  @media (max-width: $breakpoint-tablet) {
     .form-header {
       flex-direction: row;
       align-items: stretch;
