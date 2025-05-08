@@ -47,7 +47,7 @@ Queue `add_comment_queue` for async comment creation.
 `MainPage` — Pagination, auto-update, new comment buffering.    
 `NestedCommentsPage` — Thread view, real-time replies.    
 
-## WebSocket клиент (frontend)
+## WebSocket client (frontend)
 
 - Connection via `createWebSocket`    
 - Listening events : `newComment`, `commentLiked`, `commentUnliked`, `heartbeat`    
