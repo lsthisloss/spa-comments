@@ -23,10 +23,13 @@ export default function MainPage() {
   const TIME_WINDOW_MS = 10000;
   const commentBuffer = useRef<FullComment[]>([]);
   const newCommentsCounter = useRef(0); 
+  
   useEffect(() => {
-    if (socket) {
-      console.log('Requesting comments for page:', currentPage);
-      setComments([]); 
+    if (!socket) return;
+  
+    const handleConnect = () => {
+      console.log('WebSocket connected, requesting comments for page:', currentPage);
+      setComments([]);
       setLoading(true);
   
       socket.emit(
@@ -43,7 +46,17 @@ export default function MainPage() {
           setLoading(false);
         },
       );
+    };
+  
+    socket.on('connect', handleConnect);
+  
+    if (socket.connected) {
+      handleConnect();
     }
+  
+    return () => {
+      socket.off('connect', handleConnect);
+    };
   }, [socket, currentPage]);
 
   useEffect(() => {

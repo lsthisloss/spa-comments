@@ -53,7 +53,7 @@ export default function NestedCommentsPage() {
     <section className="nested-comments-page">
       {parentComment && (
         <div className="parent-comment">
-          <CommentItem comment={parentComment} level={0} />
+          <CommentItem comment={parentComment} level={0} disableShowMore/>
         </div>
       )}
       <div className="comment-form">

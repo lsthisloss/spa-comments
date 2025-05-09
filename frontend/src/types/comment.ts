@@ -11,6 +11,7 @@ export interface Comment {
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
+  repliesCount?: number;
 }
 
 export interface UserInfo {

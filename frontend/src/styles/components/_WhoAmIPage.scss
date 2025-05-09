@@ -42,10 +42,10 @@
     .save-button {
       background: linear-gradient(45deg, #00aaff, #5b09cd);
       color: #fff;
-      font-size: 16px;
+      font-size: $font-size-large;
       font-weight: bold;
       border: none;
-      border-radius: 8px;
+      border-radius: $border-radius-medium;
       padding: 10px 20px;
       transition: background 0.3s ease, transform 0.2s ease;
       width: 95%;
@@ -56,9 +56,9 @@
       }
     }
     .saved-message {
-      margin-top: 16px;
+      margin-top: $spacing-large;
       color: green;
-      font-size: 16px;
+      font-size: $font-size-large;
       text-align: center;
       font-weight: bold;
     }

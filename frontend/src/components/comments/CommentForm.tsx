@@ -1,4 +1,4 @@
-import { Form, Input, Avatar, Image } from 'antd';
+import { Form, Input, Avatar, Image, message } from 'antd';
 import { useState, useContext, useEffect } from 'react';
 import FormFooter from './FormFooter';
 import CaptchaModal from '../particles/CaptchaModal';
@@ -19,7 +19,8 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
-  
+  const [dragActive, setDragActive] = useState(false);
+
   useEffect(() => {
     if (successMessage) {
       const timer = setTimeout(() => setSuccessMessage(''), 2000);
@@ -38,6 +39,42 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
     setImagePreview(base64);
     if (file) setSelectedImageFile(file);
   };
+  // drag&drop
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      setDragActive(true);
+    };
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+    };
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+      if (e.dataTransfer?.files?.length) {
+        const file = e.dataTransfer.files[0];
+        if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+          message.error('Only JPG, PNG, GIF images are allowed.');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setImagePreview(ev.target?.result as string);
+          setSelectedImageFile(file);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   const handlePostClick = () => {
     const userInfo = localStorage.getItem('userInfo');
@@ -158,6 +195,11 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
 
   return (
     <>
+        {dragActive && (
+          <div className="drag-overlay">
+            Drop image to upload
+          </div>
+        )}
       <Form className="comment-form">
         
         <div className="form-header">

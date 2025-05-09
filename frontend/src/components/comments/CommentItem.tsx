@@ -1,47 +1,83 @@
 import { Tooltip, Card, Typography, Image } from 'antd';
 import '../../styles/main.scss';
 import CommentFooter from './CommentFooter';
-import { FileTextOutlined } from '@ant-design/icons';
 import { getAvatarColor } from '../particles/avatarColor';
+import { useRef, useState, useEffect, useContext } from 'react';
+import { WebSocketContext } from '../../services/WebSocketContext';
+import type { Comment } from '../../types/comment'; 
+import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
-const apiUrl = 'http://localhost:3001';
-
+const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
 interface CommentItemProps {
-  comment: {
-    id: string;
-    userName: string;
-    text: string;
-    createdAt: Date;
-    imageUrl?: string;
-    image?: string;
-    file?: {
-      name: string;
-      type: string;
-      size: number;
-      buffer: number[];
-    };
-    fileUrl?: string;
-    fileName?: string;
-    likes?: number;
+  comment: Comment & {
+    repliesCount?: number;
+    level?: number;
+    children?: Comment[];
   };
   level: number;
+  disableShowMore?: boolean;
 }
 
-const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
+const CommentItem: React.FC<CommentItemProps> = ({ comment, disableShowMore }) => {
   const avatarLetter = comment.userName.charAt(0).toUpperCase();
+  const textRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showButton, setShowButton] = useState(false);
+  const [showReplies, setShowReplies] = useState(false);
+  const [replies, setReplies] = useState<CommentItemProps['comment'][]>(comment.children || []);
+  const [loadingReplies, setLoadingReplies] = useState(false);
+  const socket = useContext(WebSocketContext);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (textRef.current) {
+      const lineHeight = parseFloat(getComputedStyle(textRef.current).lineHeight || '20');
+      const maxHeight = lineHeight * 3;
+      setShowButton(textRef.current.scrollHeight > maxHeight + 1);
+    }
+  }, [comment.text]);
+
+  useEffect(() => {
+    if (disableShowMore) {
+      setShowButton(false);
+      setExpanded(true); 
+      return;
+    }
+  }, [comment.text, disableShowMore]);
+
+
+  const handleShowReplies = async () => {
+    setShowReplies((prev) => !prev);
+    if (!showReplies && replies.length === 0 && socket) {
+      setLoadingReplies(true);
+      socket.emit(
+        'fetchNestedComments',
+        { parentId: comment.id, limit: 3 },
+        (response: { parent: Comment; children: Comment[] }) => {
+          setReplies(response.children || []);
+          setLoadingReplies(false);
+        }
+      );
+    }
+  };
+  
+  const handleShowAll = () => {
+    navigate(`/post/${comment.id}`);
+  };
+  
   return (
     <Card className="comment-item">
       <div className="comment-layout">
-      <div
-        className="comment-avatar"
-        style={{
-          background: getAvatarColor(avatarLetter),
-        }}
-      >
-        {avatarLetter}
-      </div>
+        <div
+          className="comment-avatar"
+          style={{
+            background: getAvatarColor(avatarLetter),
+          }}
+        >
+          {avatarLetter}
+        </div>
         <div className="comment-content">
           <div className="comment-user-info">
             <Text strong>{comment.userName}</Text>
@@ -53,51 +89,84 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
             </Tooltip>
           </div>
           <div
-            className="comment-text"
+            className={`comment-text${expanded ? ' expanded' : ''}`}
+            ref={textRef}
+            style={
+              !expanded
+                ? {
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }
+                : {}
+            }
             dangerouslySetInnerHTML={{ __html: comment.text.replace(/\n/g, '<br/>') }}
-            />
-          {comment.imageUrl && (
-            <>
-              <div
-                style={{
-                  display: 'inline-block', 
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  borderRadius: '8px',
-                  overflow: 'hidden', 
-                }}
+          />
+          {showButton && !disableShowMore && (
+            !expanded ? (
+              <button
+                className="show-more-btn"
+                onClick={() => setExpanded(true)}
               >
-                <Image
-                  src={comment.imageUrl.startsWith('http') ? comment.imageUrl : `${apiUrl}${comment.imageUrl}`}
-                  alt="Comment attachment"
-                  className="comment-image ant-image-img"
-                  style={{
-                    maxWidth: '180px',
-                    maxHeight: '120px',
-                    borderRadius: '8px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                  }}
-                  preview={true}
-                />
-              </div>
-              <div style={{ height: '16px' }} />
-            </>
+                Show more
+              </button>
+            ) : (
+              <button
+                className="show-more-btn"
+                onClick={() => setExpanded(false)}
+              >
+                Show less
+              </button>
+            )
           )}
-          {comment.fileUrl && comment.fileName && (
-              <div className="comment-file">
-              <a
-                href={comment.fileUrl?.startsWith('http') ? comment.fileUrl : `${apiUrl}${comment.fileUrl}`}
-                download={comment.fileName || true}
-                rel="noopener noreferrer"
-                >
-                <FileTextOutlined style={{ marginRight: '8px' }} />
-                <span>{comment.fileName}</span>
-              </a>
+
+          {comment.imageUrl && (
+            <div className="comment-image-container">
+              <Image
+                src={comment.imageUrl.startsWith('http') ? comment.imageUrl : `${apiUrl}${comment.imageUrl}`}
+                alt="Comment attachment"
+                className="comment-image ant-image-img"
+
+                preview={true}
+              />
             </div>
+          )}
+
+          <CommentFooter
+            postId={comment.id}
+            initialLikes={comment.likes || 0}
+            repliesCount={comment.repliesCount ?? 0}
+            onShowReplies={handleShowReplies}
+            showReplies={showReplies}
+            loadingReplies={loadingReplies}
+            fileUrl={comment.fileUrl}
+            fileName={comment.fileName}
+          />
+          {showReplies && (
+          <div className="replies-list">
+            {loadingReplies ? (
+              <span>Loading...</span>
+            ) : (
+              <>
+                {replies.map((reply) => (
+                  <CommentItem
+                    key={reply.id}
+                    comment={reply}
+                    level={(comment.level || 0) + 1}
+                    disableShowMore={false}
+                  />
+                ))}
+                {comment.repliesCount && comment.repliesCount > 3 && (
+                  <button className="show-all-replies-btn" onClick={handleShowAll}>
+                    Show all ({comment.repliesCount})
+                  </button>
+                )}
+              </>
             )}
-          <CommentFooter postId={comment.id} initialLikes={comment.likes || 0} />
-        </div> 
+          </div>
+        )}
+        </div>
       </div>
     </Card>
   );

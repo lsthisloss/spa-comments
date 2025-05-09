@@ -1,10 +1,10 @@
 import io from 'socket.io-client';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3001';
 
 export const createWebSocket = () => {
-  const socket = io(WS_URL, {
+  const socket = io({
     transports: ['websocket'],
+    path: '/socket.io',
   });
 
   socket.on('connect', () => console.log('WebSocket connected'));
