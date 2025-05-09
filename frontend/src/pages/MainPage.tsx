@@ -166,6 +166,7 @@ export default function MainPage() {
             simple
             style={{ marginTop: '16px', textAlign: 'center' }}
           />
+          
         </>
       )}
     </section>

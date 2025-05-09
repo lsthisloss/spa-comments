@@ -55,7 +55,7 @@ export class CommentsService {
   async getCommentsByParentId(parentId: string, limit = 3): Promise<Comment[]> {
     return this.commentRepository.find({
       where: { parentId },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
       take: limit,
     });
   }

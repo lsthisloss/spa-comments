@@ -54,8 +54,8 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
       setDragActive(false);
       if (e.dataTransfer?.files?.length) {
         const file = e.dataTransfer.files[0];
-        if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
-          message.error('Only JPG, PNG, GIF images are allowed.');
+        if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+          message.error('Only JPG, PNG, JPEG images are allowed.');
           return;
         }
         const reader = new FileReader();

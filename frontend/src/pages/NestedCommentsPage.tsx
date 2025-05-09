@@ -5,7 +5,7 @@ import CommentItem from '../components/comments/CommentItem';
 import CommentForm from '../components/comments/CommentForm';
 import { Comment } from '../types/comment';
 import '../styles/main.scss';
-import { Spin } from 'antd';
+import { Pagination, Spin } from 'antd';
 
 export default function NestedCommentsPage() {
   const { parentId } = useParams<{ parentId: string }>();
@@ -14,19 +14,28 @@ export default function NestedCommentsPage() {
   const [childComments, setChildComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 25;
+
   useEffect(() => {
     if (socket && parentId) {
-      console.log(`Fetching parent comment and child comments for parentId: ${parentId}`);
       setLoading(true);
-
-      socket.emit('fetchNestedComments', { parentId }, ({ parent, children }: { parent: Comment; children: Comment[] }) => {
-        console.log('Fetched parent comment and child comments:', { parent, children });
-        setParentComment(parent);
-        setChildComments(children);
-        setLoading(false);
-      });
+      socket.emit(
+        'fetchNestedComments',
+        { parentId, limit: pageSize, offset: (page - 1) * pageSize },
+        ({ parent, children, total }: { parent: Comment; children: Comment[]; total: number }) => {
+          const sortedChildren = children.slice().sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          setParentComment(parent);
+          setChildComments(sortedChildren);
+          setTotal(total || sortedChildren.length);
+          setLoading(false);
+        }
+      );
     }
-  }, [socket, parentId]);
+  }, [socket, parentId, page]);
 
   const handleNewChildComment = (newComment: Comment) => {
     console.log('New child comment received via WebSocket:', newComment);
@@ -63,6 +72,13 @@ export default function NestedCommentsPage() {
         {childComments.map((comment) => (
           <CommentItem key={comment.id} comment={comment} level={1} />
         ))}
+        <Pagination
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={setPage}
+          style={{ marginTop: 16, textAlign: 'center' }}
+        />
       </div>
     </section>
   );
