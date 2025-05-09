@@ -20,7 +20,7 @@ interface CommentItemProps {
   disableShowMore?: boolean;
 }
 
-const CommentItem: React.FC<CommentItemProps> = ({ comment, disableShowMore }) => {
+const CommentItem = ({ comment, disableShowMore }: CommentItemProps) => {
   const avatarLetter = comment.userName.charAt(0).toUpperCase();
   const textRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);

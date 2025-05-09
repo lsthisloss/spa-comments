@@ -89,26 +89,26 @@
     border-radius: $border-radius-medium;;
   }
 
-  .ant-image-img {
-    max-width: 180px;
-    max-height: 120px;
-    border-radius: $border-radius-medium;;
-    object-fit: contain;
-    object-position: left;
-    cursor: pointer;
-    display: block;
-  }
 
-  .ant-image-mask {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
-    color: #fff;
-    border-radius: $border-radius-medium;
-  }
+}
+.ant-image-img {
+  max-width: 180px;
+  max-height: 120px;
+  border-radius: $border-radius-medium;;
+  object-fit: contain;
+  object-position: left;
+  cursor: pointer;
+  display: block;
 }
 
+.ant-image-mask {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  border-radius: $border-radius-medium;
+}
 
 .comment-text {
   display: -webkit-box;

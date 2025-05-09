@@ -6,6 +6,8 @@ import { WebSocketContext } from '../../services/WebSocketContext';
 import { useNavigate } from 'react-router-dom';
 import { UserInfo } from '../../types/comment';
 import { getAvatarColor } from '../particles/avatarColor';
+import { resizeImageFile } from '../../utils/resizeImageFile';
+
 
 export default function CommentForm({ parentId, placeholder }: { parentId?: string; placeholder?: string }) {
   const [text, setText] = useState('');
@@ -39,7 +41,7 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
     setImagePreview(base64);
     if (file) setSelectedImageFile(file);
   };
-  // drag&drop
+
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
       e.preventDefault();
@@ -58,12 +60,10 @@ export default function CommentForm({ parentId, placeholder }: { parentId?: stri
           message.error('Only JPG, PNG, JPEG images are allowed.');
           return;
         }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setImagePreview(ev.target?.result as string);
+        resizeImageFile(file, (uri) => {
+          setImagePreview(uri);
           setSelectedImageFile(file);
-        };
-        reader.readAsDataURL(file);
+        });
       }
     };
     window.addEventListener('dragover', handleDragOver);

@@ -2,7 +2,7 @@ import { Button, Upload, Progress, Dropdown } from 'antd';
 import { PictureOutlined, CodeOutlined, FileTextOutlined } from '@ant-design/icons';
 import '../../styles/main.scss';
 import { useGradientButtonStyle } from '../../styles/GradientButtonStyles';
-import Resizer from 'react-image-file-resizer';
+import { resizeImageFile } from '../../utils/resizeImageFile';
 
 interface FormFooterProps {
   text: string;
@@ -36,18 +36,10 @@ export default function FormFooter({ text, maxLength, onPostClick, onInsertTag, 
       return false;
     }
   
-    Resizer.imageFileResizer(
-      file,
-      320,
-      240,
-      file.type.split('/')[1].toUpperCase(),
-      100,
-      0,
-      (uri) => {
-        onImageUpload(uri as string, file);
-      },
-      'base64'
-    );
+    resizeImageFile(file, (uri) => {
+      onImageUpload(uri, file);
+    });
+  
     return false;
   };
 
