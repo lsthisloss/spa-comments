@@ -62,7 +62,11 @@ const UserProfilePage = observer(() => {
 
   // Загружаем данные пользователя через UserStore
   useEffect(() => {
-    if (userId && !user && !isLoading) {
+    if (
+      userId &&
+      (!user || !user.avatarUrl || !user.avatarShape || !user.userName || !user.email) &&
+      !isLoading
+    ) {
       userStore.getUserById(userId);
     }
   }, [userId, user, isLoading]);
@@ -79,27 +83,30 @@ const UserProfilePage = observer(() => {
       navigate(-1);
     }
   };
-  const handleFollow = async () => {
-    if (!userId) return;
-    setFollowLoading(true);
-    try {
-      await userStore.followUser(userId);
-    } catch (error) {
-      console.error("Failed to follow user:", error);
-    }
-    setFollowLoading(false);
-  };
+const handleFollow = async () => {
+  if (!userId) return;
+  setFollowLoading(true);
+  try {
+    await userStore.followUser(userId);
+    await userStore.getUserById(userId);
+  } catch (error) {
+    console.error("Failed to follow user:", error);
+  }
+  setFollowLoading(false);
+};
 
-  const handleUnfollow = async () => {
-    if (!userId) return;
-    setFollowLoading(true);
-    try {
-      await userStore.unfollowUser(userId);
-    } catch (error) {
-      console.error("Failed to unfollow user:", error);
-    }
-    setFollowLoading(false);
-  };
+
+const handleUnfollow = async () => {
+  if (!userId) return;
+  setFollowLoading(true);
+  try {
+    await userStore.unfollowUser(userId);
+    await userStore.getUserById(userId); 
+  } catch (error) {
+    console.error("Failed to unfollow user:", error);
+  }
+  setFollowLoading(false);
+};
 
   if (isLoading) {
     return (

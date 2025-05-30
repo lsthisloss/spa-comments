@@ -339,6 +339,8 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
             id,
             email,
             userName,
+            avatarUrl: user.avatarUrl,
+            avatarShape: user.avatarShape,
             following: following || [],
             followers: followers || [],
           },
