@@ -1,11 +1,23 @@
 @import './base/reset';
 @import './base/variables';
 @import './base/typography';
-@import './components/SideBar';
-@import './components/Layout';
-@import './components/CommentItem';
-@import './components/CommentFooter';
-@import './components/CommentForm';
-@import './components/CommentPage';
+
+@import './SideBar';
+@import './Layout';
+@import './UserProfile.scss';
+
+@import './pages/CommentPage';
+@import './pages/PostPage';
+@import './pages/AuthPage';
+
+
+@import './components/Item';
+@import './components/ItemFooter';
+@import './components/Form';
 @import './components/FormFooter';
-@import './components/WhoAmIPage';
+@import './components/DebugInfo';
+@import './components/CommentPreviewDropDown';
+
+
+@import './particles/GradientButton'
+

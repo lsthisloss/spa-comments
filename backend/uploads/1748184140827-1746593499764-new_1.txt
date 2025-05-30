@@ -1,0 +1,24 @@
+1. Tell me about yourself.
+I’m a passionate software engineer with a Bachelor’s and Master’s degree in Software Engineering, specializing in designing and building scalable, modular systems.
+My expertise lies in full-stack development, hands-on experience in backend API design, frontend application development, and DevOps practices like Docker, Git-based workflows. 
+Outside of work, I enjoy exploring new technologies, I also like to reading books, running, playing games, also staying updated on global news. 
+I’m driven by solving complex problems and delivering high-quality, performant solutions.
+
+2. Why did you choose to work in IT?
+I chose IT because it’s a dynamic field that combines creativity, problem-solving, and continuous learning. 
+The ability to build systems for thousands users, coupled with the ever-evolving nature of technology, excites me. 
+My academic background in software engineering, with a focus on algorithms, system design, and computational science, allows me to accomplish almost any task in life
+
+3. What are your current responsibilities?
+In my current role, I designing and developing web and windows apps as a self-employee. 
+On the backend, I build RESTful APIs using frameworks like Nest.js, Express and implement server-side logic. 
+On the frontend, I create responsive, robust applications using React or Laravel with strong JavaScript/TypeScript foundations. 
+I also handle DevOps tasks, including Docker containerization, orchestration, and managing branch-based Git workflows. 
+
+4. What are your interests?
+My professional interests include cloud technologies, microservices architecture, and machine learning, as I enjoy exploring how these can optimize system performance and scalability. 
+I’m also passionate about cybersecurity and staying updated on best practices to build secure applications.  
+
+5. What are your biggest strengths and weaknesses?
+Strengths: My biggest strengths are my technical versatility and problem-solving mindset. 
+My weakness is that I sometimes underestimate myself, but motivation doesn't leave me

@@ -11,19 +11,18 @@ function app_run_local() {
     if [ -f .env.example ] && [ ! -f .env ]; then
         mv .env.example .env
     fi
+
     docker-compose -f docker-compose.yml down
 
+    echo -e "\n${YELLOW}Building images ...${NORMAL}\n"
+    docker-compose -f docker-compose.yml build
+
     echo -e "\n${YELLOW}Starting app containers (local/dev mode) ...${NORMAL}\n"
-    kill -9 $(lsof -t -i:3000 2>/dev/null)
-    docker-compose -f docker-compose.yml up -d
-
-    echo -e "\n${YELLOW}Installing frontend dependencies ...${NORMAL}\n"
-    cd frontend && npm i
-    cd - >/dev/null
-
-    echo -e "\n${YELLOW}Installing backend dependencies ...${NORMAL}\n"
-    cd backend && npm i
-    cd - >/dev/null
+    # Only kill if a process is found
+    if lsof -t -i:3000 >/dev/null 2>&1; then
+        kill -9 $(lsof -t -i:3000)
+    fi
+    docker-compose -f docker-compose.yml up
 }
 
 function app_run_production() {
@@ -34,9 +33,30 @@ function app_run_production() {
     docker-compose -f docker-compose.yml build --no-cache
 
     echo -e "\n${YELLOW}Starting app containers (production mode) ...${NORMAL}\n"
-    docker-compose -f docker-compose.yml up -d --remove-orphans
+    docker-compose -f docker-compose.yml up --remove-orphans
 
     echo -e "\n${GREEN}Production containers are up and running!${NORMAL}\n"
+}
+
+function app_clean_all() {
+    echo -e "\n${RED}Останавливаю и удаляю все контейнеры, образы и volume'ы...${NORMAL}\n"
+    docker-compose -f docker-compose.yml down -v --rmi all --remove-orphans
+    docker system prune -af --volumes
+    echo -e "\n${GREEN}Всё очищено!${NORMAL}\n"
+}
+
+function app_run_frontend() {
+    echo -e "\n${YELLOW}Building and starting frontend container ...${NORMAL}\n"
+    docker-compose down frontend
+    docker-compose -f docker-compose.yml build --no-cache frontend
+    docker-compose -f docker-compose.yml up frontend
+}
+
+function app_run_backend() {
+    echo -e "\n${YELLOW}Building and starting backend container ...${NORMAL}\n"
+    docker-compose down backend
+    docker-compose -f docker-compose.yml build --no-cache backend
+    docker-compose -f docker-compose.yml up backend
 }
 
 while getopts c:t: flag; do
@@ -55,6 +75,9 @@ if [ -z $choice ]; then
     echo "  ----------------------------------------------------------------------  "
     echo "         1 - Run Local (dev mode)"
     echo "         2 - Run Production"
+    echo "         3 - Clean ALL (containers, images, volumes, DB)"
+    echo "         4 - Run Frontend Only"
+    echo "         5 - Run Backend Only"
     echo "  ----------------------------------------------------------------------  "
     echo -e "${NORMAL}"
     echo -e "${CYAN}Input action number > ${NORMAL} "
@@ -66,6 +89,15 @@ if [ -z $choice ]; then
         ;;
     2)
         app_run_production
+        ;;
+    3)
+        app_clean_all
+        ;;
+    4)
+        app_run_frontend
+        ;;
+    5)
+        app_run_backend
         ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac

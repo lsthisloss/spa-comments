@@ -3,154 +3,327 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { AppGateway } from '../app.gateway';
-import { Socket } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
-import * as svgCaptcha from 'svg-captcha';
-import * as path from 'path';
-import * as fs from 'fs';
+import { PostsGateway } from '../posts/posts.gateway';
+import { CommonWsService } from '../common/common-ws.service';
+import { UseGuards } from '@nestjs/common';
+import { WsJwtGuard } from 'src/auth/ws-jwt.guard';
 
-@WebSocketGateway({ cors: { origin: '*' } })
-export class CommentsGateway {
+@WebSocketGateway({ cors: { origin: '*' }, namespace: '/comments' })
+export class CommentsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
+  @WebSocketServer()
+  server: Server;
+
   constructor(
+    private readonly commonWsService: CommonWsService,
     private readonly commentsService: CommentsService,
-    private readonly appGateway: AppGateway,
-  ) {
-    console.log('CommentsGateway initialized');
-  }
-  @SubscribeMessage('fetchComments')
-  async handleFetchComments(
-    @MessageBody() data: { page: number; limit: number },
-  ) {
+    private readonly postsGateway: PostsGateway,
+  ) {}
+
+  handleConnection(client: Socket) {
     console.log(
-      `Fetching comments for page ${data.page} with limit ${data.limit}`,
+      'Comments WS connected to:',
+      client.nsp.name,
+      'client:',
+      client.id,
     );
-    const [comments, total] = await this.commentsService.findTopLevelComments(
-      data.page,
-      data.limit,
-    );
-    return { comments, total };
   }
 
-  @SubscribeMessage('fetchNestedComments')
-  async handleFetchNestedComments(
-    @MessageBody() data: { parentId: string; limit?: number },
-  ) {
-    const parent = await this.commentsService.getCommentById(data.parentId);
-    const children = await this.commentsService.getCommentsByParentId(
-      data.parentId,
-      data.limit ?? 3,
-    );
-    return { parent, children };
+  handleDisconnect(client: Socket) {
+    console.log('Comments WS disconnected:', client.id);
   }
 
+  /**
+   * Отправка уведомления о новом комментарии
+   */
+  emitNewComment(comment: { postId: string; [key: string]: any }) {
+    this.server.emit('newComment', {
+      postId: comment.postId,
+      comment,
+    });
+  }
+
+  /**
+   * Создание нового комментария
+   */
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('addComment')
-  async handleAddComment(@MessageBody() createCommentDto: CreateCommentDto) {
-    if (
-      createCommentDto.file &&
-      createCommentDto.file.base64 &&
-      createCommentDto.file.name
-    ) {
-      const uploadDir = path.join(process.cwd(), 'uploads');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      const fileName = `${Date.now()}-${createCommentDto.file.name}`;
-      const filePath = path.join(uploadDir, fileName);
-      const buffer = Buffer.from(createCommentDto.file.base64, 'base64');
-      if (buffer.length > 100 * 1024) {
-        return { success: false, message: 'File size must not exceed 100KB.' };
-      }
-      fs.writeFileSync(filePath, buffer);
+  async handleAddComment(
+    @MessageBody() createCommentDto: CreateCommentDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    const userData = client.data as { user?: { id?: string } };
+    const userId = userData.user?.id;
 
-      createCommentDto.fileUrl = `/uploads/${fileName}`;
-      createCommentDto.fileName = createCommentDto.file.name;
-      createCommentDto.fileType = createCommentDto.file.type;
-      delete createCommentDto.file;
+    if (!userId) {
+      console.error('No userId found in socket data');
+      return { success: false, message: 'User not authenticated' };
     }
 
-    await this.commentsService.sendCommentToQueue(createCommentDto);
-    return { success: true };
+    // Устанавливаем ID авторизованного пользователя
+    createCommentDto.userId = userId;
+
+    console.log('Creating comment with data:', createCommentDto);
+
+    try {
+      if (createCommentDto.image && createCommentDto.file) {
+        const fileResult = this.commonWsService.processContentWithMultipleFiles(
+          createCommentDto.content,
+          {
+            image: createCommentDto.image,
+            file: createCommentDto.file,
+          },
+        );
+
+        Object.assign(createCommentDto, fileResult);
+        delete createCommentDto.file;
+        delete createCommentDto.imageUrl;
+      } else if (createCommentDto.file) {
+        const fileResult = this.commonWsService.processContentWithFile(
+          createCommentDto.content,
+          { file: createCommentDto.file },
+        );
+
+        Object.assign(createCommentDto, fileResult);
+        delete createCommentDto.file;
+      }
+
+      console.log('Final comment data before queue:', createCommentDto);
+
+      await this.commentsService.createComment(createCommentDto);
+      return { success: true, message: 'Comment sent to queue' };
+    } catch (error) {
+      console.error('Error processing comment:', error);
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to process comment',
+      };
+    }
   }
 
-  private captchas = new Map<string, string>();
+  /**
+   * Универсальный метод для получения комментариев
+   * как для постов, так и для комментариев
+   */
+  @SubscribeMessage('fetchComments')
+  async handleFetchComments(
+    @MessageBody()
+    data: {
+      parentId?: string; // ID поста или комментария
+      postId?: string; // Для обратной совместимости
+      page?: number;
+      limit: number;
+      sort?: 'date' | 'likes';
+    },
+  ) {
+    try {
+      // Используем parentId или postId (для обратной совместимости)
+      const parentId = data.parentId || data.postId;
+      if (!parentId) {
+        return { comments: [], total: 0, error: 'No parentId provided' };
+      }
 
+      console.log(
+        `Fetching comments for parent ${parentId}, page ${data.page || 1}, sort: ${data.sort || 'date'}`,
+      );
+
+      const result = await this.commentsService.findCommentsByParentId(
+        parentId,
+        data.page || 1,
+        data.limit,
+        data.sort || 'date',
+      );
+
+      return result;
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      return { comments: [], total: 0, error: 'Failed to fetch comments' };
+    }
+  }
+
+  /**
+   * Получение коммент пользователя
+   */
+  @SubscribeMessage('fetchUserComments')
+  async handleFetchUserComments(
+    @MessageBody()
+    data: {
+      userId: string;
+      page?: number;
+      limit: number;
+      sort?: 'date' | 'likes';
+    },
+  ) {
+    try {
+      console.log(
+        `Fetching comments for user ${data.userId}, page ${data.page || 1}, sort: ${data.sort || 'date'}`,
+      );
+
+      const result = await this.commentsService.findCommentsByParentId(
+        data.userId,
+        data.page || 1,
+        data.limit,
+        data.sort || 'date',
+      );
+
+      const comments = result.comments || [];
+      const total = result.total || 0;
+
+      return {
+        comments,
+        total,
+        page: data.page || 1,
+      };
+    } catch (error) {
+      console.error('Error fetching user comments:', error);
+      return {
+        comments: [],
+        total: 0,
+        error: 'Failed to fetch user comments',
+        page: data.page || 1,
+      };
+    }
+  }
+
+  /**
+   * Лайк комментария
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('likeComment')
+  async handleLikeComment(
+    @MessageBody() data: { commentId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userData = client.data as { user?: { id?: string } };
+      const userId = userData.user?.id;
+      if (!userId) {
+        return { success: false, message: 'User not authenticated' };
+      }
+
+      const result = await this.commentsService.likeComment(
+        data.commentId,
+        userId,
+      );
+      if (result.success) {
+        // Оповещаем всех клиентов
+        this.server.emit('commentLiked', {
+          commentId: data.commentId,
+          userId: userId,
+          newLikeCount: result.likeCount,
+          likedUserIds: result.likedUserIds,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error liking comment:', error);
+      return { success: false, message: 'Failed to like comment' };
+    }
+  }
+
+  /**
+   * Отмена лайка комментария
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('unlikeComment')
+  async handleUnlikeComment(
+    @MessageBody() data: { commentId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userData = client.data as { user?: { id?: string } };
+      const userId = userData.user?.id;
+      if (!userId) {
+        return { success: false, message: 'User not authenticated' };
+      }
+
+      const result = await this.commentsService.unlikeComment(
+        data.commentId,
+        userId,
+      );
+
+      if (result.success) {
+        // Оповещаем всех клиентов
+        this.server.emit('commentUnliked', {
+          commentId: data.commentId,
+          userId: userId,
+          newLikeCount: result.likeCount,
+          likedUserIds: result.likedUserIds,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error unliking comment:', error);
+      return { success: false, message: 'Failed to unlike comment' };
+    }
+  }
+
+  /**
+   * Генерация капчи
+   */
   @SubscribeMessage('generateCaptcha')
   handleGenerateCaptcha(@ConnectedSocket() client: Socket) {
-    const captcha = svgCaptcha.create({
-      size: 6,
-      noise: 3,
-      color: true,
-      background: '#f4f4f4',
-    });
-
-    this.captchas.set(client.id, captcha.text);
-    console.log(`Generated CAPTCHA for client ${client.id}: ${captcha.text}`);
-
-    return { image: captcha.data };
+    return this.commonWsService.generateCaptcha(client);
   }
 
+  /**
+   * Проверка капчи
+   */
   @SubscribeMessage('validateCaptcha')
   handleValidateCaptcha(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { captcha: string },
   ) {
-    const storedCaptcha = this.captchas.get(client.id);
-    if (storedCaptcha && storedCaptcha === data.captcha) {
-      console.log(`CAPTCHA validated for client ${client.id}`);
-      this.captchas.delete(client.id);
-      return { valid: true };
-    }
-    console.log(`CAPTCHA validation failed for client ${client.id}`);
-    return { valid: false };
+    return this.commonWsService.validateCaptcha(client, data);
   }
 
+  /**
+   * Загрузка изображения
+   */
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('uploadImage')
-  handleImageUpload(
-    @MessageBody() data: { file: string; fileName: string },
-    //@ConnectedSocket() client: Socket,
-  ) {
-    const uploadDir = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
+  handleUploadImage(@MessageBody() data: { file: string; fileName: string }) {
+    try {
+      console.log('Uploading image to comments:', data.fileName);
+      const result = this.commonWsService.uploadFile(data);
 
-    const fileName = `${Date.now()}-${data.fileName}`;
-    const filePath = path.join(uploadDir, fileName);
-    const buffer = Buffer.from(data.file, 'base64');
-    fs.writeFileSync(filePath, buffer);
+      return {
+        imageUrl: result.fileUrl,
+        fileUrl: result.fileUrl,
+      };
+    } catch (error) {
+      console.error('Image upload error:', error);
+      return { error: 'Failed to upload image' };
+    }
+  }
 
-    const imageUrl = `/uploads/${fileName}`;
-    return { imageUrl };
-  }
-  @SubscribeMessage('likeComment')
-  async handleLikeComment(@MessageBody() data: { commentId: string }) {
-    const comment = await this.commentsService.getCommentById(data.commentId);
-    if (comment) {
-      comment.likes = (comment.likes || 0) + 1;
-      await this.commentsService.saveComment(comment);
-      this.appGateway.broadcastEvent('commentLiked', {
-        commentId: comment.id,
-        likes: comment.likes,
-      });
-      return { success: true, likes: comment.likes };
+  /**
+   * Загрузка файла
+   */
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('uploadFile')
+  handleUploadFile(@MessageBody() data: { file: string; fileName: string }) {
+    try {
+      console.log('Uploading file to comments:', data.fileName);
+      const result = this.commonWsService.uploadFile(data);
+
+      return {
+        fileUrl: result.fileUrl,
+      };
+    } catch (error) {
+      console.error('File upload error:', error);
+      return { error: 'Failed to upload file' };
     }
-    return { success: false };
-  }
-  @SubscribeMessage('unlikeComment')
-  async handleUnlikeComment(@MessageBody() data: { commentId: string }) {
-    const comment = await this.commentsService.getCommentById(data.commentId);
-    if (comment && comment.likes > 0) {
-      comment.likes -= 1;
-      await this.commentsService.saveComment(comment);
-      this.appGateway.broadcastEvent('commentUnliked', {
-        commentId: comment.id,
-        likes: comment.likes,
-      });
-      return { success: true, likes: comment.likes };
-    }
-    return { success: false };
   }
 }

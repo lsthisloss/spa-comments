@@ -10,6 +10,12 @@ $color-logo-hover: #646cffaa;
 $color-avatar-bg: #646cff; 
 $color-divider: #e0e0e0; 
 $color-hover: rgba(0, 0, 0, 0.05); 
+$color-primary: #646cff;
+
+$color-primary-light: #646cffaa;
+$color-primary-dark: #646cffaa;
+$color-primary-hover: #646cffaa;
+$color-text: #333;
 
 $font-family-base: 'Roboto', Arial, sans-serif;
 $font-size-small: 10px;
@@ -36,3 +42,5 @@ $transition-slow: 0.5s ease;
 
 $border-radius-small: 4px;
 $border-radius-medium: 8px;
+
+$border-color: #e0e0e0;

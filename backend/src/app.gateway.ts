@@ -3,24 +3,27 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({ cors: { origin: '*' } })
-export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class AppGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   @WebSocketServer()
   server: Server;
 
   private interval: NodeJS.Timeout;
 
-  constructor() {
+  afterInit() {
     this.interval = setInterval(() => {
       this.server.emit('heartbeat', { message: 'Server heartbeat' });
     }, 10000);
   }
 
   handleConnection(client: Socket) {
-    console.log('Client connected:', client.id);
+    console.log('App WS connected to:', client.nsp.name, 'client:', client.id);
   }
 
   handleDisconnect(client: Socket) {

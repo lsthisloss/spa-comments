@@ -1,23 +1,20 @@
-import { IsNotEmpty, IsEmail, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
 
 export class CreateCommentDto {
   @IsNotEmpty()
-  userName: string;
-
-  @IsEmail()
-  email: string;
+  content: string;
 
   @IsNotEmpty()
-  text: string;
+  @IsUUID()
+  postId: string;
 
   @IsOptional()
-  homePage?: string;
+  @IsUUID()
+  userId?: string;
 
   @IsOptional()
+  @IsUUID()
   parentId?: string | null;
-
-  @IsOptional()
-  imageUrl?: string;
 
   @IsOptional()
   file?: {
@@ -27,14 +24,21 @@ export class CreateCommentDto {
   };
 
   @IsOptional()
-  fileUrl?: string;
+  image?: {
+    name: string;
+    type: string;
+    base64: string;
+  };
 
   @IsOptional()
-  fileName?: string;
+  fileUrl?: string | null;
 
   @IsOptional()
-  fileType?: string;
+  fileName?: string | null;
 
   @IsOptional()
-  likes?: number;
+  fileType?: string | null;
+
+  @IsOptional()
+  imageUrl?: string | null;
 }

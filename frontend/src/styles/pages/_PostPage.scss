@@ -1,0 +1,24 @@
+@import '../base/variables';
+
+.post-page-container {
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  .post-header {
+    display: flex;
+    align-items: center;
+    padding: $spacing-medium;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .post-span {
+    font-weight: 600;
+    font-size: $font-size-xlarge;
+  }
+
+  .ant-dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

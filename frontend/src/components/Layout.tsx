@@ -1,49 +1,57 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import Sidebar from './SideBar';
 import '../styles/main.scss';
+import { useState } from 'react';
+import { logger } from '../utils/Logger';
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children: (props: { activeTab: 'all' | 'my' }) => React.ReactNode;
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const navigate = useNavigate();
   const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
 
-  const activeTab = location.pathname === '/whoami' ? 'Who Am I' : 'Posts';
-
-  const handleTabClick = (tab: string) => {
-    if (tab === 'Posts') {
-      navigate('/');
-    } else if (tab === 'Who Am I') {
-      navigate('/whoami');
-    }
+  const handleTabClick = (tab: 'all' | 'my') => {
+    if (tab === activeTab) return; // Пропускаем если уже активен
+    
+    logger.log(`Switching tab from ${activeTab} to ${tab}`);
+    setActiveTab(tab);
+    
   };
+
+  const hideTabs =
+    /^\/post\/\w+/.test(location.pathname) ||
+    /^\/profile\/\w+/.test(location.pathname) ||
+    /^\/auth\/\w+/.test(location.pathname) ||
+    /^\/comment\/\w+/.test(location.pathname);
 
   return (
     <div className="main-page">
+      <div className="main-sidebar">
+        <Sidebar />
+      </div>
       <div className="main-area">
-        <div className="tabs">
-          <div
-            className={`tab ${activeTab === 'Posts' ? 'active-tab' : ''}`}
-            onClick={() => handleTabClick('Posts')}
-          >
-            Posts
+        {!hideTabs && (
+          <div className="tabs">
+            <div
+              className={`tab ${activeTab === 'all' ? 'active-tab' : ''}`}
+              onClick={() => handleTabClick('all')}
+            >
+              Feed
+            </div>
+            <div
+              className={`tab ${activeTab === 'my' ? 'active-tab' : ''}`}
+              onClick={() => handleTabClick('my')}
+            >
+              Following
+            </div>
           </div>
-          <div
-            className={`tab ${activeTab === 'Who Am I' ? 'active-tab' : ''}`}
-            onClick={() => handleTabClick('Who Am I')}
-          >
-            Who Am I
-          </div>
-        </div>
+        )}
         <main className="main-content">
-          {children}
+          {children({ activeTab })}
         </main>
       </div>
-      <nav className="main-sidebar">
-        <Sidebar />
-      </nav>
     </div>
   );
 }

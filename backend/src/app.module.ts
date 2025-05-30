@@ -1,25 +1,41 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
+import { UsersModule } from './users/users.module';
+import { PostsModule } from './posts/posts.module';
 import { CommentsModule } from './comments/comments.module';
+import { AuthModule } from './auth/auth.module';
 import { AppGateway } from './app.gateway';
-import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
+
+import { User } from './users/entities/user.entity';
+import { Post } from './posts/entities/post.entity';
+import { Comment } from './comments/entities/comment.entity';
 
 @Module({
   imports: [
+    ConfigModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: process.env.DB_HOST || 'postgres',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      username: process.env.DB_USER || 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      username: process.env.DB_USERNAME || 'postgres',
       password: process.env.DB_PASSWORD || 'password',
       database: process.env.DB_NAME || 'spa_comments',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
+      entities: [User, Post, Comment],
+      synchronize: process.env.NODE_ENV !== 'production',
+      logging: process.env.NODE_ENV !== 'production',
     }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
+    }),
+    UsersModule,
+    PostsModule,
     CommentsModule,
-    RabbitMQModule,
+    AuthModule,
   ],
   providers: [AppGateway],
-  exports: [AppGateway],
 })
 export class AppModule {}

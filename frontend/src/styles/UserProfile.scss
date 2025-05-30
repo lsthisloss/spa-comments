@@ -1,0 +1,336 @@
+.user-profile {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 16px;
+  
+  // Заголовок с кнопкой назад
+  &__header {
+    display: flex;
+    align-items: center;
+    margin: 16px 0;
+    
+    @media (max-width: 768px) {
+      margin: 12px 0;
+    }
+  }
+    &__buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    
+    @media (max-width: 576px) {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+  
+  // Кнопки профиля
+  &__edit-button {
+    border-radius: 24px !important;
+    font-weight: 500;
+    height: 40px;
+    padding: 0 20px !important;
+    display: flex !important;
+    align-items: center;
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(22, 119, 255, 0.25) !important;
+    }
+    
+    @media (max-width: 576px) {
+      height: 36px;
+      min-width: 120px;
+      justify-content: center;
+    }
+  }
+  &__back-button {
+    border-radius: 24px !important;
+    padding: 8px 16px !important;
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease-in-out !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    
+    &:hover {
+      transform: translateX(-3px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+    }
+    
+    .anticon {
+      transition: transform 0.2s ease;
+    }
+    
+    &:hover .anticon {
+      transform: translateX(-2px);
+    }
+  }
+  
+  // Основная карточка профиля
+  &__card {
+    margin: 24px 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.3s ease;
+    background: white;
+    
+    &:hover {
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    @media (max-width: 768px) {
+      margin: 16px 0;
+      border-radius: 12px;
+    }
+  }
+  
+  // Контейнер содержимого карточки
+  &__profile-container {
+    display: flex;
+    align-items: center;
+    padding: 32px;
+    
+    @media (max-width: 576px) {
+      padding: 16px;
+      flex-direction: column;
+      text-align: center;
+      gap: 16px;
+    }
+  }
+  
+  // Аватар пользователя
+  &__avatar {
+    flex-shrink: 0;
+    width: 96px !important;
+    height: 96px !important;
+    font-size: 40px !important;
+    margin-right: 32px;
+    border: 4px solid white;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    
+    &:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    }
+    
+    @media (max-width: 576px) {
+      margin-right: 0;
+      width: 80px !important;
+      height: 80px !important;
+      font-size: 32px !important;
+    }
+  }
+  
+  // Информация о пользователе
+  &__info {
+    flex: 1;
+    
+    &-name {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      line-height: 1.2;
+      color: #333;
+      
+      @media (max-width: 576px) {
+        font-size: 22px;
+      }
+    }
+    
+    &-email {
+      color: #666;
+      margin-bottom: 16px;
+      font-size: 16px;
+      
+      @media (max-width: 576px) {
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+    }
+  }
+  
+  // Кнопка редактирования профиля
+  &__edit-button {
+    border-radius: 24px !important;
+    font-weight: 500;
+    height: 40px;
+    padding: 0 20px !important;
+    display: flex !important;
+    align-items: center;
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(22, 119, 255, 0.25) !important;
+    }
+    
+    @media (max-width: 576px) {
+      width: 100%;
+      height: 36px;
+      justify-content: center;
+    }
+  }
+
+  // Табы для навигации
+  &__tabs {
+    display: flex;
+    border-bottom: 1px solid #eaeaea;
+    margin: 0;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    
+    @media (max-width: 576px) {
+      justify-content: space-between;
+    }
+    
+    .tab {
+      padding: 16px 24px;
+      cursor: pointer;
+      font-weight: 500;
+      color: #555;
+      position: relative;
+      transition: all 0.3s ease;
+      
+      @media (max-width: 576px) {
+        padding: 12px;
+        font-size: 14px;
+        flex: 1;
+        text-align: center;
+      }
+      
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 0;
+        height: 3px;
+        background: #1677ff;
+        transition: all 0.3s ease;
+        transform: translateX(-50%);
+        border-radius: 3px 3px 0 0;
+      }
+      
+      &:hover {
+        color: #1677ff;
+        
+        &::after {
+          width: 20px;
+        }
+      }
+      
+      &.active-tab {
+        color: #1677ff;
+        font-weight: 600;
+        
+        &::after {
+          width: 100%;
+          max-width: 80px;
+        }
+      }
+    }
+  }
+  
+  // Контент секций
+  &__content {
+    padding: 24px 0;
+    min-height: 200px;
+    
+    @media (max-width: 576px) {
+      padding: 16px 0;
+    }
+    
+    &-empty {
+      text-align: center;
+      padding: 48px 16px;
+      color: #999;
+      font-size: 16px;
+      
+      .anticon {
+        font-size: 36px;
+        margin-bottom: 16px;
+        opacity: 0.4;
+      }
+    }
+  }
+}
+
+// Анимация для кнопки редактирования
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+// Стили для модального окна
+.edit-profile-modal {
+  &__form {
+    &-item {
+      margin-bottom: 20px;
+    }
+    
+    &-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    &-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      
+      &:focus {
+        border-color: #1677ff;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+      }
+    }
+  }
+    &__actions-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    &-button {
+      padding: 8px 16px;
+      border-radius: 4px;
+      background-color: #1677ff;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      
+      &:hover {
+        background-color: #105bbf;
+      }
+    }
+  }
+  &__actions {
+    display: flex;
+    justify-content: space-around;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  &__delete-button {
+    margin-right: auto;
+  }
+}

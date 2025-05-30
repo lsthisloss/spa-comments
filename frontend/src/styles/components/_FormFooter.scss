@@ -5,6 +5,7 @@
   align-items: center;
   justify-content: start;
   padding: $spacing-medium;
+  padding-right: 0;
   background-color: $color-background;
   gap: $spacing-xlarge;
 
@@ -32,7 +33,7 @@
     gap: $spacing-medium;
     margin-left: auto;
 
-        .ant-progress-circle {
+      .ant-progress-circle {
       font-size: $font-size-small;
     }
 

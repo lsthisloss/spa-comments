@@ -1,6 +1,5 @@
 import { OnModuleInit, OnModuleDestroy, Injectable } from '@nestjs/common';
 import * as amqp from 'amqplib';
-import { env } from 'node:process';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -19,13 +18,23 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   public chunkLengthLimit: number = 500;
 
   isConnected(): boolean {
-    return !!this.connection && !this.connection.closed;
+    return (
+      !!this.connection &&
+      typeof (this.connection as { closed?: boolean }).closed === 'boolean' &&
+      !(this.connection as { closed: boolean }).closed
+    );
   }
   async onModuleInit() {
     if (RabbitMQService.isInitialized) {
-      this.connection = RabbitMQService.connection;
-      this.channel = RabbitMQService.channel;
-      return;
+      if (RabbitMQService.connection && RabbitMQService.channel) {
+        this.connection = RabbitMQService.connection;
+        this.channel = RabbitMQService.channel;
+        return;
+      } else {
+        throw new Error(
+          'RabbitMQ static connection or channel is not initialized.',
+        );
+      }
     }
 
     while (true) {

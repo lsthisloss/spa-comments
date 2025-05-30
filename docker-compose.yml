@@ -1,4 +1,3 @@
-
 services:
   postgres:
     image: postgres:15
@@ -30,18 +29,19 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-      - "5672:5672" # Порт для RabbitMQ
-      - "15672:15672" # Порт для RabbitMQ Management UI
+      - "5672:5672"
+      - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-      
+
   backend:
     build: ./backend
     container_name: backend
     ports:
-      - "3001:3000"
-    #volumes:
-    #  - ./backend:/app
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
     depends_on:
       - postgres
       - rabbitmq
@@ -52,16 +52,19 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_HOST: rabbitmq
       RABBITMQ_DEFAULT_PORT: 5672
+    command: npm run dev
 
   frontend:
     build: ./frontend
     container_name: frontend
     ports:
       - "5174:5173"
-    #volumes:
-     # - ./frontend:/app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
+    command: npm run dev
 
 volumes:
   postgres_data:

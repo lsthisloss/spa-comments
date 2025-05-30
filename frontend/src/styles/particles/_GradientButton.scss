@@ -1,0 +1,50 @@
+@keyframes burning-effect {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.linearGradientButton {
+  &.ant-btn-primary:not([disabled]):not(.ant-btn-dangerous) {
+    position: relative;
+    overflow: hidden;
+    color: #fff;
+    background: linear-gradient(45deg, #00aaff, #5b09cd, #c91d55);
+    background-size: 200% 200%;
+    border-radius: 16px;
+    transition: background-position 0.5s ease, box-shadow 0.3s ease;
+    border: none;
+    padding: 8px 16px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
+
+    &:hover {
+      background-position: 100% 0;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(45deg, #ff4500, #ffae00, #ff4500, #ff0000);
+      background-size: 300% 300%;
+      z-index: -1;
+      animation: burning-effect 5s infinite;
+    }
+  }
+}

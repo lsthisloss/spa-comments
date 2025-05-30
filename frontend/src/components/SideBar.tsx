@@ -1,24 +1,81 @@
 import { Menu } from 'antd';
-import { HomeOutlined, IdcardOutlined } from '@ant-design/icons';
+import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import '../styles/main.scss';
+import { XIcon } from './ui/particles/XIcon';
+import userStore from '../services/stores/UserStore';
+import authStore from '../services/stores/AuthStore';
+import { postStore } from '../services/stores/PostStore';
+import { observer } from 'mobx-react-lite';
+import { logger } from '../utils/Logger';
 
-export default function Sidebar() {
+const Sidebar = observer(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed] = useState(false);
 
+  // Функция для навигации на главную с очисткой состояния
+  const navigateToHome = () => {
+    logger.log('[Sidebar] Navigating to home - clearing saved state and loading fresh feed');
+    
+    // Очищаем все сохраненные данные
+    postStore.feedSavedPosts.clear();
+    postStore.feedScrollPosition = 0;
+    
+    // Переходим на главную
+    navigate('/', { replace: true });
+    
+    // Загружаем свежую ленту
+    setTimeout(() => {
+      postStore.fetchPosts('feed', 1);
+    }, 100);
+  };
+
   const menuItems = [
     {
-      key: '/',
-      icon: <HomeOutlined className="sidebar-icon" />,
+      key: '/x',
+      icon: <XIcon className="sidebar-icon" />,
+      label: '',
+      onClick: navigateToHome, // Используем функцию очистки
+      className: 'x-menu-item',
     },
-    {
-      key: '/whoami',
-      icon: <IdcardOutlined className="sidebar-icon" />,
+    { 
+      key: '/', 
+      icon: <HomeOutlined className="sidebar-icon" />, 
+      label: 'Home',
+      onClick: navigateToHome // Используем функцию очистки
     },
-  ];
+    userStore.user && {
+      key: userStore.user ? `/profile/${userStore.user.id}` : '',
+      icon: <UserOutlined className="sidebar-icon" />,
+      label: 'Me',
+      onClick: () => {
+        if (userStore.user) {
+          navigate(`/profile/${userStore.user.id}`);
+        }
+      },
+    },
+    userStore.user
+      ? {
+          key: 'logout',
+          icon: <LogoutOutlined className="sidebar-icon" />,
+          label: 'Out',
+          onClick: () => {
+            authStore.logout();
+            userStore.setUser(null);
+            navigate('/auth');
+          },
+        }
+      : {
+          key: 'login',
+          icon: <LoginOutlined className="sidebar-icon" />,
+          label: 'In',
+          onClick: () => {
+            navigate('/auth');
+          },
+        },
+  ].filter(Boolean);
 
   return (
     <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -27,8 +84,17 @@ export default function Sidebar() {
         className="sidebar-menu"
         items={menuItems}
         selectedKeys={[location.pathname]}
-        onClick={({ key }) => navigate(key)}
+        onClick={({ key }) => {
+          // Для главной страницы используем специальную функцию
+          if (key === '/' || key === '/x') {
+            navigateToHome();
+          } else {
+            navigate(key);
+          }
+        }}
       />
     </nav>
   );
-}
+});
+
+export default Sidebar;

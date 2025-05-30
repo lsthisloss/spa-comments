@@ -1,0 +1,127 @@
+@import './base/variables';
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background-color: $color-sidebar-bg;
+  box-sizing: border-box;
+  transition: width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  &.collapsed {
+    width: 60px;
+  }
+  @media (max-width: $breakpoint-tablet) {
+    .ant-menu-title-content {
+      display: none;
+    }
+  
+    .ant-menu-item {
+      justify-content: center;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      width: 100%;
+  
+      display: flex;
+      align-items: center;
+    }
+  }
+}
+
+
+.sidebar-menu {
+  width: 100%;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-medium;
+  font-size: $font-size-large;
+  padding: 0;
+  border-inline-end: 0 !important;
+
+
+  .ant-menu-item {
+    justify-content: center;
+
+    span {
+      display: inline;
+    }
+    .ant-menu-title-content {
+        display: inline !important; 
+        visibility: visible !important; 
+        opacity: 1 !important;
+      }
+    .sidebar-icon {
+      font-size: 24px; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+      width: 20px; 
+      height: 20px; 
+      text-align: center;
+    }
+
+    &.ant-menu-item-selected {
+      background: none !important;
+      font-weight: bold;
+    }
+  }
+}
+
+@media (max-width: $breakpoint-tablet) {
+  .sidebar-menu {
+    flex-direction: row !important;
+    display: flex !important;
+    justify-content: space-evenly;
+    gap: 20px;
+    border-bottom: none;
+    background: #fff;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    
+    .ant-menu-item:first-child {
+      display: none !important;
+    }
+    
+    .ant-menu-item {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0 !important;
+      min-width: 0;
+      padding: 10px !important;
+      position: relative;
+      font-weight: bold;
+      color: $color-primary;
+      
+      .ant-menu-title-content {
+        display: none !important;
+      }
+      
+      .sidebar-icon {
+        font-size: $font-size-large;
+        margin: 0;
+      }
+      
+      &.ant-menu-item-selected {
+        &::after {
+          content: '';
+          position: absolute;
+          bottom: -1px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          height: 2px;
+          background-color: $color-primary;
+          top: auto;
+        }
+      }
+    }
+  }
+}

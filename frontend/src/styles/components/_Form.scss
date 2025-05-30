@@ -1,0 +1,70 @@
+@import '../../styles/base/variables';
+
+.item-form {
+  display: flex;
+  flex-direction: column;
+  border: none;
+  padding-left: $spacing-large;
+  border-bottom: 1px solid $color-border;
+  padding-top: 12px;
+  padding-right: $spacing-large;
+  @media (max-width: $breakpoint-tablet) {
+    .form-header {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .input-area {
+      font-size: $font-size-large;
+      min-width: 0;
+      width: 100%;
+    }
+  }
+  &:focus-within {
+    box-shadow: none;
+  }
+}
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.item-avatar {
+  align-self: flex-start;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  background-color: #646cff;
+  color: white;
+  font-size: $font-size-large;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.input-area.ant-input {
+  font-size: $font-size-xlarge;
+  border: none;
+  box-shadow: none;
+  resize: none;
+
+  &:focus {
+    outline: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  &::placeholder {
+    font-size: $font-size-xlarge;
+    color: $color-text-secondary;
+  }
+}
+
+.character-counter {
+  font-size: $font-size-small;
+  color: $color-text-secondary;
+  text-align: right;
+  margin-top: $spacing-small;
+}
