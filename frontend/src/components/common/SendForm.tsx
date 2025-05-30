@@ -21,7 +21,6 @@ const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: S
   const dragCounterRef = useRef(0);
   const isFormDisabled = sendFormStore.loading;
 
-  // Обновленный useEffect для получения данных пользователя включая аватар
   useEffect(() => {
     if (userStore.user?.id && userStore.user?.userName) {
       sendFormStore.initializeUser(
@@ -91,7 +90,6 @@ const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: S
         onDrop={handleDrop}
       >
         <div className="form-header">
-          {/* Условный рендеринг аватара пользователя */}
           {sendFormStore.avatarUrl ? (
             <Avatar
               className="item-avatar"

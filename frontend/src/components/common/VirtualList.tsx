@@ -1,23 +1,14 @@
-// Убираем ref API и упрощаем компонент
-
 import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import type { VirtualItem as TanStackVirtualItem } from '@tanstack/react-virtual';
 import { DebugInfo } from "../ui/modals/DebugInfo";
 import { logger } from '../../utils/Logger';
 
-// Убираем VirtualListRef интерфейс - больше не нужен
-// export interface VirtualListRef {
-//   forceUpdate: () => void;
-// }
-
-// Интерфейс для виртуальных элементов
 export interface VirtualListItem<T> extends TanStackVirtualItem {
   item: T;
   position?: number;
   height?: number;
 }
 
-// Интерфейс пропсов компонента (остается без изменений)
 interface VirtualListProps<T> {
   items: T[];
   renderItem: (virtualItem: VirtualListItem<T>, measureRef: (el: HTMLElement | null) => void) => ReactNode;
@@ -41,7 +32,6 @@ interface VirtualListProps<T> {
   initialLoadComplete?: boolean;
 }
 
-// Упрощенный компонент без ref
 function VirtualList<T>(props: VirtualListProps<T>) {
   const {
     items,
@@ -66,76 +56,101 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     initialLoadComplete = false,
   } = props;
 
-  // Все существующие refs остаются без изменений
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const topSensorRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(loading);
   const isHandlingRef = useRef(false);
   const lastLoadTimeRef = useRef<number>(0);
   const lastItemsCountRef = useRef(items.length);
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const topObserverRef = useRef<IntersectionObserver | null>(null);
   const initialLoadCompleteRef = useRef(false);
-  // Все useEffect и функции остаются точно такими же
+
+  // Синхронизация loadingRef
   useEffect(() => {
     loadingRef.current = loading;
+    logger.log(`[VirtualList] Loading state updated: ${loading}`);
   }, [loading]);
 
-    useEffect(() => {
-      if (initialLoadComplete) {
-        initialLoadCompleteRef.current = true;
-        logger.log('[VirtualList] Setting initialLoadComplete from props');
-      }
-    }, [initialLoadComplete]);
-
+  // Синхронизация initialLoadCompleteRef с пропом
   useEffect(() => {
-  if (items.length > 0 && !initialLoadCompleteRef.current) {
-    initialLoadCompleteRef.current = true;
-    logger.log('[VirtualList] Initial load completed with', items.length, 'items');
-  }
-}, [items.length]);
+    if (initialLoadComplete) {
+      initialLoadCompleteRef.current = true;
+      logger.log('[VirtualList] Setting initialLoadComplete from props');
+    }
+  }, [initialLoadComplete]);
 
+  // Сброс isHandlingRef после загрузки
+  useEffect(() => {
+    if (!loading && isHandlingRef.current) {
+      logger.log('[VirtualList] Loading finished, reset isHandlingRef');
+      isHandlingRef.current = false;
+    }
+  }, [loading]);
+
+  // Установка initialLoadCompleteRef при появлении items
+  useEffect(() => {
+    if (items.length > 0 && !initialLoadCompleteRef.current) {
+      initialLoadCompleteRef.current = true;
+      logger.log('[VirtualList] Initial load completed with', items.length, 'items');
+    }
+  }, [items.length]);
+
+  // Сброс флагов при очистке items
+  useEffect(() => {
+    if (items.length === 0) {
+      isHandlingRef.current = false;
+      initialLoadCompleteRef.current = false;
+      lastItemsCountRef.current = 0;
+      logger.log('[VirtualList] Items reset, flags cleared');
+    }
+  }, [items.length]);
+
+  // Сброс isHandlingRef при увеличении items (новая страница)
   useEffect(() => {
     const currentItemsCount = items.length;
-    
     if (currentItemsCount > lastItemsCountRef.current) {
       logger.log(`[VirtualList] Items increased from ${lastItemsCountRef.current} to ${currentItemsCount}, resetting loading state`);
-      
       isHandlingRef.current = false;
       lastLoadTimeRef.current = Date.now();
       lastItemsCountRef.current = currentItemsCount;
     }
   }, [items.length]);
 
+  // Главная логика IntersectionObserver
   const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
     const entry = entries[0];
     if (!entry || !onEndReached) return;
-    
+
     if (entry.isIntersecting) {
-      // Если страница только что загрузилась, и контент пуст - вызовем onEndReached
-      if (items.length === 0 && !loadingRef.current && !initialLoadCompleteRef.current) {
-        logger.log('[VirtualList] Empty list on first render, triggering load');
-        initialLoadCompleteRef.current = true;
+      // Если список пуст и не грузится — всегда пробуем загрузить
+      if (items.length === 0 && !loadingRef.current) {
+        logger.log('[VirtualList] Empty list, triggering load');
+        isHandlingRef.current = true;
+        initialLoadCompleteRef.current = false;
         onEndReached();
         return;
       }
-      
-      // Обычная логика обработки пересечения
-      if (!initialLoadCompleteRef.current && items.length === 0) {
-        logger.log(`[VirtualList] Ignoring first intersection, waiting for initial load to complete`);
-        return;
-      }
-      
+
+      // Если уже грузим или всё загружено — не грузим
       if (isHandlingRef.current || loadingRef.current || allLoaded) {
         return;
       }
-      
+
+      // Если только что загрузили — не грузим слишком часто
       const now = Date.now();
-      if (now - lastLoadTimeRef.current < 1000) {
+      if (now - lastLoadTimeRef.current < 500) {
         return;
       }
-      
+
+      // Ключевой момент: если initialLoadCompleteRef сброшен, но посты есть — разрешаем догрузку!
+      if (!initialLoadCompleteRef.current && items.length > 0 && !loadingRef.current && !allLoaded) {
+        logger.log('[VirtualList] Forcing load more: items exist but initialLoadCompleteRef is false');
+        isHandlingRef.current = true;
+        lastLoadTimeRef.current = now;
+        onEndReached();
+        return;
+      }
+
       logger.log(`[VirtualList] Intersection triggered loading`);
       isHandlingRef.current = true;
       lastLoadTimeRef.current = now;
@@ -143,35 +158,30 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     }
   }, [onEndReached, allLoaded, items]);
 
-  const handleTopIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
+  // Manual mode переключение по скроллу (без второго observer)
+  useEffect(() => {
     if (!enableManualModeTracking) return;
-    
-    const entry = entries[0];
-    const isAtTop = entry.isIntersecting;
-    
-    if (isAtTop) {
-      logger.log('[VirtualList] User scrolled to top, triggering onScrollToTop');
-      onScrollToTop?.();
-    } else {
-      logger.log('[VirtualList] User scrolled down, triggering onScrollDown');
+    const firstVisibleIndex = virtualItems[0]?.index ?? 0;
+    if (firstVisibleIndex > 0 && !manualMode) {
+      logger.log('[VirtualList] User scrolled down, enabling manual update mode');
       onScrollDown?.();
+    } else if (firstVisibleIndex === 0 && manualMode) {
+      logger.log('[VirtualList] User scrolled to top, disabling manual update mode');
+      onScrollToTop?.();
     }
-  }, [enableManualModeTracking, onScrollToTop, onScrollDown]);
+  }, [virtualItems, manualMode, enableManualModeTracking, onScrollDown, onScrollToTop]);
 
+  // Setup IntersectionObserver (только один)
   useEffect(() => {
     if (!sentinelRef.current || !onEndReached) return;
-    
     const options = {
       root: null,
       rootMargin: `${endReachedThreshold}px`,
       threshold: 0,
     };
-
     observerRef.current = new IntersectionObserver(handleIntersection, options);
     observerRef.current.observe(sentinelRef.current);
-
     logger.log(`[VirtualList] Load-more IntersectionObserver setup with threshold ${endReachedThreshold}px`);
-    
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
@@ -180,28 +190,6 @@ function VirtualList<T>(props: VirtualListProps<T>) {
       }
     };
   }, [onEndReached, endReachedThreshold, handleIntersection]);
-
-  useEffect(() => {
-    if (!enableManualModeTracking || !topSensorRef.current) return;
-
-    const options = {
-      threshold: 0.1,
-      rootMargin: '0px 0px -90% 0px'
-    };
-
-    topObserverRef.current = new IntersectionObserver(handleTopIntersection, options);
-    topObserverRef.current.observe(topSensorRef.current);
-
-    logger.log(`[VirtualList] Top-scroll IntersectionObserver setup`);
-    
-    return () => {
-      if (topObserverRef.current) {
-        topObserverRef.current.disconnect();
-        topObserverRef.current = null;
-        logger.log(`[VirtualList] Top-scroll IntersectionObserver disconnected`);
-      }
-    };
-  }, [enableManualModeTracking, handleTopIntersection]);
 
   if (items.length === 0 && !loading && emptyComponent) {
     return <>{emptyComponent}</>;
@@ -223,23 +211,6 @@ function VirtualList<T>(props: VirtualListProps<T>) {
 
   return (
     <div className={`virtual-list-container ${className}`}>
-      {enableManualModeTracking && (
-        <div 
-          ref={topSensorRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '10px',
-            pointerEvents: 'none',
-            zIndex: -1,
-            opacity: 0
-          }}
-          data-testid="top-sensor"
-        />
-      )}
-      
       <div 
         ref={listRef}
         style={{

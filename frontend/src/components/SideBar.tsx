@@ -32,50 +32,59 @@ const Sidebar = observer(() => {
     }, 100);
   };
 
-  const menuItems = [
-    {
-      key: '/x',
-      icon: <XIcon className="sidebar-icon" />,
-      label: '',
-      onClick: navigateToHome, // Используем функцию очистки
-      className: 'x-menu-item',
-    },
-    { 
-      key: '/', 
-      icon: <HomeOutlined className="sidebar-icon" />, 
-      label: 'Home',
-      onClick: navigateToHome // Используем функцию очистки
-    },
-    userStore.user && {
-      key: userStore.user ? `/profile/${userStore.user.id}` : '',
-      icon: <UserOutlined className="sidebar-icon" />,
-      label: 'Me',
-      onClick: () => {
-        if (userStore.user) {
-          navigate(`/profile/${userStore.user.id}`);
-        }
+const menuItems = [
+  {
+    key: '/x',
+    icon: <XIcon className="sidebar-icon" />,
+    label: '',
+    className: 'x-menu-item',
+  },
+  { 
+    key: '/', 
+    icon: <HomeOutlined className="sidebar-icon" />, 
+    label: 'Home',
+  },
+  userStore.user && {
+    key: userStore.user ? `/profile/${userStore.user.id}` : '',
+    icon: <UserOutlined className="sidebar-icon" />,
+    label: 'Me',
+  },
+  userStore.user
+    ? {
+        key: 'logout',
+        icon: <LogoutOutlined className="sidebar-icon" />,
+        label: 'Out',
+      }
+    : {
+        key: 'login',
+        icon: <LoginOutlined className="sidebar-icon" />,
+        label: 'In',
       },
-    },
-    userStore.user
-      ? {
-          key: 'logout',
-          icon: <LogoutOutlined className="sidebar-icon" />,
-          label: 'Out',
-          onClick: () => {
-            authStore.logout();
-            userStore.setUser(null);
-            navigate('/auth');
-          },
+].filter(Boolean);
+
+return (
+  <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <Menu
+      mode="inline"
+      className="sidebar-menu"
+      items={menuItems}
+      selectedKeys={[location.pathname]}
+      onClick={({ key }) => {
+        if (key === '/' || key === '/x') {
+          navigateToHome();
+        } else if (key === 'logout') {
+          authStore.logout();
+          userStore.setUser(null);
+          navigate('/auth');
+        } else if (key === 'login') {
+          navigate('/auth');
+        } else {
+          navigate(key);
         }
-      : {
-          key: 'login',
-          icon: <LoginOutlined className="sidebar-icon" />,
-          label: 'In',
-          onClick: () => {
-            navigate('/auth');
-          },
-        },
-  ].filter(Boolean);
+      }}
+    />
+  </nav>
+);
 
   return (
     <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>

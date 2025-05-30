@@ -35,7 +35,6 @@ const MemoizedTooltip = React.memo(
   )
 );
 
-// Мемоизированный компонент содержимого
 const MemoizedItemContent = React.memo(function ItemContent({
   item,
   type,
@@ -281,12 +280,10 @@ function FeedItemComponent(props: FeedItemProps) {
   <Card 
     className={`${type}-item fade-in`} 
     variant="borderless"
-    // Передаем onClick только если он есть в пропсах
     {... props.onClick ? { onClick: handleItemClick } : {}}
     style={{ cursor: 'default' }}
   >
     <div className="item-layout" data-id={item.id}>
-      {/* Замените существующий div.item-avatar на этот код */}
       {item.user?.avatarUrl ? (
         <div 
           className="item-avatar" 

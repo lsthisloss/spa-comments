@@ -72,14 +72,18 @@ const PostsThread = observer(({ activeTab, userId }: PostsFeedProps) => {
 
   // Загрузка следующей страницы
   const handleLoadMore = useCallback(() => {
-    if (feed.loading || feed.allLoaded || !initialLoadRef.current) {
-      logger.log(`[PostsThread] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}, initialLoad=${initialLoadRef.current}`);
-      return;
-    }
+  if (feed.loading || feed.allLoaded) {
+    logger.log(`[PostsThread] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
+    return;
+  }
+  if (!initialLoadRef.current && feed.list.length === 0) {
+    logger.log(`[PostsThread] Skipping loadMore: initialLoad=false and no items`);
+    return;
+  }
 
     logger.log(`[PostsThread] Loading more ${feedType} posts, page ${feed.page + 1}`);
     postStore.loadMore(feedType, userId);
-  }, [feedType, feed.loading, feed.allLoaded, feed.page, userId, initialLoadRef]);
+}, [feedType, feed.loading, feed.allLoaded, feed.page, userId, initialLoadRef, feed.list.length]);
 
   // Обработчик загрузки новых постов из буфера
   const handleLoadNewPosts = useCallback(() => {

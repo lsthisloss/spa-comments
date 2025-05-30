@@ -165,6 +165,10 @@ class NavigationStore {
     }
   }
 
+  clearCurrentState() {
+    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
+  }
+
   /**
    * Получает состояние для прямого URL (если пользователь перешел по прямой ссылке)
    */

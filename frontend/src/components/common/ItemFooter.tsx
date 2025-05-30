@@ -159,7 +159,7 @@ useEffect(() => {
         
         {(item.repliesCount ?? 0) > 0 && (
           <CommentPreviewDropdown 
-            postId={item.id} // Всегда передаем ID самого элемента
+            postId={item.id}
           >
             <Button
               type="text"

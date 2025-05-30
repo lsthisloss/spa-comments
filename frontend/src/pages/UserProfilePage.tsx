@@ -18,6 +18,7 @@ import PostsThread from "../components/posts/PostsThread";
 import EditProfileModal from "../components/user/modals/EditProfileModal";
 import AvatarModal from "../components/user/modals/AvatarModal";
 import UserSettings from "../components/user/UserSettings";
+import { navigationStore } from "../services/stores/NavigationStore";
 
 
 const TABS = [
@@ -67,21 +68,17 @@ const UserProfilePage = observer(() => {
   }, [userId, user, isLoading]);
 
   const handleGoBack = () => {
-    // Проверяем, есть ли история навигации
-    if (window.history.length > 1) {
-      // Если пришли по прямой ссылке или из внешнего источника
-      const referrer = document.referrer;
-      if (!referrer || !referrer.includes(window.location.origin)) {
-        navigate('/');
-      } else {
-        navigate(-1);
-      }
+    // Если есть откуда вернуться (из ленты или following)
+    if (navigationStore.currentState.fromFeed || navigationStore.currentState.fromFollowing) {
+      navigationStore.handleBackNavigation(navigate);
+      // Сбросить состояние после возврата
+      setTimeout(() => {
+        navigationStore.clearCurrentState();
+      }, 100); // Даем роутеру время перейти
     } else {
-      // Если нет истории, идем на главную
-      navigate('/');
+      navigate(-1);
     }
   };
-
   const handleFollow = async () => {
     if (!userId) return;
     setFollowLoading(true);
