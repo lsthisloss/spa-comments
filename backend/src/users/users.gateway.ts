@@ -14,6 +14,7 @@ import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { LoginUserDto } from './dto/login-user.dto';
 import { Socket, Server } from 'socket.io';
 import { AuthenticatedSocketData } from '../auth/jwt-payload.interface';
+import { isUUID } from 'class-validator';
 import { CommonWsService } from 'src/common/common-ws.service';
 
 interface AvatarUploadData {
@@ -55,6 +56,7 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('register')
   async handleRegister(@MessageBody() dto: CreateUserDto) {
     try {
+      console.log('REGISTER STACK:', new Error().stack);
       console.log(`
         Registration attempt for email: ${dto.email}, userName: ${dto.userName}`);
       const { token, user } = await this.usersService.createUser(
@@ -327,11 +329,34 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('getUser')
   async handleGetUser(@MessageBody() data: { userId: string }) {
     try {
-      console.log(`Getting user data for ID: ${data.userId}`);
+      let user;
+      if (isUUID(data.userId)) {
+        user = await this.usersService.getUserById(data.userId);
+      } else {
+        user = await this.usersService.getUserBySlug(data.userId);
+      }
+      console.log(`Getting user data for ID/slug: ${data.userId}`);
 
-      const user = await this.usersService.getUserById(data.userId);
       if (user) {
-        const { id, email, userName, following, followers } = user;
+        const {
+          id,
+          email,
+          userName,
+          slug,
+          avatarUrl,
+          avatarShape,
+          following,
+          followers,
+        } = user as {
+          id: string;
+          email: string;
+          userName: string;
+          slug: string;
+          avatarUrl: string;
+          avatarShape: string;
+          following: Array<{ id: string; userName: string }>;
+          followers: Array<{ id: string; userName: string }>;
+        };
         console.log(`User data retrieved: ${id} (${userName})`);
         return {
           success: true,
@@ -339,8 +364,9 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
             id,
             email,
             userName,
-            avatarUrl: user.avatarUrl,
-            avatarShape: user.avatarShape,
+            slug, // обязательно возвращай slug!
+            avatarUrl,
+            avatarShape,
             following: following || [],
             followers: followers || [],
           },

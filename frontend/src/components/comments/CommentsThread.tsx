@@ -61,10 +61,10 @@ const CommentsThread = observer(({
     
     // Если это страница с комментарием (есть parentId), всегда показываем ответы
     if (parentId && !postId) {
-      // 1. Принудительно показываем ответы
+      // Принудительно показываем ответы
       commentStore.setRepliesShown(parentId, true);
       
-      // 2. Загружаем ответы при необходимости
+      // Загружаем ответы при необходимости
       const replies = commentStore.getReplies(parentId);
       if (!replies || replies.length === 0) {
         logger.log(`CommentsThread: Загружаем ответы для комментария ${parentId}`);
@@ -169,30 +169,6 @@ const CommentsThread = observer(({
     </div>
   );
 
-  if (comments.length === 0 && !loading) {
-    return (
-      <div>
-        {headerComponent}
-        <Empty 
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={`No ${isPost ? 'comments' : 'replies'} yet`} 
-        />
-      </div>
-    );
-  }
-
-  if (comments.length === 0 && loading) {
-    return (
-      <div>
-        {headerComponent}
-        <div style={{ padding: '20px', textAlign: 'center' }}>
-          <Spin size="large" />
-          <p>Loading {isPost ? 'comments' : 'replies'}...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="comments-thread">
       {headerComponent}
@@ -207,6 +183,8 @@ const CommentsThread = observer(({
         loading={loading}
         loadingIndicator={loadingIndicator}
         allLoaded={comments.length >= totalComments}
+        loadingMessage="Loading comments..."
+        emptyMessage="No comments available"
       />
     </div>
   );

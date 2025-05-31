@@ -8,6 +8,9 @@ import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { CommentResponseDto } from './dto/comment-response.dto';
+import { ElasticsearchService } from '@nestjs/elasticsearch';
+import { slugify } from '../utils/slugify';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class CommentsService {
@@ -19,7 +22,10 @@ export class CommentsService {
     private readonly postRepository: Repository<Post>,
     @InjectRepository(Comment)
     private readonly commentRepository: Repository<Comment>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly rabbitMQService: RabbitMQService,
+    private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
   /**
@@ -52,6 +58,8 @@ export class CommentsService {
           'user.userName',
           'user.avatarUrl',
           'user.avatarShape',
+          'user.slug',
+          'user.email',
         ]);
 
       if (isPostId) {
@@ -64,7 +72,6 @@ export class CommentsService {
         queryBuilder.where('entity.parentId = :parentId', { parentId });
       }
 
-      // Добавляем сортировку
       queryBuilder.orderBy(orderBy, 'DESC');
 
       // Если сортировка по лайкам, добавляем вторичную сортировку по дате
@@ -72,7 +79,6 @@ export class CommentsService {
         queryBuilder.addOrderBy('entity.createdAt', 'DESC');
       }
 
-      // Добавляем пагинацию
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       // Получаем результаты и общее количество
@@ -85,7 +91,6 @@ export class CommentsService {
             where: { parentId: comment.id },
           });
 
-          // ✅ ИСПРАВЛЕНО: Сохраняем объект user с данными об аватарке
           const response = new CommentResponseDto();
           Object.assign(response, comment);
           response.userName = comment.user?.userName || 'Unknown';
@@ -95,6 +100,8 @@ export class CommentsService {
             userName: comment.user?.userName,
             avatarUrl: comment.user?.avatarUrl,
             avatarShape: comment.user?.avatarShape,
+            slug: comment.user?.slug,
+            email: comment.user?.email,
           };
 
           return response;
@@ -176,7 +183,10 @@ export class CommentsService {
       repliesCount: 0,
     };
 
-    const comment = this.commentRepository.create(commentData);
+    const comment = this.commentRepository.create({
+      ...commentData,
+      slug: slugify(createCommentDto.content.slice(0, 50)) + '-' + Date.now(),
+    });
 
     // Генерируем числовой ID
     const base = Date.now().toString();
@@ -187,7 +197,39 @@ export class CommentsService {
 
     // Сохраняем комментарий
     const savedComment = await this.commentRepository.save(comment);
+    const post = await this.postRepository.findOne({
+      where: { id: createCommentDto.postId },
+    });
 
+    if (!post) {
+      throw new Error('Post not found');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: createCommentDto.userId },
+      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
+    });
+
+    // --- Индексация в Elasticsearch ---
+    await this.elasticsearchService.index({
+      index: 'comments',
+      id: savedComment.id,
+      document: {
+        id: savedComment.id,
+        content: savedComment.content,
+        slug: savedComment.slug,
+        author: user
+          ? {
+              id: user.id,
+              userName: user.userName,
+              avatarUrl: user.avatarUrl,
+              avatarShape: user.avatarShape,
+              slug: user.slug,
+              email: user.email,
+            }
+          : null,
+      },
+    });
     // Увеличиваем счетчик комментариев в посте
     if (!savedComment.parentId) {
       // Только для комментариев верхнего уровня обновляем счетчик в посте
@@ -369,6 +411,56 @@ export class CommentsService {
     } catch (error) {
       console.error('Error unliking comment:', error);
       return { success: false, message: 'Database error' };
+    }
+  }
+
+  /**
+   * Поиск комментария по слагу
+   */
+  async findCommentBySlug(slug: string): Promise<CommentResponseDto | null> {
+    try {
+      const comment = await this.commentRepository
+        .createQueryBuilder('entity')
+        .leftJoinAndSelect('entity.user', 'user')
+        .select([
+          'entity',
+          'user.id',
+          'user.userName',
+          'user.avatarUrl',
+          'user.avatarShape',
+          'user.slug',
+          'user.email',
+        ])
+        .where('entity.slug = :slug', { slug })
+        .getOne();
+
+      if (!comment) {
+        console.log(`Comment with slug ${slug} not found`);
+        return null;
+      }
+
+      const repliesCount = await this.commentRepository.count({
+        where: { parentId: comment.id },
+      });
+
+      const response = new CommentResponseDto();
+      Object.assign(response, comment);
+      response.userName = comment.user?.userName || 'Unknown';
+      response.repliesCount = repliesCount;
+      response.user = {
+        id: comment.user?.id,
+        userName: comment.user?.userName,
+        avatarUrl: comment.user?.avatarUrl,
+        avatarShape: comment.user?.avatarShape,
+        slug: comment.user?.slug,
+        email: comment.user?.email,
+      };
+
+      console.log(`Found comment by slug ${slug}: ${comment.id}`);
+      return response;
+    } catch (error) {
+      console.error(`Error finding comment by slug ${slug}:`, error);
+      throw error;
     }
   }
 }

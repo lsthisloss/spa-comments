@@ -3,4 +3,6 @@ export class UserBasicDto {
   userName?: string;
   avatarUrl?: string;
   avatarShape?: string;
+  slug?: string;
+  email?: string;
 }

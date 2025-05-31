@@ -326,4 +326,21 @@ export class CommentsGateway
       return { error: 'Failed to upload file' };
     }
   }
+
+  @SubscribeMessage('fetchCommentBySlug')
+  async handleFetchCommentBySlug(@MessageBody() data: { slug: string }) {
+    try {
+      console.log(`Fetching comment by slug: ${data.slug}`);
+
+      const comment = await this.commentsService.findCommentBySlug(data.slug);
+      if (!comment) {
+        return { comments: [], total: 0, error: 'Comment not found' };
+      }
+
+      return { comments: [comment], total: 1 };
+    } catch (error) {
+      console.error('Error fetching comment by slug:', error);
+      return { comments: [], total: 0, error: 'Failed to fetch comment' };
+    }
+  }
 }

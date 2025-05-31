@@ -13,74 +13,16 @@ import { navigationStore } from '../services/stores/NavigationStore';
 import userStore from '../services/stores/UserStore';
 
 const CommentPage = observer(() => {
-  const { commentId } = useParams<{ commentId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState<Comment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [repliesLoading, setRepliesLoading] = useState(false);
-  const [repliesSort, setRepliesSort] = useState<'date' | 'likes'>('date'); // Добавьте это состояние
-
-  // обработчик загрузки дополнительных ответов
-  const handleLoadMoreReplies = useCallback(() => {
-    if (!commentId) return;
-    
-    const replies = commentStore.getReplies(commentId);
-    const page = Math.floor(replies.length / 10) + 1;
-    
-    logger.log(`[CommentPage] Loading more replies, page: ${page}`);
-    setRepliesLoading(true);
-    
-    commentStore.loadComments(commentId, 10, page, repliesSort, true) 
-      .finally(() => {
-        setRepliesLoading(false);
-      });
-  }, [commentId, repliesSort]);
+  const [repliesSort, setRepliesSort] = useState<'date' | 'likes'>('date');
+  const { commentId } = useParams(); // commentId теперь это slug
 
   // Обработчик изменения сортировки ответов
-  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (sort === repliesSort || !commentId) return;
-    
-    logger.log(`[CommentPage] Changing replies sort to: ${sort}`);
-    setRepliesSort(sort);
-    setRepliesLoading(true);
-    
-    commentStore.loadComments(commentId, 10, 1, sort, true)
-      .finally(() => {
-        setRepliesLoading(false);
-      });
-  }, [commentId, repliesSort]);
-
-  // Навигационное состояние
-  useEffect(() => {
-    logger.log(`[CommentPage] Mount with commentId=${commentId}, has location state: ${!!location.state}`);
-    
-    if (location.state) {
-      logger.log('[CommentPage] Saving navigation state from location');
-      navigationStore.saveStateFromLocation(location.state);
-    } else {
-      logger.log('[CommentPage] Direct URL navigation, checking for saved state');
-      const savedState = navigationStore.getStateForDirectUrl(location.pathname);
-      if (savedState) {
-        logger.log('[CommentPage] Found saved state for direct URL');
-        navigationStore.saveStateFromLocation(savedState);
-      } else {
-        logger.log('[CommentPage] No saved state found, creating default state');
-        navigationStore.currentState = {
-          scrollPosition: 0,
-          timestamp: Date.now(),
-          navigationType: 'direct-url-comment'
-        };
-      }
-    }
-    
-    return () => {
-      logger.log('[CommentPage] Unmounting');
-    };
-  }, [location.state, location.pathname, commentId]);
-
- 
   useEffect(() => {
     if (!commentId) return;
 
@@ -89,23 +31,49 @@ const CommentPage = observer(() => {
         setLoading(true);
         setError(null);
         
-        logger.log(`[CommentPage] Loading comment ${commentId}`);
-        const fetchedComment = await commentStore.fetchComment(commentId);
+        logger.log(`[CommentPage] Loading comment by slug: ${commentId}`);
+        
+        let fetchedComment: Comment | null = commentStore.getCommentBySlug(commentId) || null;
         
         if (fetchedComment) {
+          logger.log(`[CommentPage] Found comment by slug in cache: ${fetchedComment.id}`);
           setComment(fetchedComment);
           
-          // Явно загружаем ответы сразу после загрузки комментария
-          logger.log(`[CommentPage] Loading replies ${commentId}`);
+          // Загружаем ответы для найденного комментария
+          logger.log(`[CommentPage] Loading replies for comment ${fetchedComment.id}`);
           setRepliesLoading(true);
-          await commentStore.loadComments(commentId, 10, 1, repliesSort, true);
+          await commentStore.loadComments(fetchedComment.id, 10, 1, repliesSort, true);
           setRepliesLoading(false);
         } else {
-          setError('[CommentPage] Comment not found');
+          // Если не найден в кэше, запрашиваем с backend по slug
+          logger.log(`[CommentPage] Comment not found in cache, fetching from server by slug: ${commentId}`);
+          
+          // Проверяем, существует ли метод fetchCommentBySlug
+          if (typeof commentStore.fetchCommentBySlug === 'function') {
+            fetchedComment = await commentStore.fetchCommentBySlug(commentId);
+          } else {
+            // Fallback: попробуем найти по ID если slug не работает
+            logger.warn(`[CommentPage] fetchCommentBySlug method not available, trying fetchComment`);
+            fetchedComment = await commentStore.fetchComment(commentId);
+          }
+          
+          if (fetchedComment) {
+            logger.log(`[CommentPage] Successfully fetched comment: ${fetchedComment.id}`);
+            setComment(fetchedComment);
+            
+            // Загружаем ответы
+            logger.log(`[CommentPage] Loading replies for fetched comment ${fetchedComment.id}`);
+            setRepliesLoading(true);
+            await commentStore.loadComments(fetchedComment.id, 10, 1, repliesSort, true);
+            setRepliesLoading(false);
+          } else {
+            logger.warn(`[CommentPage] Comment with slug/id ${commentId} not found`);
+            setError('Comment not found');
+          }
         }
       } catch (error) {
-        setError('[CommentPage] Error loading comment');
-        logger.error('[CommentPage] Err:', error);
+        setError('Error loading comment');
+        logger.error('[CommentPage] Error loading comment:', error);
       } finally {
         setLoading(false);
       }
@@ -114,16 +82,73 @@ const CommentPage = observer(() => {
     loadComment();
   }, [commentId, repliesSort]);
 
-  // Сохранение позиции скролла при размонтировании
-  useEffect(() => {
-    return () => {
-      logger.log(`[CommentPage] Unmounting, saving current scroll position`);
-      const currentScrollPosition = window.scrollY;
-      if (navigationStore.currentState) {
-        navigationStore.currentState.scrollPosition = currentScrollPosition;
+  const handleLoadMoreReplies = useCallback(() => {
+    if (!comment?.id) return;
+    
+    const replies = commentStore.getReplies(comment.id);
+    const page = Math.floor(replies.length / 10) + 1;
+    
+    logger.log(`[CommentPage] Loading more replies, page: ${page}`);
+    setRepliesLoading(true);
+    
+    commentStore.loadComments(comment.id, 10, page, repliesSort, true) 
+      .finally(() => {
+        setRepliesLoading(false);
+      });
+  }, [comment?.id, repliesSort]);
+
+  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
+    if (sort === repliesSort || !comment?.id) return;
+    
+    logger.log(`[CommentPage] Changing replies sort to: ${sort}`);
+    setRepliesSort(sort);
+    setRepliesLoading(true);
+    
+    commentStore.loadComments(comment.id, 10, 1, sort, true)
+      .finally(() => {
+        setRepliesLoading(false);
+      });
+  }, [comment?.id, repliesSort]);
+
+  const handleRetry = useCallback(() => {
+    if (!commentId) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    // Сначала пробуем по slug, потом по ID
+    const tryFetch = async () => {
+      let fetchedComment: Comment | null = null;
+      
+      // Пробуем по slug
+      if (typeof commentStore.fetchCommentBySlug === 'function') {
+        fetchedComment = await commentStore.fetchCommentBySlug(commentId);
       }
+      
+      // Если не получилось, пробуем по ID
+      if (!fetchedComment) {
+        fetchedComment = await commentStore.fetchComment(commentId);
+      }
+      
+      return fetchedComment;
     };
-  }, []);
+    
+    tryFetch()
+      .then(fetchedComment => {
+        if (fetchedComment) {
+          setComment(fetchedComment);
+        } else {
+          setError('Comment not found');
+        }
+      })
+      .catch(error => {
+        setError('Error loading comment');
+        logger.error('Error loading comment:', error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [commentId]);
 
   // Обработчик возврата назад
   const handleBackClick = useCallback(() => {
@@ -139,7 +164,7 @@ const CommentPage = observer(() => {
       
       if (comment?.postId) {
         logger.log(`[CommentPage] Comment belongs to post ${comment.postId}, navigating there`);
-        navigate(`/post/${comment.postId}`, { replace: true });
+        navigate(`/post/${comment.slug}`, { replace: true });
         return;
       }
       
@@ -173,29 +198,7 @@ const CommentPage = observer(() => {
     }
   }, [commentId]);
 
-  // Обработчик повторной попытки
-  const handleRetry = useCallback(() => {
-    if (!commentId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    commentStore.fetchComment(commentId)
-      .then(fetchedComment => {
-        if (fetchedComment) {
-          setComment(fetchedComment);
-        } else {
-          setError('Комментарий не найден');
-        }
-      })
-      .catch(error => {
-        setError('Ошибка загрузки комментария');
-        logger.error('Ошибка загрузки комментария:', error);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [commentId]);
+
 
   return (
     <section className="post-page-container">
@@ -245,7 +248,7 @@ const CommentPage = observer(() => {
             <div className="comment-form-container">
               <SendForm 
                 type="comment" 
-                parentId={commentId}
+                parentId={comment.id}
                 postId={comment.postId}
                 placeholder="Post your reply..."
                 onSuccess={handleReplySuccess}
@@ -255,8 +258,8 @@ const CommentPage = observer(() => {
 
          <div className="comments-section">
           <CommentsThread 
-            key={`replies-${commentId}`}
-            parentId={commentId} 
+            key={`replies-${comment.id}`}
+            parentId={comment.id} 
             loading={repliesLoading}
             onLoadMore={handleLoadMoreReplies}
             onSortChange={handleSortChange}

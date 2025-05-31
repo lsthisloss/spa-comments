@@ -18,7 +18,6 @@ const CommentItemContent = observer(function CommentItemInner(props: {
   const { item, disableShowMore, onNavigate, onShowMore } = props;
   const navigate = useNavigate();
 
-  // обработчик клика по лайку с логированием
   const handleLikeClick = useCallback(() => {
     if (userStore.user?.id) {
       logger.log(`Comment ${item.id} like clicked by user ${userStore.user.id}`);
@@ -41,15 +40,18 @@ const CommentItemContent = observer(function CommentItemInner(props: {
       
       // Сохраняем состояние и переходим на страницу комментария
       logger.log(`CommentItem: direct navigation to comment ${id}`);
+      const slug = item.slug || id;
+
       const navigationState = navigationStore.saveNavigationState("comment", id);
-      navigate(`/comment/${id}`, { state: navigationState });
+      navigate(`/comment/${slug}`, { state: navigationState });
     } catch (error) {
       logger.error(`Navigation error for comment ${id}:`, error);
-      
-      // Простая навигация без состояния в случае ошибки
-      navigate(`/comment/${id}`);
+
+      const slug = item.slug || id;
+      // Простая навигация без состояния
+      navigate(`/comment/${slug}`);
     }
-  }, [onNavigate, navigate]);
+  }, [onNavigate, navigate, item.slug]);
 
   return (
     <FeedItem

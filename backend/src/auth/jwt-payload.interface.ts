@@ -1,12 +1,11 @@
 export interface JwtPayload {
-  sub: string; // user ID
+  sub: string;
   email: string;
   userName: string;
-  iat?: number; // issued at
-  exp?: number; // expires at
+  iat?: number;
+  exp?: number;
 }
 
-// Добавляем тип для client.data в Socket
 export interface AuthenticatedSocketData {
   user: {
     id: string;

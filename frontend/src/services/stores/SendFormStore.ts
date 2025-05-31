@@ -36,8 +36,8 @@ avatarShape: 'circle' | 'square' = 'circle';
       errorMessage: observable,
       loading: observable,
       dragActive: observable,
-      avatarUrl: observable, // Добавьте это
-      avatarShape: observable, // Добавьте это
+      avatarUrl: observable,
+      avatarShape: observable,
       setText: action,
       setImagePreview: action,
       setSelectedFile: action,

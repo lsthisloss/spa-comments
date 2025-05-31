@@ -60,6 +60,7 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
         margin: '16px',
         border: '1px solid #f0f0f0',
         boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        position: 'relative',
       }}>
         <div style={{ 
           fontSize: '20px', 

@@ -31,21 +31,19 @@ const PostItem = memo(observer(function PostItem({
     }
   }, [post.id]);
 
-  // Создаем специальный обработчик для навигации через кнопку
   const handleNavigate = useCallback((id: string) => {
     logger.log(`PostItem: handling navigation for post ${id}`);
     
-    // Если есть внешний обработчик, вызываем его
     if (onClick) {
       logger.log(`PostItem: calling provided onClick`);
       onClick();
       return;
     }
-    
-    // Сохраняем состояние навигации и переходим на страницу поста
+    const post = postStore.getPostById?.(id);
+    const slug = post?.slug || id;
     logger.log(`PostItem: direct navigation to post ${id}`);
     const navigationState = navigationStore.saveNavigationState("post", id);
-    navigate(`/post/${id}`, { state: navigationState });
+    navigate(`/post/${slug}`, { state: navigationState });
   }, [onClick, navigate]);
 
   return (

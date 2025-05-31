@@ -25,19 +25,19 @@ export const MemoizedCommentItem = memo(({ comment, onClick, onHeightChange }: M
   
 const handleNavigate = useCallback((id: string) => {
   try {
-    // Вызываем родительский onClick, который должен выполнять навигацию
     if (onClick) {
       onClick(id);
     } else {
-      // Если onClick не предоставлен, выполняем навигацию напрямую
-      const navigationState = navigationStore.saveNavigationState("comment", id);
-      navigate(`/comment/${id}`, { state: navigationState });
+      const slug = comment.slug || id;
+      const navigationState = navigationStore.saveNavigationState("comment", slug);
+      navigate(`/comment/${slug}`, { state: navigationState });
     }
   } catch (error) {
     logger.error(`Navigation error in MemoizedCommentItem for ${id}:`, error);
-    navigate(`/comment/${id}`);
+    const slug = comment.slug || id;
+    navigate(`/comment/${slug}`);
   }
-}, [onClick, navigate]);
+}, [onClick, navigate, comment.slug]);
 
 
   return (

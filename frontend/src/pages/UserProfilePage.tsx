@@ -1,11 +1,10 @@
-import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Spin, Button, Avatar, Empty, Collapse, message } from "antd";
 import { 
   ArrowLeftOutlined, 
   EditOutlined, 
   InboxOutlined, 
-  MessageOutlined, 
   UserAddOutlined, 
   UserDeleteOutlined,
   SettingOutlined,
@@ -13,39 +12,103 @@ import {
 } from "@ant-design/icons";
 import { getAvatarColor } from "../components/ui/particles/avatarColor";
 import { observer } from "mobx-react";
+import { autorun } from "mobx";
 import userStore from "../services/stores/UserStore";
+import { postStore } from "../services/stores/PostStore";
 import PostsThread from "../components/posts/PostsThread";
 import EditProfileModal from "../components/user/modals/EditProfileModal";
 import AvatarModal from "../components/user/modals/AvatarModal";
 import UserSettings from "../components/user/UserSettings";
 import { navigationStore } from "../services/stores/NavigationStore";
-
+import { logger } from "../utils/Logger";
 
 const TABS = [
   { key: "posts", label: "Posts", icon: <InboxOutlined /> },
-  { key: "comments", label: "Comments", icon: <MessageOutlined /> },
 ];
 
 const UserProfilePage = observer(() => {
-  const { userId } = useParams();
+  const { userId: userIdParam } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("posts");
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-
+  
   // Используем UserStore как единый источник правды
   const currentUser = userStore.user;
-  const user = userId ? userStore.getCachedUser(userId) : null;
-  const isLoading = userId ? userStore.isUserLoading(userId) : false;
-  const isOwnProfile = currentUser && (currentUser.id === user?.id || currentUser.id === userId);
-  const isFollowing = userId ? userStore.isFollowing(userId) : false;
+  
+  // Определяем эффективный userId
+  const effectiveUserId = userIdParam || currentUser?.id || currentUser?.slug;
+  
+  // Получаем пользователя по UUID или slug
+  const user = effectiveUserId ? userStore.getCachedUser(effectiveUserId) : currentUser;
+  const isLoading = effectiveUserId ? userStore.isUserLoading(effectiveUserId) : false;
+  
+  const isOwnProfile = currentUser && user && currentUser.id === user.id;
+  const isFollowing = user?.id && !isOwnProfile ? userStore.isFollowing(user.id) : false;
 
-  const avatarLetter = user?.userName?.charAt(0).toUpperCase() || "?";
-  const avatarColor = getAvatarColor(avatarLetter);
+  // Проверяем preserveFeeds для сохранения лент
+  useEffect(() => {
+    interface LocationState {
+      preserveFeeds?: boolean;
+    }
+    const locationState = location.state as LocationState;
+    const shouldPreserveFeeds = locationState?.preserveFeeds;
+    
+    if (shouldPreserveFeeds) {
+      logger.log("[UserProfilePage] Preserving feeds state - not resetting following");
+      return;
+    }
+    
+    // Сбрасываем ленту подписок только если НЕ сохраняем состояние
+    logger.log("[UserProfilePage] Resetting following feed state");
+    postStore.resetFeedState("following");
+  }, [location.state]);
+
+  // ЭЛЕГАНТНЫЙ ПОДХОД: Отслеживаем изменения подписок через MobX
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Сохраняем начальное количество подписок
+    let initialFollowingCount = currentUser.following?.length || 0;
+    
+    logger.log(`[UserProfilePage] Initial following count: ${initialFollowingCount}`);
+    
+    // Используем MobX autorun для автоматического отслеживания изменений
+    const disposer = autorun(() => {
+      const currentFollowingCount = currentUser.following?.length || 0;
+      
+      // При изменении количества подписок помечаем following ленту для обновления
+      if (currentFollowingCount !== initialFollowingCount) {
+        logger.log(`[UserProfilePage] Following count changed from ${initialFollowingCount} to ${currentFollowingCount}`);
+        
+        // Помечаем following ленту для обновления при следующей загрузке
+        postStore.markFeedForRefresh("following");
+        
+        // Обновляем счетчик
+        initialFollowingCount = currentFollowingCount;
+        
+        logger.log("[UserProfilePage] Following feed marked for refresh due to subscription changes");
+      }
+    });
+    
+    // Cleanup при размонтировании компонента
+    return () => {
+      logger.log("[UserProfilePage] Disposing following changes autorun");
+      disposer();
+    };
+  }, [currentUser?.id]);
+
+  // Мемоизируем вычисления аватара
+  const avatarProps = useMemo(() => {
+    const letter = user?.userName?.charAt(0).toUpperCase() || "?";
+    const color = getAvatarColor(letter);
+    return { letter, color };
+  }, [user?.userName]);
 
   // Обработчик для сохранения аватарки
-  const handleAvatarSave = async (avatarData: { 
+  const handleAvatarSave = useCallback(async (avatarData: { 
     type: 'upload' | 'initial', 
     value: string, 
     file?: File,
@@ -58,65 +121,74 @@ const UserProfilePage = observer(() => {
       message.error('Failed to update avatar');
       console.error(error);
     }
-  };
+  }, []);
 
   // Загружаем данные пользователя через UserStore
   useEffect(() => {
-    if (
-      userId &&
-      (!user || !user.avatarUrl || !user.avatarShape || !user.userName || !user.email) &&
-      !isLoading
-    ) {
-      userStore.getUserById(userId);
+    if (!userIdParam) {
+      console.log('[UserProfilePage] Own profile, using current user');
+      return;
     }
-  }, [userId, user, isLoading]);
+    
+    if (!user && !isLoading && effectiveUserId) {
+      console.log(`[UserProfilePage] Loading user: ${effectiveUserId}`);
+      userStore.getUserById(effectiveUserId);
+    }
+  }, [userIdParam, effectiveUserId, user, isLoading]);
 
-  const handleGoBack = () => {
-    // Если есть откуда вернуться (из ленты или following)
+  const handleGoBack = useCallback(() => {
     if (navigationStore.currentState.fromFeed || navigationStore.currentState.fromFollowing) {
       navigationStore.handleBackNavigation(navigate);
-      // Сбросить состояние после возврата
       setTimeout(() => {
         navigationStore.clearCurrentState();
-      }, 100); // Даем роутеру время перейти
+      }, 100);
     } else {
       navigate(-1);
     }
-  };
-const handleFollow = async () => {
-  if (!userId) return;
-  setFollowLoading(true);
-  try {
-    await userStore.followUser(userId);
-    await userStore.getUserById(userId);
-  } catch (error) {
-    console.error("Failed to follow user:", error);
-  }
-  setFollowLoading(false);
-};
+  }, [navigate]);
 
+  // Оптимизированные обработчики follow/unfollow
+  const handleFollow = useCallback(async () => {
+    if (!user?.id || followLoading || isOwnProfile) return;
+    
+    setFollowLoading(true);
+    try {
+      await userStore.followUser(user.id);
+      message.success(`You are now following ${user.userName}`);
+    } catch (error) {
+      console.error("Failed to follow user:", error);
+      message.error("Failed to follow user");
+    } finally {
+      setFollowLoading(false);
+    }
+  }, [user?.id, user?.userName, followLoading, isOwnProfile]);
 
-const handleUnfollow = async () => {
-  if (!userId) return;
-  setFollowLoading(true);
-  try {
-    await userStore.unfollowUser(userId);
-    await userStore.getUserById(userId); 
-  } catch (error) {
-    console.error("Failed to unfollow user:", error);
-  }
-  setFollowLoading(false);
-};
+  const handleUnfollow = useCallback(async () => {
+    if (!user?.id || followLoading || isOwnProfile) return;
+    
+    setFollowLoading(true);
+    try {
+      await userStore.unfollowUser(user.id);
+      message.success(`You unfollowed ${user.userName}`);
+    } catch (error) {
+      console.error("Failed to unfollow user:", error);
+      message.error("Failed to unfollow user");
+    } finally {
+      setFollowLoading(false);
+    }
+  }, [user?.id, user?.userName, followLoading, isOwnProfile]);
 
-  if (isLoading) {
+  // Показать загрузку только если это не собственный профиль
+  if (isLoading && userIdParam) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
+      <div className="user-profile__loading">
         <Spin size="large" />
       </div>
     );
   }
 
-  if (!user && !isLoading) {
+  // Показать ошибку только если пользователь не найден И это не собственный профиль
+  if (!user && !isLoading && userIdParam) {
     return (
       <div className="user-profile">
         <div className="user-profile__header">
@@ -134,32 +206,39 @@ const handleUnfollow = async () => {
     );
   }
 
+  // Если нет пользователя вообще (не залогинен)
+  if (!user) {
+    return (
+      <div className="user-profile">
+        <div className="user-profile__header">
+          <Button
+            type="default"
+            icon={<ArrowLeftOutlined />}
+            onClick={handleGoBack}
+            className="user-profile__back-button"
+          >
+            Back
+          </Button>
+        </div>
+        <Empty description="Please log in to view profile" />
+      </div>
+    );
+  }
+
   const collapseItems = [
     {
       key: 'settings',
       label: (
-        <span style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '8px',
-          fontWeight: 500,
-          color: '#595959'
-        }}>
-          <SettingOutlined style={{ color: '#1890ff' }} />
+        <span className="collapse-label">
+          <SettingOutlined />
           Developer Settings
         </span>
       ),
       children: <UserSettings />,
-      style: {
-        backgroundColor: '#fafafa',
-        borderRadius: '8px',
-        border: '1px solid #f0f0f0',
-        marginBottom: '8px'
-      }
     }
   ];
 
-   return (
+  return (
     <div className="user-profile">
       <div className="user-profile__header">
         <Button
@@ -191,15 +270,16 @@ const handleUnfollow = async () => {
               shape={user?.avatarShape as 'circle' | 'square' || 'circle'}
               className="user-profile__avatar"
               style={{ 
-                background: avatarColor,
+                background: avatarProps.color,
                 cursor: isOwnProfile ? 'pointer' : 'default'
               }}
               onClick={() => isOwnProfile && setIsAvatarModalVisible(true)}
               aria-label={`Avatar for ${user?.userName || "user"}`}
             >
-              {user ? avatarLetter : null}
+              {user ? avatarProps.letter : null}
             </Avatar>
           )}
+          
           <div className="user-profile__info">
             <div className="user-profile__info-name">{user?.userName}</div>
             <div className="user-profile__info-email">{user?.email}</div>
@@ -246,15 +326,12 @@ const handleUnfollow = async () => {
       </div>
 
       {isOwnProfile && (
-        <div style={{ marginBottom: '16px' }}>
+        <div className="user-profile__settings">
           <Collapse
             items={collapseItems}
             size="small"
             ghost
             expandIconPosition="end"
-            style={{
-              backgroundColor: 'transparent',
-            }}
           />
         </div>
       )}
@@ -270,48 +347,39 @@ const handleUnfollow = async () => {
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && setActiveTab(tab.key)}
           >
-            {tab.icon && <span className="tab-icon">{tab.icon}</span>} {tab.label}
+            {tab.icon && <span className="tab-icon">{tab.icon}</span>} 
+            {tab.label}
           </div>
         ))}
       </div>
 
-      <div className="user-profile__content">
-        {activeTab === "posts" && userId && (
+        {activeTab === "posts" && user?.id && (
           <PostsThread 
             activeTab="user"
-            userId={userId}
+            userId={user.id}
           />
         )}
         {activeTab === "comments" && (
           <span>In development</span>
         )}
-      </div>
 
-      {isEditModalVisible && userStore.user && (
+      {/* Модалки */}
+      {isEditModalVisible && isOwnProfile && currentUser && (
         <EditProfileModal
           visible={isEditModalVisible}
           onClose={() => setIsEditModalVisible(false)}
-          user={userStore.user}
+          user={currentUser}
         />
       )}
 
-      
       {isAvatarModalVisible && isOwnProfile && currentUser && (
         <AvatarModal
           visible={isAvatarModalVisible}
           onClose={() => setIsAvatarModalVisible(false)}
           onSave={handleAvatarSave}
-          currentAvatarUrl={currentUser.avatarUrl}
+          currentAvatarUrl={currentUser.avatarUrl ?? undefined}
           currentAvatarShape={currentUser.avatarShape || 'circle'}
           userName={currentUser.userName}
-        />
-      )}
-
-      {isEditModalVisible && userStore.user && (
-        <EditProfileModal
-          visible={isEditModalVisible}
-          onClose={() => setIsEditModalVisible(false)}
-          user={userStore.user}
         />
       )}
     </div>

@@ -4,6 +4,7 @@ import { Comment as CommentType } from "../../types/interfaces";
 import { logger } from '../../utils/Logger';
 import { BaseStore } from "./BaseStore";
 import io from "socket.io-client";
+import userStore from "./UserStore";
 
 
 // Интерфейс для ответа от fetchComments события
@@ -127,7 +128,143 @@ class CommentStore extends BaseStore<CommentType> {
       });
     });
   }
-  
+
+  addComment = action((comment: CommentType, parentId?: string): void => {
+  // Проверяем наличие обязательных полей перед кэшированием
+    if (comment.user && comment.user.id && comment.user.userName) {
+      userStore.addCachedUser(comment.user);
+    }
+    
+    // Если нет user объекта, но есть userId, пробуем восстановить из кэша
+    if (!comment.user && comment.userId) {
+      const cachedUser = userStore.getCachedUser(comment.userId);
+      if (cachedUser) {
+        comment.user = cachedUser;
+      }
+    }
+
+    if (parentId) {
+      // Для ответов используем repliesMap
+      if (!this.repliesMap.has(parentId)) {
+        this.repliesMap.set(parentId, []);
+      }
+      
+      const replies = this.repliesMap.get(parentId)!;
+      const existingIndex = replies.findIndex(c => c.id === comment.id);
+      
+      if (existingIndex >= 0) {
+        replies[existingIndex] = comment;
+      } else {
+        replies.push(comment);
+      }
+    } else if (comment.postId) {
+      // Для комментариев к посту используем commentsMap
+      if (!this.commentsMap.has(comment.postId)) {
+        this.commentsMap.set(comment.postId, []);
+      }
+      
+      const comments = this.commentsMap.get(comment.postId)!;
+      const existingIndex = comments.findIndex(c => c.id === comment.id);
+      
+      if (existingIndex >= 0) {
+        comments[existingIndex] = comment;
+      } else {
+        comments.push(comment);
+      }
+    }
+  });
+
+  /**
+   * Обрабатывает массив комментариев и кэширует пользователей
+   */
+  private processComments(comments: CommentType[], parentId?: string) {
+    comments.forEach(comment => {
+      // Проверяем наличие обязательных полей перед кэшированием
+      if (comment.user && comment.user.id && comment.user.userName) {
+        userStore.addCachedUser(comment.user);
+      }
+      
+      this.addComment(comment, parentId);
+    });
+  }
+
+
+  /**
+   * Универсальный метод для загрузки комментариев 
+   * (как для постов, так и для комментариев)
+   */
+  loadComments = (
+    parentId: string,
+    limit: number = 10,
+    page: number = 1,
+    sort?: 'date' | 'likes',
+    isComment: boolean = false
+  ): Promise<void> => {
+    
+    this.setLoadingReplies(parentId, true);
+    
+    logger.log(`[CommentStore] loadComments ${isComment ? 'comment' : 'post'} ${parentId}, page ${page}, limit ${limit}`);
+
+    return new Promise<void>((resolve, reject) => {
+      const socketClient = socketStore.comments;
+      if (!socketClient) {
+        this.setLoadingReplies(parentId, false);
+        reject(new Error('Comments socket not available'));
+        return;
+      }
+      
+      const payload = {
+        parentId,
+        page,
+        limit,
+        sort: sort || this.sort
+      };
+
+      logger.log(`[CommentStore] Sending fetchComments w/ payload:`, payload);
+
+      socketClient.emit(
+        "fetchComments",
+        payload,
+        (response: FetchCommentsResponse) => {
+          this.setLoadingReplies(parentId, false);
+          
+          if (response?.error) {
+            logger.error(`[CommentStore] Error: ${response.error}`);
+            reject(new Error(response.error));
+            return;
+          }
+          
+          const comments = response?.comments || [];
+          const totalCount = response?.total || 0;
+          
+          logger.log(`[CommentStore] Get ${comments.length} for parentId ${parentId}, total: ${totalCount}`);
+          
+          runInAction(() => {
+            const processedComments = comments.map(comment => ({
+              ...comment,
+              userName: comment.userName || comment.user?.userName || '',
+            }));
+            
+            // Используем processComments для кэширования пользователей
+            this.processComments(processedComments, isComment ? parentId : undefined);
+            
+            if (isComment) {
+              // Для ответов на комментарии сохраняем в repliesMap
+              this.updateCommentCollection(this.repliesMap, parentId, processedComments, page === 1);
+              this.repliesShownMap.set(parentId, true);
+            } else {
+              // Для постов сохраняем в commentsMap
+              this.updateCommentCollection(this.commentsMap, parentId, processedComments, page === 1);
+              this.totalItemsMap.set(parentId, totalCount);
+            }
+            
+            this.lastUpdateTimeMap.set(parentId, Date.now());
+          });
+          
+          resolve();
+        });
+    });
+  };
   // Методы для сохранения состояния
   saveCommentState(scrollPosition: number, commentId: string) {
     this.commentScrollPosition = scrollPosition;
@@ -152,84 +289,6 @@ class CommentStore extends BaseStore<CommentType> {
     setTimeout(() => scrollTo(scrollPosition), 250);
   }
 
-  /**
-   * Универсальный метод для загрузки комментариев 
-   * (как для постов, так и для комментариев)
-   */
-  loadComments = (
-    parentId: string,  // ID родителя (пост или комментарий)
-    limit: number = 10, // Количество элементов
-    page: number = 1, // Номер страницы
-    sort?: 'date' | 'likes', // Сортировка (опционально)
-    isComment: boolean = false // Тип загружаемого контента
-  ): Promise<void> => {
-    
-      // Устанавливаем загрузку
-      this.setLoadingReplies(parentId, true);
-      
-      logger.log(`[CommentStore] loadComments ${isComment ? 'comment' : 'post'} ${parentId}, page ${page}, limit ${limit}`);
-
-      return new Promise<void>((resolve, reject) => {
-        const socketClient = socketStore.comments;
-        if (!socketClient) {
-          this.setLoadingReplies(parentId, false);
-          reject(new Error('Comments socket not available'));
-          return;
-        }
-        
-        // Формируем данные для запроса
-        const payload = {
-          parentId,
-          page,
-          limit,
-          sort: sort || this.sort
-        };
-
-        logger.log(`[CommentStore] Sending fetchComments w/ payload:`, payload);
-
-        socketClient.emit(
-          "fetchComments",
-          payload,
-          (response: FetchCommentsResponse) => {
-            this.setLoadingReplies(parentId, false);
-            
-            if (response?.error) {
-              logger.error(`[CommentStore] Error: ${response.error}`);
-              reject(new Error(response.error));
-              return;
-            }
-            
-            const comments = response?.comments || [];
-            const totalCount = response?.total || 0;
-            
-            logger.log(`[CommentStore] Get ${comments.length} for parentId ${parentId}, total: ${totalCount}`);
-            
-            runInAction(() => {
-              const processedComments = comments.map(comment => ({
-                ...comment,
-                userName: comment.userName || comment.user?.userName || '',
-                //user: undefined
-              }));
-        
-        if (isComment) {
-          // Для ответов на комментарии сохраняем в repliesMap
-          this.updateCommentCollection(this.repliesMap, parentId, processedComments, page === 1);
-          this.repliesShownMap.set(parentId, true);
-        } else {
-          // Для постов сохраняем в commentsMap
-          this.updateCommentCollection(this.commentsMap, parentId, processedComments, page === 1);
-          this.totalItemsMap.set(parentId, totalCount);
-        }
-        
-        this.lastUpdateTimeMap.set(parentId, Date.now());
-      });
-      
-      resolve();
-    });
-  });
-   
-  };
-  
   /**
    * Вспомогательный метод для определения типа ID
    */
@@ -497,31 +556,6 @@ class CommentStore extends BaseStore<CommentType> {
     });
   };
   
-  /**
-   * Добавляет комментарий в хранилище
-   */
-  addComment = (comment: CommentType) => {
-    // Очищаем структуру комментария от избыточных данных
-    const processedComment: CommentType = {
-      ...comment,
-      userName: comment.userName || comment.user?.userName || '', // Add fallback to empty string
-      
-    };
-
-    if (processedComment.parentId) {
-      // Это ответ на комментарий
-      const replies = this.repliesMap.get(processedComment.parentId) || [];
-      if (!replies.some(r => r.id === processedComment.id)) {
-        this.repliesMap.set(processedComment.parentId, [processedComment, ...replies]);
-      }
-    } else if (processedComment.postId) {
-      // Это комментарий к посту
-      const comments = this.commentsMap.get(processedComment.postId) || [];
-      if (!comments.some(c => c.id === processedComment.id)) {
-        this.commentsMap.set(processedComment.postId, [processedComment, ...comments]);
-      }
-    }
-  };
 
   /**
    * Устанавливает ответы на комментарий
@@ -620,6 +654,38 @@ class CommentStore extends BaseStore<CommentType> {
   }
 
   /**
+   * Получает комментарий по слагу
+   */
+  fetchCommentBySlug = (slug: string): Promise<CommentType | null> => {
+    logger.log(`[CommentStore] Fetching comment by slug: ${slug}`);
+    
+    return new Promise<CommentType | null>((resolve) => {
+      if (!socketStore.comments) {
+        logger.error('[CommentStore] Comments socket not available');
+        resolve(null);
+        return;
+      }
+      
+      // Отправляем запрос на поиск по slug
+      socketStore.comments.emit(
+        "fetchCommentBySlug", // Новое событие
+        { slug },
+        (res: FetchCommentsResponse) => {
+          if (!res || res.error || !res.comments?.length) {
+            logger.warn(`[CommentStore] Comment with slug ${slug} not found`);
+            resolve(null);
+            return;
+          }
+          
+          const comment = res.comments[0];
+          logger.log(`[CommentStore] Found comment by slug: ${comment.id} (${comment.slug})`);
+          this.addComment(comment);
+          resolve(comment);
+        }
+      );
+    });
+  };
+  /**
    * Получает комментарий по ID
    */
   fetchComment = (commentId: string): Promise<CommentType | null> => {
@@ -673,6 +739,20 @@ class CommentStore extends BaseStore<CommentType> {
       if (found) return found;
     }
     
+    return undefined;
+  }
+
+  getCommentBySlug(slug: string): CommentType | undefined {
+    // Ищем среди всех комментариев ко всем постам
+    for (const comments of this.commentsMap.values()) {
+      const found = comments.find(comment => comment.slug === slug);
+      if (found) return found;
+    }
+    // Ищем среди всех ответов
+    for (const replies of this.repliesMap.values()) {
+      const found = replies.find(reply => reply.slug === slug);
+      if (found) return found;
+    }
     return undefined;
   }
 

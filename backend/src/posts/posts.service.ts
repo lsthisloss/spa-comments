@@ -8,6 +8,8 @@ import { User } from '../users/entities/user.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { PostResponseDto } from './dto/post-response.dto';
 import { UserBasicDto } from '../users/dto/user-basic.dto';
+import { ElasticsearchService } from '@nestjs/elasticsearch';
+import { slugify } from '../utils/slugify';
 
 @Injectable()
 export class PostsService {
@@ -19,6 +21,7 @@ export class PostsService {
     @InjectRepository(Comment)
     private readonly commentRepository: Repository<Comment>,
     private readonly rabbitMQService: RabbitMQService,
+    private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
   async sendPostToQueue(createPostDto: CreatePostDto): Promise<void> {
@@ -35,8 +38,36 @@ export class PostsService {
       likes: 0,
       repliesCount: 0,
       likedUserIds: [],
+      slug: slugify(createPostDto.content.slice(0, 50)) + '-' + Date.now(),
     });
+
     await this.postRepository.save(post);
+    const user = await this.userRepository.findOne({
+      where: { id: post.userId },
+      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
+    });
+
+    // --- Индексация в Elasticsearch ---
+    await this.elasticsearchService.index({
+      index: 'posts',
+      id: post.id,
+      document: {
+        id: post.id,
+        content: post.content,
+        slug: post.slug,
+        author: user
+          ? {
+              id: user.id,
+              userName: user.userName,
+              avatarUrl: user.avatarUrl,
+              avatarShape: user.avatarShape,
+              slug: user.slug,
+              email: user.email,
+            }
+          : null,
+      },
+    });
+
     return post;
   }
 
@@ -73,7 +104,7 @@ export class PostsService {
     const userIds = [...new Set(posts.map((post) => post.userId))];
     const users = await this.userRepository.find({
       where: { id: In(userIds) },
-      select: ['id', 'userName', 'avatarUrl', 'avatarShape'],
+      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
     });
 
     const userMap = new Map<string, UserBasicDto>();
@@ -83,6 +114,8 @@ export class PostsService {
         userName: user.userName,
         avatarUrl: user.avatarUrl,
         avatarShape: user.avatarShape,
+        slug: user.slug,
+        email: user.email,
       }),
     );
 
@@ -155,6 +188,30 @@ export class PostsService {
     return { success: false, likes: post.likes };
   }
 
+  async getFeedPosts(
+    page: number,
+    limit: number,
+  ): Promise<{ posts: PostResponseDto[]; total: number; isEmpty?: boolean }> {
+    try {
+      const [posts, total] = await this.postRepository.findAndCount({
+        order: { createdAt: 'DESC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+
+      const enrichedPosts = await this.enrichPostsWithUserData(posts);
+
+      return {
+        posts: enrichedPosts,
+        total,
+        isEmpty: total === 0,
+      };
+    } catch (error) {
+      console.error('Error getting feed posts:', error);
+      return { posts: [], total: 0, isEmpty: true };
+    }
+  }
+
   async getUserPosts(
     userId: string,
     page: number,
@@ -162,34 +219,27 @@ export class PostsService {
   ): Promise<PostResponseDto[]> {
     try {
       const posts = await this.postRepository.find({
-        where: { userId: userId },
+        where: { userId },
         order: { createdAt: 'DESC' },
         skip: (page - 1) * limit,
         take: limit,
       });
 
-      // Используем enrichPostsWithUserData для единообразия
-      const enrichedPosts = await this.enrichPostsWithUserData(posts);
-
-      console.log(`Found ${posts.length} posts for user ${userId}`);
-      return enrichedPosts;
+      return await this.enrichPostsWithUserData(posts);
     } catch (error) {
-      console.error(`Error getting posts for user ${userId}:`, error);
-      throw error;
+      console.error('Error getting user posts:', error);
+      return [];
     }
   }
 
   async getUserPostsCount(userId: string): Promise<number> {
     try {
-      const count = await this.postRepository.count({
-        where: { userId: userId },
+      return await this.postRepository.count({
+        where: { userId },
       });
-
-      console.log(`Total posts for user ${userId}: ${count}`);
-      return count;
     } catch (error) {
-      console.error(`Error counting posts for user ${userId}:`, error);
-      throw error;
+      console.error('Error getting user posts count:', error);
+      return 0;
     }
   }
 
@@ -229,69 +279,99 @@ export class PostsService {
     }
   }
 
-  async getFeedPosts(
-    page: number,
-    limit: number,
-  ): Promise<{ posts: PostResponseDto[]; total: number }> {
-    return this.getPostsPaginated(page, limit);
-  }
-
   async getFollowingPosts(
     userId: string,
     page: number,
     limit: number,
-  ): Promise<{ posts: PostResponseDto[]; total: number }> {
+  ): Promise<{ posts: PostResponseDto[]; total: number; isEmpty?: boolean }> {
     console.log(`Getting following posts for user ${userId}, page ${page}`);
 
+    // ЗАЩИТА 1: Валидация входных параметров
+    if (!userId || page < 1 || limit < 1 || limit > 100) {
+      console.log(
+        `Invalid parameters: userId=${userId}, page=${page}, limit=${limit}`,
+      );
+      return { posts: [], total: 0, isEmpty: true };
+    }
+
+    // ЗАЩИТА 2: Ограничение на количество страниц для пустых результатов
+    if (page > 5) {
+      console.log(`Page ${page} exceeds maximum, returning empty result`);
+      return { posts: [], total: 0, isEmpty: true };
+    }
+
     try {
-      // Получаем пользователей, на которых подписан + добавляем самого себя
+      // Получаем пользователя с подписками
       const user = await this.userRepository.findOne({
         where: { id: userId },
         relations: ['following'],
       });
 
       if (!user) {
-        throw new Error('User not found');
+        console.log(`User ${userId} not found`);
+        return { posts: [], total: 0, isEmpty: true };
       }
 
-      // Создаем список ID: подписки + сам пользователь
-      const followingIds = user.following
-        ? user.following.map((followedUser) => followedUser.id)
-        : [];
-      const userIdsToQuery = [...followingIds, userId]; // Добавляем самого себя
+      const followingIds = user.following?.map((u) => u.id) || [];
+      const userIdsToQuery = [...followingIds, userId];
 
-      console.log(
-        `User ${userId} (${user.userName}) following:`,
-        user.following?.map((f) => `${f.id} (${f.userName})`) || [],
-      );
       console.log(`Following IDs for user ${userId}:`, followingIds);
-      console.log(`All user IDs to query (including self):`, userIdsToQuery);
 
-      if (userIdsToQuery.length === 0) {
-        return { posts: [], total: 0 };
+      // ЗАЩИТА 3: Быстрая проверка на первой странице
+      if (page === 1 && userIdsToQuery.length === 1) {
+        const selfPostsCount = await this.postRepository.count({
+          where: { userId: userId },
+        });
+
+        if (selfPostsCount === 0) {
+          console.log(
+            `User ${userId} has no following and no own posts, returning empty result`,
+          );
+          return { posts: [], total: 0, isEmpty: true };
+        }
       }
 
-      // Получаем посты от всех пользователей (включая себя)
+      // ЗАЩИТА 4: Проверка общего количества постов перед пагинацией
+      const totalPosts = await this.postRepository.count({
+        where: { userId: In(userIdsToQuery) },
+      });
+
+      if (totalPosts === 0) {
+        console.log(`No posts found for following users of ${userId}`);
+        return { posts: [], total: 0, isEmpty: true };
+      }
+
+      // ЗАЩИТА 5: Проверка что запрашиваемая страница не превышает реальное количество
+      const maxPage = Math.ceil(totalPosts / limit);
+      if (page > maxPage) {
+        console.log(
+          `Page ${page} exceeds maximum page ${maxPage} for user ${userId}`,
+        );
+        return { posts: [], total: totalPosts, isEmpty: false };
+      }
+
+      // Основной запрос
       const [posts, total] = await this.postRepository.findAndCount({
-        where: {
-          userId: In(userIdsToQuery),
-        },
+        where: { userId: In(userIdsToQuery) },
         order: { createdAt: 'DESC' },
         skip: (page - 1) * limit,
         take: limit,
       });
 
-      // Добавляем userName к каждому посту
       const enrichedPosts = await this.enrichPostsWithUserData(posts);
 
       console.log(
         `Found ${posts.length} following posts out of ${total} total`,
       );
 
-      return { posts: enrichedPosts, total };
+      return {
+        posts: enrichedPosts,
+        total,
+        isEmpty: total === 0,
+      };
     } catch (error) {
       console.error('Error getting following posts:', error);
-      throw error;
+      return { posts: [], total: 0, isEmpty: true };
     }
   }
 

@@ -1,6 +1,7 @@
-import { makeAutoObservable } from "mobx";
+import { makeAutoObservable, runInAction } from "mobx";
 import { logger } from "../../utils/Logger";
 import { socketStore } from "./SocketStore";
+import userStore from "./UserStore";
 
 class AuthStore {
   token: string | null = null;
@@ -24,13 +25,13 @@ class AuthStore {
       const userName = localStorage.getItem('userName');
       
       if (token && userId) {
-        logger.log('[AuthStore]Initializing auth from localStorage');
+        logger.log('[AuthStore] Initializing auth from localStorage');
         this.setAuth(token, userId, userName || 'Anonymous');
       } else {
-        logger.log('[AuthStore]No auth data found in localStorage');
+        logger.log('[AuthStore] No auth data found in localStorage');
       }
     } catch (error) {
-      logger.error('[AuthStore]Failed to init auth from localStorage', error);
+      logger.error('[AuthStore] Failed to init auth from localStorage', error);
     } finally {
       this.initialLoadComplete = true;
     }
@@ -39,10 +40,12 @@ class AuthStore {
   async setAuth(token: string, userId: string, userName: string) {
     logger.log(`[AuthStore] Setting auth for user ${userId} (${userName})`);
     
-    this.token = token;
-    this.userId = userId;
-    this.userName = userName;
-    this.isAuthenticated = true;
+    runInAction(() => {
+      this.token = token;
+      this.userId = userId;
+      this.userName = userName;
+      this.isAuthenticated = true;
+    });
     
     try {
       localStorage.setItem('token', token);
@@ -55,13 +58,15 @@ class AuthStore {
     }
   }
 
-
   logout() {
     logger.log('[AuthStore] Logging out user');
-    this.token = null;
-    this.userId = null;
-    this.userName = null;
-    this.isAuthenticated = false;
+    
+    runInAction(() => {
+      this.token = null;
+      this.userId = null;
+      this.userName = null;
+      this.isAuthenticated = false;
+    });
     
     try {
       // Remove ALL auth-related localStorage items
@@ -69,6 +74,8 @@ class AuthStore {
       localStorage.removeItem('userId');
       localStorage.removeItem('userName');
       localStorage.removeItem('user');
+      
+      userStore.clearUser();
       
       // Fully disconnect all sockets to force reconnection on next login
       socketStore.disconnectAllSockets();

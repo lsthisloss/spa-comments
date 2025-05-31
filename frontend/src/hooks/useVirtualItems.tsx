@@ -18,7 +18,6 @@ export function useVirtualItems<T>(
   const [forceUpdate, setForceUpdate] = useState(0);
   const imageLoadedRef = useRef<Set<string>>(new Set());
 
-// Оптимизируем обработчик скролла с использованием requestAnimationFrame
 useEffect(() => {
   let ticking = false;
   let lastKnownScrollPosition = 0;

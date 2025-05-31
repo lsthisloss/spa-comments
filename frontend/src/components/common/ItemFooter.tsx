@@ -66,24 +66,24 @@ const handleNavigate = (e: React.MouseEvent) => {
     const navigationState = navigationStore.saveNavigationState(type, item.id, currentState);
     
     if (onNavigate) {
-      logger.log(`ItemFooter: calling onNavigate for ${type} ${item.id}`);
-      onNavigate(item.id);
+      logger.log(`ItemFooter: calling onNavigate for ${type} ${item.slug || item.id}`);
+      onNavigate(item.slug || item.id);
     } else if (type === "post") {
-      logger.log(`ItemFooter: Direct navigate to post ${item.id}`);
-      navigate(`/post/${item.id}`, { state: navigationState });
+      logger.log(`ItemFooter: Direct navigate to post ${item.slug || item.id}`);
+      navigate(`/post/${item.slug || item.id}`, { state: navigationState });
     } else if (type === "comment") {
-      logger.log(`ItemFooter: Direct navigate to comment ${item.id}`);
-      navigate(`/comment/${item.id}`, { state: navigationState });
+      logger.log(`ItemFooter: Direct navigate to comment ${item.slug || item.id}`);
+      navigate(`/comment/${item.slug || item.id}`, { state: navigationState });
     }
   } catch (error) {
     // Обработка ошибок сериализации
     logger.error(`Navigation error for ${type} ${item.id}:`, error);
     
-    // Простая навигация без состояния в случае ошибки
+    // Простая навигация без состояния
     if (type === "post") {
-      navigate(`/post/${item.id}`);
+      navigate(`/post/${item.slug || item.id}`);
     } else if (type === "comment") {
-      navigate(`/comment/${item.id}`);
+      navigate(`/comment/${item.slug || item.id}`);
     }
   }
 };

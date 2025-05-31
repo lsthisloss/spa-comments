@@ -16,4 +16,5 @@ export class CommentResponseDto {
   likedUserIds?: string[];
   repliesCount: number;
   user?: UserBasicDto;
+  slug?: string;
 }

@@ -56,8 +56,6 @@ const App = observer(() => {
     initApp();
   }, []);
 
-  // Показываем лоадер, пока не закончилась проверка инициализации
-
   // Показываем сообщение об ошибке, если инициализация не удалась
   if (appInitializer.error) {
     return (
@@ -104,6 +102,7 @@ const App = observer(() => {
                 {(props) => (
                   <Routes>
                     <Route path="/" element={<MainPage {...props} />} />
+                    <Route path="/profile" element={<UserProfilePage />} />
                     <Route path="/profile/:userId" element={<UserProfilePage />} />
                     <Route path="/post/:postId" element={<PostPage />} />
                     <Route path="/comment/:commentId" element={<CommentPage />} />

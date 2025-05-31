@@ -4,12 +4,12 @@
 
 @import './SideBar';
 @import './Layout';
-@import './UserProfile.scss';
+@import './UserProfile';
 
 @import './pages/CommentPage';
 @import './pages/PostPage';
+@import './pages/UserProfilePage';
 @import './pages/AuthPage';
-
 
 @import './components/Item';
 @import './components/ItemFooter';
@@ -17,6 +17,7 @@
 @import './components/FormFooter';
 @import './components/DebugInfo';
 @import './components/CommentPreviewDropDown';
+@import './components/VirtualList';
 
 
 @import './particles/GradientButton'

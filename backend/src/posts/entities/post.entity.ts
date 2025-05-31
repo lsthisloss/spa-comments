@@ -44,11 +44,14 @@ export class Post {
   fileName?: string;
 
   @Column('simple-array', { default: '' })
-  likedUserIds: string[]; // массив userId, которые лайкнули пост
+  likedUserIds: string[];
 
   @Column({ default: 0 })
-  repliesCount: number; // количество комментариев к посту
+  repliesCount: number;
 
   @Column({ nullable: true })
-  imageUrl?: string; // Add this field
+  imageUrl?: string;
+
+  @Column({ unique: true })
+  slug: string;
 }

@@ -2,6 +2,8 @@ import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import type { VirtualItem as TanStackVirtualItem } from '@tanstack/react-virtual';
 import { DebugInfo } from "../ui/modals/DebugInfo";
 import { logger } from '../../utils/Logger';
+import { LoadingIndicator } from '../ui/particles/LoadingIndicator';
+import { Empty } from 'antd';
 
 export interface VirtualListItem<T> extends TanStackVirtualItem {
   item: T;
@@ -21,6 +23,8 @@ interface VirtualListProps<T> {
   loading?: boolean;
   loadingIndicator?: ReactNode;
   emptyComponent?: ReactNode;
+  emptyMessage?: string;
+  loadingMessage?: string;
   className?: string;
   style?: React.CSSProperties;
   allLoaded?: boolean;
@@ -30,6 +34,7 @@ interface VirtualListProps<T> {
   onScrollDown?: () => void;
   enableManualModeTracking?: boolean;
   initialLoadComplete?: boolean;
+  feedContextId?: string;
 }
 
 function VirtualList<T>(props: VirtualListProps<T>) {
@@ -45,15 +50,17 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     loading = false,
     loadingIndicator,
     emptyComponent,
+    emptyMessage = 'No items found',
+    loadingMessage = 'Loading items...',
     className = '',
     style,
     allLoaded = false,
     debugOptions = {},
     manualMode = false,
-    onScrollToTop,
     onScrollDown,
     enableManualModeTracking = false,
     initialLoadComplete = false,
+    feedContextId,
   } = props;
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -61,15 +68,26 @@ function VirtualList<T>(props: VirtualListProps<T>) {
   const loadingRef = useRef(loading);
   const isHandlingRef = useRef(false);
   const lastLoadTimeRef = useRef<number>(0);
-  const lastItemsCountRef = useRef(items.length);
+  const lastItemsCountRef = useRef(0);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const initialLoadCompleteRef = useRef(false);
-
+  const lastFeedContextIdRef = useRef(feedContextId);
+  const emptyLoadAttemptsRef = useRef<number>(0);
   // Синхронизация loadingRef
   useEffect(() => {
     loadingRef.current = loading;
     logger.log(`[VirtualList] Loading state updated: ${loading}`);
   }, [loading]);
+
+  // Отслеживание смены контекста фида - ПРИОРИТЕТ 1
+  useEffect(() => {
+    if (feedContextId && feedContextId !== lastFeedContextIdRef.current) {
+      logger.log(`[VirtualList] Feed context changed from ${lastFeedContextIdRef.current} to ${feedContextId}`);
+      
+      // Только обновляем контекст, НЕ сбрасываем состояние
+      lastFeedContextIdRef.current = feedContextId;
+    }
+  }, [feedContextId]);
 
   // Синхронизация initialLoadCompleteRef с пропом
   useEffect(() => {
@@ -95,7 +113,7 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     }
   }, [items.length]);
 
-  // Сброс флагов при очистке items
+  // Сброс флагов при очистке items - ПРИОРИТЕТ 2
   useEffect(() => {
     if (items.length === 0) {
       isHandlingRef.current = false;
@@ -105,16 +123,26 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     }
   }, [items.length]);
 
-  // Сброс isHandlingRef при увеличении items (новая страница)
+  // Обработка увеличения items (догрузка) - ПРИОРИТЕТ 3
   useEffect(() => {
     const currentItemsCount = items.length;
-    if (currentItemsCount > lastItemsCountRef.current) {
-      logger.log(`[VirtualList] Items increased from ${lastItemsCountRef.current} to ${currentItemsCount}, resetting loading state`);
+    const lastCount = lastItemsCountRef.current;
+    
+    // Если контекст поменялся, просто обновляем счетчик без логирования догрузки
+    if (feedContextId !== lastFeedContextIdRef.current) {
+      lastItemsCountRef.current = currentItemsCount;
+      return;
+    }
+    
+    // Увеличение количества элементов = догрузка в том же контексте
+    if (currentItemsCount > lastCount && lastCount > 0) {
+      logger.log(`[VirtualList] Items increased from ${lastCount} to ${currentItemsCount}, resetting loading state`);
       isHandlingRef.current = false;
       lastLoadTimeRef.current = Date.now();
-      lastItemsCountRef.current = currentItemsCount;
     }
-  }, [items.length]);
+    
+    lastItemsCountRef.current = currentItemsCount;
+  }, [items.length, feedContextId]);
 
   // Главная логика IntersectionObserver
   const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -122,56 +150,64 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     if (!entry || !onEndReached) return;
 
     if (entry.isIntersecting) {
-      // Если список пуст и не грузится — всегда пробуем загрузить
-      if (items.length === 0 && !loadingRef.current) {
-        logger.log('[VirtualList] Empty list, triggering load');
-        isHandlingRef.current = true;
-        initialLoadCompleteRef.current = false;
-        onEndReached();
+      // ЗАЩИТА: Проверяем все условия перед вызовом
+      if (loading || allLoaded || isHandlingRef.current) {
+        logger.log(`[VirtualList] Intersection ignored: loading=${loading}, allLoaded=${allLoaded}, handling=${isHandlingRef.current}`);
         return;
       }
 
-      // Если уже грузим или всё загружено — не грузим
-      if (isHandlingRef.current || loadingRef.current || allLoaded) {
-        return;
-      }
-
-      // Если только что загрузили — не грузим слишком часто
+      // ИСПРАВЛЕНИЕ: Уменьшаем cooldown с 2000ms до 500ms для лучшего UX
       const now = Date.now();
-      if (now - lastLoadTimeRef.current < 500) {
+      if (now - lastLoadTimeRef.current < 500) { // Уменьшаем с 2000 до 500ms
+        logger.log(`[VirtualList] Intersection ignored: cooldown active (${500 - (now - lastLoadTimeRef.current)}ms remaining)`);
         return;
       }
 
-      // Ключевой момент: если initialLoadCompleteRef сброшен, но посты есть — разрешаем догрузку!
-      if (!initialLoadCompleteRef.current && items.length > 0 && !loadingRef.current && !allLoaded) {
-        logger.log('[VirtualList] Forcing load more: items exist but initialLoadCompleteRef is false');
-        isHandlingRef.current = true;
-        lastLoadTimeRef.current = now;
-        onEndReached();
+      // ЗАЩИТА: Лимит для пустых лент
+      if (items.length === 0 && (emptyLoadAttemptsRef.current || 0) > 2) {
+        logger.log(`[VirtualList] Too many empty load attempts (${emptyLoadAttemptsRef.current}), stopping`);
         return;
       }
 
       logger.log(`[VirtualList] Intersection triggered loading`);
       isHandlingRef.current = true;
       lastLoadTimeRef.current = now;
-      onEndReached();
-    }
-  }, [onEndReached, allLoaded, items]);
+      
+      if (items.length === 0) {
+        emptyLoadAttemptsRef.current = (emptyLoadAttemptsRef.current || 0) + 1;
+      } else {
+        emptyLoadAttemptsRef.current = 0; // Сбрасываем при успешной загрузке
+      }
 
-  // Manual mode переключение по скроллу (без второго observer)
+      try {
+        onEndReached();
+        
+        // ИСПРАВЛЕНИЕ: Сбрасываем флаг обработки через меньший интервал
+        setTimeout(() => {
+          isHandlingRef.current = false;
+        }, 100); // Уменьшаем задержку
+      } catch (error) {
+        logger.error(`[VirtualList] Error in onEndReached:`, error);
+        isHandlingRef.current = false;
+      }
+    }
+  }, [onEndReached, allLoaded, items, loading]);
+
   useEffect(() => {
     if (!enableManualModeTracking) return;
+    
     const firstVisibleIndex = virtualItems[0]?.index ?? 0;
+    
+    // НЕ выключаем manual mode при скролле вверх если есть новые посты в буфере
     if (firstVisibleIndex > 0 && !manualMode) {
       logger.log('[VirtualList] User scrolled down, enabling manual update mode');
       onScrollDown?.();
-    } else if (firstVisibleIndex === 0 && manualMode) {
-      logger.log('[VirtualList] User scrolled to top, disabling manual update mode');
-      onScrollToTop?.();
     }
-  }, [virtualItems, manualMode, enableManualModeTracking, onScrollDown, onScrollToTop]);
+    // Убираем автоматическое выключение manual mode при скролле к топу
+    // Теперь manual mode выключается ТОЛЬКО кнопкой "Load new posts"
+  }, [virtualItems, manualMode, enableManualModeTracking, onScrollDown]);
 
-  // Setup IntersectionObserver (только один)
+  // Setup IntersectionObserver
   useEffect(() => {
     if (!sentinelRef.current || !onEndReached) return;
     const options = {
@@ -191,8 +227,45 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     };
   }, [onEndReached, endReachedThreshold, handleIntersection]);
 
-  if (items.length === 0 && !loading && emptyComponent) {
-    return <>{emptyComponent}</>;
+  // ЯЛогика для определения состояний
+  const hasItems = items.length > 0;
+  const isInitialLoading = loading && !hasItems;
+  const isLoadingMore = loading && hasItems;
+  const isEmpty = !loading && !hasItems;
+  
+  // Показывать индикатор пагинации только когда есть элементы
+  const shouldShowPaginationIndicator = hasItems;
+
+  // Показать начальную загрузку (вместо списка)
+  if (isInitialLoading) {
+    const loadingContent = React.isValidElement(loadingIndicator) 
+      ? loadingIndicator 
+      : <LoadingIndicator 
+          loading={true}
+          allLoaded={false}
+          hasItems={false}
+          onVisible={() => {}}
+          emptyMessage={loadingMessage || "Loading content..."}
+        />;
+        
+    return (
+      <div className="virtual-list-container-empty-state">
+        {loadingContent}
+      </div>
+    );
+  }
+
+  // Показать пустое состояние (вместо списка)
+  if (isEmpty) {
+    const emptyContent = React.isValidElement(emptyComponent) 
+      ? emptyComponent 
+      : <Empty description={emptyMessage || "No content available"} />;
+      
+    return (
+      <div className="virtual-list-container-empty-state">
+        {emptyContent}
+      </div>
+    );
   }
 
   const debugProps = {
@@ -206,6 +279,13 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     lastLoadTime: lastLoadTimeRef.current,
     cooldownRemaining: Math.max(0, 1000 - (Date.now() - lastLoadTimeRef.current)),
     manualMode,
+    hasItems,
+    isInitialLoading,
+    isLoadingMore,
+    isEmpty,
+    shouldShowPaginationIndicator,
+    feedContextId,
+    lastFeedContextId: lastFeedContextIdRef.current,
     ...(debugOptions || {})
   };
 
@@ -213,9 +293,8 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     <div className={`virtual-list-container ${className}`}>
       <div 
         ref={listRef}
+        className="virtual-list-container-items"
         style={{
-          width: '100%',
-          position: 'relative',
           height: `${totalHeight}px`,
           ...style
         }}
@@ -229,14 +308,9 @@ function VirtualList<T>(props: VirtualListProps<T>) {
               key={itemKey}
               id={`virtual-item-${itemKey}`}
               data-index={virtualItem.index}
+              className="virtual-list-container-item"
               style={{
-                position: 'absolute',
-                top: 0,
-                transform: `translateY(${topPosition}px)`,
-                left: 0,
-                width: '100%',
-                height: 'auto',
-                willChange: 'transform',
+                transform: `translateY(${topPosition}px)`
               }}
             >
               {renderItem(virtualItem, (el) => measureElement(el, virtualItem.index))}
@@ -245,35 +319,21 @@ function VirtualList<T>(props: VirtualListProps<T>) {
         })}
       </div>
       
-      <div style={{ 
-        position: 'relative',
-        width: '100%',
-        zIndex: 1,
-        marginTop: '40px',
-        marginBottom: '60px',
-        minHeight: '100px',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: loading ? 'rgba(24, 144, 255, 0.05)' : 'transparent',
-        borderRadius: '12px',
-        border: loading ? '1px dashed rgba(24, 144, 255, 0.3)' : 'none',
-        transition: 'all 0.3s ease'
-      }}>
-        <div 
-          ref={sentinelRef} 
-          style={{ 
-            position: 'absolute', 
-            bottom: '20px', 
-            width: '100%', 
-            height: '1px', 
-            opacity: 0 
-          }} 
-          data-testid="sentinel"
-        />
-        
-        {items.length > 0 && loadingIndicator}
-      </div>
+      {/* Индикатор пагинации - ВСЕГДА под списком когда есть элементы */}
+      {shouldShowPaginationIndicator && (
+        <div className="virtual-list-container-pagination-indicator">
+          <div ref={sentinelRef} className="virtual-list-container-sentinel" />
+          
+          <LoadingIndicator 
+            loading={isLoadingMore}
+            allLoaded={allLoaded && !isLoadingMore}
+            hasItems={true}
+            onVisible={() => {}}
+            emptyMessage="No more items"
+            itemCount={items.length}
+          />
+        </div>
+      )}
       
       {process.env.NODE_ENV === 'development' && <DebugInfo {...debugProps} />}
     </div>

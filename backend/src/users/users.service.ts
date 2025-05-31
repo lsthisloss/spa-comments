@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
-import { JwtService } from '@nestjs/jwt';
+import { ElasticsearchService } from '@nestjs/elasticsearch';
+import { slugify } from '../utils/slugify';
+import { isUUID } from 'class-validator';
 
 @Injectable()
 export class UsersService {
@@ -13,6 +16,7 @@ export class UsersService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
   async getUserById(userId: string): Promise<User | null> {
@@ -95,7 +99,7 @@ export class UsersService {
     password: string,
   ): Promise<{
     token: string;
-    user: Pick<User, 'id' | 'email' | 'userName'>;
+    user: Pick<User, 'id' | 'email' | 'userName' | 'slug'>;
   }> {
     try {
       const passwordHash: string = await bcrypt.hash(password, 10);
@@ -103,8 +107,22 @@ export class UsersService {
         email,
         userName,
         passwordHash,
+        slug: slugify(userName),
       });
       const savedUser = await this.userRepository.save(user);
+
+      // --- Индексация в Elasticsearch ---
+      await this.elasticsearchService.index({
+        index: 'users',
+        id: savedUser.id,
+        document: {
+          userName: savedUser.userName,
+          email: savedUser.email,
+          avatarUrl: savedUser.avatarUrl || '',
+          avatarShape: savedUser.avatarShape || 'circle',
+          slug: savedUser.slug,
+        },
+      });
 
       const payload = {
         sub: savedUser.id,
@@ -119,6 +137,7 @@ export class UsersService {
           id: savedUser.id,
           email: savedUser.email,
           userName: savedUser.userName,
+          slug: savedUser.slug,
         },
       };
     } catch (error) {
@@ -134,16 +153,48 @@ export class UsersService {
     updateData: { userName?: string; email?: string; password?: string },
   ): Promise<User | null> {
     try {
-      const user = await this.findById(userId);
-      if (!user) return null;
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+        relations: ['following', 'followers'], // Загружаем связанные данные
+      });
 
-      if (updateData.userName) user.userName = updateData.userName;
-      if (updateData.email) user.email = updateData.email;
-      if (updateData.password) {
+      if (!user) {
+        return null;
+      }
+
+      // Обновляем только переданные поля
+      if (updateData.userName !== undefined) {
+        user.userName = updateData.userName;
+        // Обновляем slug при изменении userName
+        user.slug = slugify(updateData.userName);
+      }
+      if (updateData.email !== undefined) {
+        user.email = updateData.email;
+      }
+      if (updateData.password !== undefined) {
         user.passwordHash = await bcrypt.hash(updateData.password, 10);
       }
 
-      return this.userRepository.save(user);
+      // Сохраняем изменения
+      const updatedUser = await this.userRepository.save(user);
+
+      // --- Обновление в Elasticsearch ---
+      await this.elasticsearchService.update({
+        index: 'users',
+        id: updatedUser.id,
+        doc: {
+          userName: updatedUser.userName,
+          email: updatedUser.email,
+          avatarUrl: updatedUser.avatarUrl || '',
+          avatarShape: updatedUser.avatarShape || 'circle',
+          slug: updatedUser.slug,
+        },
+        doc_as_upsert: true,
+      });
+
+      this.logger.log(`User ${userId} updated successfully`);
+
+      return updatedUser;
     } catch (error) {
       this.logger.error(`Error updating user ${userId}:`, error);
       return null;
@@ -153,6 +204,13 @@ export class UsersService {
   async deleteUser(userId: string): Promise<boolean> {
     try {
       const result = await this.userRepository.delete(userId);
+
+      // --- Удаление из Elasticsearch ---
+      await this.elasticsearchService.delete({
+        index: 'users',
+        id: userId,
+      });
+
       return result.affected ? result.affected > 0 : false;
     } catch (error) {
       this.logger.error(`Error deleting user ${userId}:`, error);
@@ -197,7 +255,7 @@ export class UsersService {
     password: string,
   ): Promise<{
     token: string;
-    user: Pick<User, 'id' | 'email' | 'userName'>;
+    user: Pick<User, 'id' | 'email' | 'userName' | 'slug'>;
   } | null> {
     try {
       const user = await this.validateUser(email, password);
@@ -216,6 +274,7 @@ export class UsersService {
           id: user.id,
           email: user.email,
           userName: user.userName,
+          slug: user.slug,
         },
       };
     } catch (error) {
@@ -237,58 +296,57 @@ export class UsersService {
     return follower.following?.some((f) => f.id === followingId) || false;
   }
 
-  async unfollowUser(
+  async getUserBySlug(slug: string): Promise<User | null> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { slug },
+        relations: ['following', 'followers'],
+      });
+      if (!user) {
+        this.logger.warn(`User not found by slug: ${slug}`);
+        return null;
+      }
+      return user;
+    } catch (error) {
+      this.logger.error(`Error getting user by slug ${slug}:`, error);
+      throw new Error(
+        `Failed to load user data by slug: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async followUser(
     currentUserId: string,
-    targetUserId: string,
+    targetUserIdOrSlug: string,
   ): Promise<void> {
     try {
-      // Проверяем существование пользователя
+      // Получаем текущего пользователя
       const currentUser = await this.userRepository.findOne({
         where: { id: currentUserId },
       });
 
       if (!currentUser) {
-        throw new Error('User not found');
+        throw new Error('Current user not found');
       }
 
-      if (currentUserId === targetUserId) {
-        throw new Error('Cannot unfollow yourself');
+      // Получаем целевого пользователя по ID или slug
+      let targetUser: User | null;
+
+      if (isUUID(targetUserIdOrSlug)) {
+        targetUser = await this.userRepository.findOne({
+          where: { id: targetUserIdOrSlug },
+        });
+      } else {
+        targetUser = await this.userRepository.findOne({
+          where: { slug: targetUserIdOrSlug },
+        });
       }
 
-      // Удаляем связь напрямую через SQL
-      const result = (await this.userRepository.query(
-        `DELETE FROM user_following 
-        WHERE "userId" = $1 AND "followingId" = $2`,
-        [currentUserId, targetUserId],
-      )) as { affectedRows?: number };
-
-      this.logger.log(
-        `User ${currentUserId} unfollowed ${targetUserId}. Deleted ${result.affectedRows || 0} rows`,
-      );
-    } catch (error) {
-      this.logger.error(`Error unfollowing user:`, error);
-      throw new Error(
-        `Failed to unfollow user: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async followUser(currentUserId: string, targetUserId: string): Promise<void> {
-    try {
-      // Проверяем существование пользователей
-      const currentUser = await this.userRepository.findOne({
-        where: { id: currentUserId },
-      });
-
-      const targetUser = await this.userRepository.findOne({
-        where: { id: targetUserId },
-      });
-
-      if (!currentUser || !targetUser) {
-        throw new Error('User not found');
+      if (!targetUser) {
+        throw new Error('Target user not found');
       }
 
-      if (currentUserId === targetUserId) {
+      if (currentUserId === targetUser.id) {
         throw new Error('Cannot follow yourself');
       }
 
@@ -296,31 +354,82 @@ export class UsersService {
       const existingRelation = (await this.userRepository.query(
         `SELECT * FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
-        [currentUserId, targetUserId],
+        [currentUserId, targetUser.id],
       )) as Array<{ userId: string; followingId: string }>;
 
       if (existingRelation && existingRelation.length > 0) {
         this.logger.log(
-          `User ${currentUserId} is already following ${targetUserId} (direct DB check)`,
+          `User ${currentUserId} is already following ${targetUser.id} (direct DB check)`,
         );
         return; // Уже подписан, ничего не делаем
       }
-
-      await this.checkFollowingRelations(currentUserId);
 
       // Добавляем связь напрямую через SQL с защитой от дублей
       await this.userRepository.query(
         `INSERT INTO user_following("userId", "followingId") 
         VALUES($1, $2) 
         ON CONFLICT DO NOTHING`,
-        [currentUserId, targetUserId],
+        [currentUserId, targetUser.id],
       );
 
-      this.logger.log(`User ${currentUserId} now following ${targetUserId}`);
+      this.logger.log(`User ${currentUserId} now following ${targetUser.id}`);
     } catch (error) {
       this.logger.error(`Error following user:`, error);
       throw new Error(
         `Failed to follow user: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async unfollowUser(
+    currentUserId: string,
+    targetUserIdOrSlug: string,
+  ): Promise<void> {
+    try {
+      // Проверяем существование текущего пользователя
+      const currentUser = await this.userRepository.findOne({
+        where: { id: currentUserId },
+      });
+
+      if (!currentUser) {
+        throw new Error('Current user not found');
+      }
+
+      // Получаем целевого пользователя по ID или slug
+      let targetUser: User | null;
+
+      if (isUUID(targetUserIdOrSlug)) {
+        targetUser = await this.userRepository.findOne({
+          where: { id: targetUserIdOrSlug },
+        });
+      } else {
+        targetUser = await this.userRepository.findOne({
+          where: { slug: targetUserIdOrSlug },
+        });
+      }
+
+      if (!targetUser) {
+        throw new Error('Target user not found');
+      }
+
+      if (currentUserId === targetUser.id) {
+        throw new Error('Cannot unfollow yourself');
+      }
+
+      // Удаляем связь напрямую через SQL
+      const result = (await this.userRepository.query(
+        `DELETE FROM user_following 
+        WHERE "userId" = $1 AND "followingId" = $2`,
+        [currentUserId, targetUser.id],
+      )) as { affectedRows?: number };
+
+      this.logger.log(
+        `User ${currentUserId} unfollowed ${targetUser.id}. Deleted ${result.affectedRows || 0} rows`,
+      );
+    } catch (error) {
+      this.logger.error(`Error unfollowing user:`, error);
+      throw new Error(
+        `Failed to unfollow user: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -426,16 +535,23 @@ export class UsersService {
       const user = await this.findById(userId);
       if (!user) return null;
 
-      // Обновляем только переданные поля
-      if (avatarUrl !== undefined) {
-        user.avatarUrl = avatarUrl;
-      }
+      if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+      if (avatarShape !== undefined) user.avatarShape = avatarShape;
 
-      if (avatarShape !== undefined) {
-        user.avatarShape = avatarShape;
-      }
+      const updatedUser = await this.userRepository.save(user);
 
-      return this.userRepository.save(user);
+      // --- Обновление в Elasticsearch ---
+      await this.elasticsearchService.update({
+        index: 'users',
+        id: updatedUser.id,
+        doc: {
+          avatarUrl: updatedUser.avatarUrl || '',
+          avatarShape: updatedUser.avatarShape || 'circle',
+        },
+        doc_as_upsert: true,
+      });
+
+      return updatedUser;
     } catch (error) {
       this.logger.error(`Error updating user avatar ${userId}:`, error);
       return null;

@@ -12,7 +12,6 @@ export const AppInitializingLoader = ({ visible = true }: { visible?: boolean })
 
   useEffect(() => {
     if (visible) {
-      // Если уже показываем — не сбрасываем анимацию
       if (!show) setShow(true);
       setTimeout(() => {
         if (!isUnmounting.current) {
@@ -22,15 +21,14 @@ export const AppInitializingLoader = ({ visible = true }: { visible?: boolean })
       }, 10);
     } else {
       isUnmounting.current = true;
-      setAnimate(true); // не сбрасываем в false!
+      setAnimate(true);
       setOpacity(0);
       setTimeout(() => {
         setShow(false);
         isUnmounting.current = false;
       }, 1000);
     }
-    // eslint-disable-next-line
-  }, [visible]);
+  }, [visible, show]);
 
   if (!show) return null;
 

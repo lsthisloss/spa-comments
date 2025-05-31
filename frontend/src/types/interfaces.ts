@@ -1,4 +1,3 @@
-// интерфейс User
 export interface User {
   id: string;
   userName: string;
@@ -6,12 +5,15 @@ export interface User {
   token?: string;
   following?: User[];
   followers?: User[];
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   avatarShape?: 'circle' | 'square';
   settings?: {
     debugMode?: boolean;
     notifications?: boolean;
   }
+  slug?: string;
+  createdAt?: string; 
+  updatedAt?: string;
 }
 
 // Базовый интерфейс только с общими свойствами
@@ -30,6 +32,10 @@ export interface FeedItemBase {
   likedUserIds?: string[];
   userId: string;
   fileType?: string;
+  slug?: string;
+  avatarUrl?: string | null;
+  avatarShape?: string;
+  updatedAt?: string;
 }
 
 // Интерфейс поста
@@ -47,7 +53,6 @@ export interface Comment extends FeedItemBase {
   numericId?: string; 
   repliesCount?: number;
 }
-
 // UI-свойства
 export interface FeedItemUIProps {
   hideCommentButton?: boolean;

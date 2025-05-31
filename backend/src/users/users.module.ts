@@ -7,14 +7,15 @@ import { AuthModule } from '../auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { CommonWsService } from '../common/common-ws.service';
 import { CommonModule } from '../common/common.module';
+import { SearchModule } from 'src/search/search.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     forwardRef(() => AuthModule),
-    forwardRef(() => UsersModule),
     JwtModule,
     CommonModule,
+    SearchModule,
   ],
   providers: [UsersService, UsersGateway, CommonWsService],
   exports: [UsersService, UsersGateway],

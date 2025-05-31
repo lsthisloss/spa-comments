@@ -12,6 +12,7 @@ import { join } from 'path';
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { Comment } from './comments/entities/comment.entity';
     PostsModule,
     CommentsModule,
     AuthModule,
+    SearchModule,
   ],
   providers: [AppGateway],
 })

@@ -48,59 +48,58 @@ const PostPage = observer(() => {
   }, [location.pathname, location.state, postId]);
 
   // Load post and comments - simplified with clear sequence
-  useEffect(() => {
-    if (!postId) return;
-    
-    let isMounted = true;
-    
-    const loadData = async () => {
-      // 1. Start loading and reset state
-      setLoading(true);
-      setError(null);
-      
-      try {
-        // 2. First load the post
-        logger.log(`[PostPage] Loading post: ${postId}`);
-        const fetchedPost = await postStore.fetchPostById(postId);
-        
-        if (!isMounted) return;
-        
-        if (!fetchedPost) {
-          setError("Post not found");
-          setLoading(false);
-          return;
-        }
-        
-        // 3. Post loaded successfully
-        setPost(fetchedPost);
-        setLoading(false);
-        
-        // 4. Then load comments
-        setCommentsLoading(true);
-        logger.log(`[PostPage] Loading comments for post: ${postId}`);
-        
-        await commentStore.loadComments(postId, 25, 1, commentsSort);
-        
-        if (!isMounted) return;
-        
-      } catch (error) {
-        if (!isMounted) return;
-        logger.error(`[PostPage] Error loading data:`, error);
-        setError("Error loading data");
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-          setCommentsLoading(false);
-        }
+useEffect(() => {
+  if (!postId) return;
+  
+  let isMounted = true;
+  
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      logger.log(`[PostPage] Loading post: ${postId}`);
+      // 1. Сначала ищем по slug
+      let fetchedPost = postStore.getPostBySlug(postId);
+      if (!fetchedPost) {
+        // 2. Если нет в сторе — пробуем загрузить с backend (slug или id)
+        fetchedPost = await postStore.fetchPostById(postId) ?? undefined;
       }
-    };
-    
-    loadData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [postId, commentsSort]);
+
+      if (!isMounted) return;
+
+      if (!fetchedPost) {
+        setError("Post not found");
+        setLoading(false);
+        return;
+      }
+
+      setPost(fetchedPost);
+      setLoading(false);
+
+      setCommentsLoading(true);
+      logger.log(`[PostPage] Loading comments for post: ${postId}`);
+      await commentStore.loadComments(fetchedPost.id, 25, 1, commentsSort);
+
+      if (!isMounted) return;
+    } catch (error) {
+      if (!isMounted) return;
+      logger.error(`[PostPage] Error loading data:`, error);
+      setError("Error loading data");
+    } finally {
+      if (isMounted) {
+        setLoading(false);
+        setCommentsLoading(false);
+      }
+    }
+  };
+
+  loadData();
+
+  return () => {
+    isMounted = false;
+  };
+}, [postId, commentsSort]);
   
   // Handle back button
   const handleBackClick = useCallback(() => {
@@ -111,6 +110,9 @@ const PostPage = observer(() => {
     const currentState = navigationStore.currentState;
     
     if (currentState && (currentState.fromFeed || currentState.fromFollowing || currentState.fromUserProfile)) {
+      // Сохраняем текущую позицию скролла поста
+      navigationStore.currentState.scrollPosition = window.scrollY;
+      
       navigationStore.handleBackNavigation(navigate);
     } else {
       navigate(-1);

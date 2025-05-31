@@ -28,7 +28,7 @@ export function useFeedManager<T>({
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastItemCountRef = useRef(items.length);
   const recentlyLoadedRef = useRef(false);
-
+  const loadAttemptsRef = useRef(new Map<string, number>());
   // Простое отслеживание изменений количества элементов
   useEffect(() => {
     if (items.length > lastItemCountRef.current) {
@@ -84,6 +84,7 @@ const handleLoadMore = useCallback(async () => {
     itemsCount: items.length 
   });
 
+  // ЗАЩИТА 1: Проверка флагов состояния
   if (recentlyLoadedRef.current) {
     logger.log("[useFeedManager] Skipping load more - recently loaded new items");
     return;
@@ -96,19 +97,38 @@ const handleLoadMore = useCallback(async () => {
     return;
   }
 
+  // ЗАЩИТА 2: Проверка что все уже загружено
+  if (allLoaded) {
+    logger.log("[useFeedManager] Skipping load more - all items loaded");
+    return;
+  }
+
+  // ЗАЩИТА 3: Проверка лимита попыток для пустых результатов
+  const loadAttempts = loadAttemptsRef.current.get('loadMore') || 0;
+  if (loadAttempts > 3 && items.length === 0) {
+    logger.log("[useFeedManager] Too many empty load attempts, stopping");
+    return;
+  }
+
   logger.log("[useFeedManager] Triggering load more items");
   setLoadingLock(true);
   setInternalLoading(true);
+
+  // Увеличиваем счетчик попыток
+  loadAttemptsRef.current.set('loadMore', loadAttempts + 1);
 
   try {
     await loadMoreItems();
 
     recentlyLoadedRef.current = true;
+    
+    // Сбрасываем счетчик при успешной загрузке
+    loadAttemptsRef.current.set('loadMore', 0);
 
     setTimeout(() => {
       recentlyLoadedRef.current = false;
       logger.log("[useFeedManager] Recently loaded flag cleared");
-    }, 1000);
+    }, 500); // Уменьшаем с 1000ms до 500ms
   } catch (error) {
     logger.error("[useFeedManager] Error loading more items:", error);
   } finally {

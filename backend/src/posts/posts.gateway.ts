@@ -16,11 +16,14 @@ import { CommonWsService } from '../common/common-ws.service';
 import { UsersService } from '../users/users.service';
 import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from 'src/auth/ws-jwt.guard';
+import { isUUID } from 'class-validator';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/posts' })
 export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
+  private requestCooldowns = new Map<string, number>();
+  private readonly COOLDOWN_MS = 1000; // 1 секунда между запросами
 
   constructor(
     private readonly commonWsService: CommonWsService,
@@ -132,7 +135,81 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleFetchFeedPosts(
     @MessageBody() data: { page: number; limit: number },
   ) {
-    return this.postsService.getFeedPosts(data.page, data.limit);
+    try {
+      const page = Math.max(1, Math.min(data.page || 1, 10));
+      const limit = Math.max(1, Math.min(data.limit || 25, 50));
+
+      const result = await this.postsService.getFeedPosts(page, limit);
+
+      return {
+        ...result,
+        allLoaded: result.posts.length < limit || page * limit >= result.total,
+      };
+    } catch (error) {
+      console.error('Error fetching feed posts:', error);
+      return {
+        posts: [],
+        total: 0,
+        isEmpty: true,
+        allLoaded: true,
+        error: 'Failed to fetch feed posts',
+      };
+    }
+  }
+
+  @SubscribeMessage('fetchUserPosts')
+  async handleFetchUserPosts(
+    @MessageBody() data: { userId: string; page: number; limit: number },
+  ) {
+    try {
+      let userId = data.userId;
+      // Если это не UUID, ищем пользователя по слагу
+      if (!isUUID(userId)) {
+        const user = await this.usersService.getUserBySlug(userId);
+        if (!user) {
+          return {
+            posts: [],
+            total: 0,
+            isEmpty: true,
+            allLoaded: true,
+            error: 'User not found',
+          };
+        }
+        userId = user.id;
+      }
+
+      console.log(`Fetching posts for user ${userId}, page ${data.page}`);
+
+      const page = Math.max(1, Math.min(data.page || 1, 10));
+      const limit = Math.max(1, Math.min(data.limit || 25, 50));
+
+      const posts = await this.postsService.getUserPosts(userId, page, limit);
+      const total = await this.postsService.getUserPostsCount(userId);
+
+      console.log(
+        `Found ${posts.length} posts out of ${total} total for user ${userId}`,
+      );
+
+      return {
+        posts,
+        total,
+        isEmpty: total === 0,
+        allLoaded: posts.length < limit || page * limit >= total,
+      };
+    } catch (error: unknown) {
+      let message = 'Internal server error';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      console.error('Error fetching user posts:', message);
+      return {
+        posts: [],
+        total: 0,
+        isEmpty: true,
+        allLoaded: true,
+        error: message,
+      };
+    }
   }
 
   @UseGuards(WsJwtGuard)
@@ -142,7 +219,6 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      // Получаем ID текущего пользователя из токена
       const userData = client.data as { user?: { id?: string } };
       const currentUserId = userData.user?.id;
 
@@ -150,59 +226,84 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return { error: 'User not authenticated' };
       }
 
+      // ЗАЩИТА 1: Rate limiting per user
+      const cooldownKey = `following_${currentUserId}`;
+      const now = Date.now();
+      const lastRequest = this.requestCooldowns.get(cooldownKey) || 0;
+
+      if (now - lastRequest < this.COOLDOWN_MS) {
+        console.log(`Rate limit hit for user ${currentUserId}`);
+        return {
+          posts: [],
+          total: 0,
+          error: 'Too many requests, please wait',
+          cooldown: this.COOLDOWN_MS - (now - lastRequest),
+        };
+      }
+
+      this.requestCooldowns.set(cooldownKey, now);
+
+      // ЗАЩИТА 2: Валидация параметров
+      const page = Math.max(1, Math.min(data.page || 1, 10)); // Макс 10 страниц
+      const limit = Math.max(1, Math.min(data.limit || 25, 50)); // Макс 50 постов
+
       console.log(
-        `Fetching following posts for user ${currentUserId}, page ${data.page}`,
+        `Fetching following posts for user ${currentUserId}, page ${page}, limit ${limit}`,
       );
 
       const result = await this.postsService.getFollowingPosts(
         currentUserId,
-        data.page,
-        data.limit,
+        page,
+        limit,
       );
 
       console.log(
         `Found ${result.posts.length} following posts out of ${result.total} total`,
       );
 
-      return result;
+      // ЗАЩИТА 3: Специальная обработка пустых результатов
+      if (result.isEmpty || (result.total === 0 && result.posts.length === 0)) {
+        return {
+          posts: [],
+          total: 0,
+          isEmpty: true,
+          allLoaded: true,
+          message:
+            'No posts from followed users. Follow some users to see their posts here!',
+        };
+      }
+
+      return {
+        ...result,
+        allLoaded: result.posts.length < limit || page * limit >= result.total,
+      };
     } catch (error: unknown) {
       let message = 'Internal server error';
       if (error instanceof Error) {
         message = error.message;
       }
       console.error('Error fetching following posts:', message);
-      return { error: message };
+      return {
+        error: message,
+        posts: [],
+        total: 0,
+        isEmpty: true,
+        allLoaded: true,
+      };
     }
   }
 
-  @SubscribeMessage('fetchUserPosts')
-  async handleFetchUserPosts(
-    @MessageBody() data: { userId: string; page: number; limit: number },
-  ) {
-    try {
-      console.log(`Fetching posts for user ${data.userId}, page ${data.page}`);
-
-      const posts = await this.postsService.getUserPosts(
-        data.userId,
-        data.page,
-        data.limit,
-      );
-
-      const total = await this.postsService.getUserPostsCount(data.userId);
-
-      console.log(
-        `Found ${posts.length} posts out of ${total} total for user ${data.userId}`,
-      );
-
-      return { posts, total };
-    } catch (error: unknown) {
-      let message = 'Internal server error';
-      if (error instanceof Error) {
-        message = error.message;
+  // Очистка старых записей cooldown
+  @SubscribeMessage('ping')
+  handlePing() {
+    // Очищаем старые записи каждые 10 секунд
+    const now = Date.now();
+    for (const [key, timestamp] of this.requestCooldowns.entries()) {
+      if (now - timestamp > 10000) {
+        this.requestCooldowns.delete(key);
       }
-      console.error('Error fetching user posts:', message);
-      return { error: message };
     }
+    return { pong: now };
   }
 
   @SubscribeMessage('fetchPost')

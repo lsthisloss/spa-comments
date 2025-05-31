@@ -1,0 +1,48 @@
+.virtual-list {
+  &-container {
+    width: 100%;
+    position: relative;
+    
+    // Основной контейнер для элементов
+    &-items {
+      width: 100%;
+      position: relative;
+    }
+    
+    // Отдельный элемент в списке
+    &-item {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: auto;
+      will-change: transform;
+      z-index: 2;
+    }
+    
+    // Состояние пустого списка или загрузки
+    &-empty-state {
+      padding: 20px;
+      text-align: center;
+    }
+    
+    // Индикатор конца списка или загрузки
+    &-pagination-indicator {
+      position: relative;
+      width: 100%;
+      display: block;
+      clear: both;
+      margin-top: 10px;
+      z-index: 1;
+    }
+    
+    // Невидимый элемент для определения конца прокрутки
+    &-sentinel {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      height: 1px;
+      opacity: 0;
+    }
+  }
+}

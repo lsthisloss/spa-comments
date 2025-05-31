@@ -71,4 +71,7 @@ export class Comment {
 
   @Column({ type: 'varchar', nullable: true })
   numericId?: string;
+
+  @Column({ unique: true })
+  slug: string;
 }

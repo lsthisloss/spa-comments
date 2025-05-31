@@ -26,7 +26,7 @@ const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: S
       sendFormStore.initializeUser(
         userStore.user.id, 
         userStore.user.userName,
-        userStore.user.avatarUrl,
+        userStore.user.avatarUrl ?? undefined,
         userStore.user.avatarShape as 'circle' | 'square'
       );
     }

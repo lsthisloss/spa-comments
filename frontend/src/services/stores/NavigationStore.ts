@@ -1,4 +1,4 @@
-import { makeAutoObservable, toJS } from "mobx";
+import { action, makeAutoObservable, toJS } from "mobx";
 import { logger } from "../../utils/Logger";
 import { postStore } from "./PostStore";
 import { NavigateFunction } from "react-router-dom";
@@ -13,44 +13,25 @@ export interface NavigationState {
   postId?: string;
   timestamp?: number;
   navigationType?: string;
+  slug?: string;
+  preserveFeeds?: boolean;
 }
 
 class NavigationStore {
   currentState: NavigationState = { scrollPosition: 0, timestamp: Date.now() };
   
-  // Простые позиции скролла
+  // Позиции скролла
   feedScrollPosition: number = 0;
   followingScrollPosition: number = 0;
+  
+  // Отслеживание активной вкладки
+  currentActiveTab: 'all' | 'my' = 'all';
   
   constructor() {
     makeAutoObservable(this);
     logger.log("[NAV] Initialized");
   }
 
-  /**
-   * Навигация на главную с полной очисткой состояния
-   */
-  navigateToFreshHome(navigate: NavigateFunction) {
-    logger.log("[NAV] Navigating to fresh home - clearing all saved state");
-    
-    // Очищаем все сохраненные данные ленты
-    postStore.feedSavedPosts.clear();
-    postStore.feedScrollPosition = 0;
-    
-    // Очищаем состояние навигации
-    this.feedScrollPosition = 0;
-    this.followingScrollPosition = 0;
-    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
-    
-    // Переходим на главную
-    navigate('/', { replace: true });
-    
-    // Загружаем свежую ленту
-    setTimeout(() => {
-      logger.log("[NAV] Loading fresh feed");
-      postStore.fetchPosts('feed', 1);
-    }, 100);
-  }
 
   /**
    * Сохраняет состояние перед навигацией
@@ -98,9 +79,61 @@ class NavigationStore {
     return toJS(this.currentState);
   }
 
+  saveTabScrollPosition = action((tab: 'all' | 'my', scrollPosition?: number) => {
+    const position = scrollPosition ?? window.scrollY;
+    
+    if (tab === 'all') {
+      this.feedScrollPosition = position;
+      logger.log(`[NAV] Saved feed scroll position: ${position}`);
+    } else {
+      this.followingScrollPosition = position;
+      logger.log(`[NAV] Saved following scroll position: ${position}`);
+    }
+  });
+
   /**
-   * Обрабатывает возврат назад (НЕ используется для клика на Home)
+   * Обновление активной вкладки
    */
+  setActiveTab = action((tab: 'all' | 'my') => {
+    if (this.currentActiveTab !== tab) {
+      logger.log(`[NAV] Active tab changed from ${this.currentActiveTab} to ${tab}`);
+      this.currentActiveTab = tab;
+    }
+  });
+
+  /**
+   * Очистка позиций скролла вкладок
+   */
+  clearTabScrollPositions = action(() => {
+    logger.log("[NAV] Clearing all tab scroll positions");
+    this.feedScrollPosition = 0;
+    this.followingScrollPosition = 0;
+  });
+
+  // Обновляем существующий метод navigateToFreshHome
+  navigateToFreshHome(navigate: NavigateFunction) {
+    logger.log("[NAV] Navigating to fresh home - clearing all saved state");
+    
+    // Очищаем все сохраненные данные ленты
+    postStore.feedSavedPosts.clear();
+    postStore.feedScrollPosition = 0;
+    
+    // Очищаем состояние навигации И позиции вкладок
+    this.feedScrollPosition = 0;
+    this.followingScrollPosition = 0;
+    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
+    
+    // Переходим на главную
+    navigate('/', { replace: true });
+    
+    // Загружаем свежую ленту
+    setTimeout(() => {
+      logger.log("[NAV] Loading fresh feed");
+      postStore.fetchPosts('feed', 1);
+    }, 100);
+  }
+
+  // Обновляем handleBackNavigation для поддержки вкладок
   handleBackNavigation(navigate: NavigateFunction) {
     const state = this.currentState;
     
@@ -111,19 +144,28 @@ class NavigationStore {
       logger.log("[NAV] Returning to main feed");
       navigate('/', { replace: true });
       
-      // Проверяем, есть ли сохраненные посты (значит пришли с ленты)
-      const hasSavedPosts = postStore.feedSavedPosts.length > 0;
-      
-      if (hasSavedPosts) {
-        // Есть сохраненные посты - восстанавливаем позицию скролла
-        logger.log("[NAV] Restoring saved feed state and scroll position");
-        this.restoreScrollPosition(this.feedScrollPosition);
-      } else {
-        // Нет сохраненных постов - значит пришли по прямому URL, загружаем свежую ленту
-        logger.log("[NAV] No saved posts found, loading fresh feed");
+      if (state.preserveFeeds) {
+        logger.log("[NAV] Preserving feed state - not loading fresh data");
         setTimeout(() => {
-          postStore.fetchPosts('feed', 1);
+          this.restoreTabScrollPosition('all');
         }, 100);
+      } else {
+        // Проверяем, есть ли сохраненные посты (значит пришли с ленты)
+        const hasSavedPosts = postStore.feedSavedPosts.length > 0;
+        
+        if (hasSavedPosts) {
+          // Есть сохраненные посты - восстанавливаем позицию скролла
+          logger.log("[NAV] Restoring saved feed state and scroll position");
+          setTimeout(() => {
+            this.restoreTabScrollPosition('all');
+          }, 100);
+        } else {
+          // Нет сохраненных постов - значит пришли по прямому URL, загружаем свежую ленту
+          logger.log("[NAV] No saved posts found, loading fresh feed");
+          setTimeout(() => {
+            postStore.fetchPosts('feed', 1);
+          }, 100);
+        }
       }
       return;
     }
@@ -132,21 +174,25 @@ class NavigationStore {
     if (state.fromFollowing) {
       logger.log("[NAV] Returning to following feed");
       navigate('/?tab=following', { replace: true });
-      this.restoreScrollPosition(this.followingScrollPosition);
+      
+      if (!state.preserveFeeds) {
+        setTimeout(() => {
+          this.restoreTabScrollPosition('my');
+        }, 100);
+      }
       return;
     }
     
-    // Если пришли из профиля - идем на главную с СВЕЖЕЙ лентой
+    // Остальная логика остается без изменений...
     if (state.fromUserProfile) {
       logger.log("[NAV] Returning from profile to main feed - loading fresh");
       this.navigateToFreshHome(navigate);
       return;
     }
     
-    // Если пришли с поста - возвращаемся к посту
     if (state.fromPost && state.postId) {
-      logger.log(`[NAV] Returning to post ${state.postId}`);
-      navigate(`/post/${state.postId}`, { replace: true });
+      logger.log(`[NAV] Returning to post ${state.slug}`);
+      navigate(`/post/${state.slug}`, { replace: true });
       return;
     }
     
@@ -196,14 +242,63 @@ class NavigationStore {
   /**
    * Восстанавливает позицию скролла
    */
-  private restoreScrollPosition(position: number) {
-    if (position <= 0) return;
+restoreTabScrollPosition = action((tab: 'all' | 'my') => {
+  const position = tab === 'all' ? this.feedScrollPosition : this.followingScrollPosition;
+  
+  if (position > 0) {
+    logger.log(`[NAV] Restoring ${tab} scroll position: ${position}`);
     
-    setTimeout(() => {
-      window.scrollTo({ top: position, behavior: 'auto' });
-      logger.log(`[NAV] Restored scroll position: ${position}`);
-    }, 1);
+    // ИСПРАВЛЕНИЕ: Более надежное восстановление с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    const attemptRestore = () => {
+      attempts++;
+      
+      // Проверяем, что страница достаточно прогрузилась
+      const hasContent = document.body.scrollHeight > position;
+      
+      if (hasContent || attempts >= maxAttempts) {
+        this.restoreScrollPosition(position);
+        return true;
+      } else {
+        // Если контент еще не прогрузился, пробуем еще раз через 100ms
+        setTimeout(attemptRestore, 100);
+        return false;
+      }
+    };
+    
+    return attemptRestore();
   }
+  return false;
+});
+
+/**
+ * Восстанавливает позицию скролла
+ */
+private restoreScrollPosition(position: number) {
+  if (position <= 0) return;
+  
+  // ИСПРАВЛЕНИЕ: Более надежное восстановление
+  const restore = () => {
+    window.scrollTo({ top: position, behavior: 'auto' });
+    logger.log(`[NAV] Restored scroll position: ${position}`);
+    
+    // Проверяем, что скролл действительно установился
+    setTimeout(() => {
+      const currentScroll = window.scrollY;
+      const tolerance = 50; // Допускаем погрешность в 50px
+      
+      if (Math.abs(currentScroll - position) > tolerance) {
+        logger.log(`[NAV] Scroll position not accurate (${currentScroll} vs ${position}), retrying...`);
+        window.scrollTo({ top: position, behavior: 'auto' });
+      }
+    }, 50);
+  };
+  
+  // Небольшая задержка для завершения рендера
+  setTimeout(restore, 10);
+}
 
   /**
    * Очищает состояние

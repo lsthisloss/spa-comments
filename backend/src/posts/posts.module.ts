@@ -7,27 +7,21 @@ import { Post } from './entities/post.entity';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { CommonWsService } from 'src/common/common-ws.service';
 import { UsersModule } from '../users/users.module';
-import { UsersGateway } from 'src/users/users.gateway';
-import { UsersService } from 'src/users/users.service';
 import { User } from '../users/entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
-import { Comment } from '../comments/entities/comment.entity'; // Добавляем импорт Comment
+import { Comment } from '../comments/entities/comment.entity';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Post, User, Comment]), // Добавляем Comment в TypeOrmModule
+    TypeOrmModule.forFeature([Post, User, Comment]),
     forwardRef(() => CommentsModule),
     RabbitMQModule,
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),
+    SearchModule,
   ],
-  providers: [
-    PostsService,
-    PostsGateway,
-    CommonWsService,
-    UsersGateway,
-    UsersService,
-  ],
-  exports: [UsersService, PostsService, PostsGateway],
+  providers: [PostsService, PostsGateway, CommonWsService],
+  exports: [PostsService, PostsGateway],
 })
 export class PostsModule {}

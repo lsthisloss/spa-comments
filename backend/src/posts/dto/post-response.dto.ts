@@ -14,4 +14,5 @@ export class PostResponseDto {
   likedUserIds?: string[];
   repliesCount?: number;
   user?: UserBasicDto;
+  slug?: string;
 }

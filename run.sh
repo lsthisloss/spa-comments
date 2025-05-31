@@ -16,6 +16,10 @@ function app_run_local() {
 
     echo -e "\n${YELLOW}Building images ...${NORMAL}\n"
     docker-compose -f docker-compose.yml build
+    if [ $? -ne 0 ]; then
+        echo -e "\n${RED}Error building images. Please check the Dockerfile and try again.${NORMAL}\n"
+        exit 1
+    fi
 
     echo -e "\n${YELLOW}Starting app containers (local/dev mode) ...${NORMAL}\n"
     # Only kill if a process is found

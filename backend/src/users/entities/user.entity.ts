@@ -48,4 +48,7 @@ export class User {
 
   @ManyToMany(() => User, (user) => user.following)
   followers: User[];
+
+  @Column({ unique: true })
+  slug: string;
 }

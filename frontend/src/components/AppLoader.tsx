@@ -13,8 +13,7 @@ export const AppLoader = () => {
       if (!appInitializer.initialized) {
         await appInitializer.initialize();
       }
-      // Небольшая задержка для плавного перехода
-      setTimeout(() => setLoading(false), 500);
+      setTimeout(() => setLoading(false), 100);
     };
     
     checkInitialized();

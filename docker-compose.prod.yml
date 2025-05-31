@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production  # Production стадия
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_HOST: rabbitmq
+      RABBITMQ_DEFAULT_PORT: 5672
+      JWT_SECRET: ${JWT_SECRET}
+    volumes: []  # Убираем volume mounting для production
+    
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production  # Production стадия с Nginx
+    ports:
+      - "80:80"  # Nginx порт
+    environment:
+      NODE_ENV: production
+    volumes: []  # Убираем volume mounting для production
+    depends_on:
+      - backend
+
+  # Отключаем dev порты в production
+  postgres:
+    ports: []
+  
+  elasticsearch:
+    ports: []
+  
+  rabbitmq:
+    ports:
+      - "15672:15672"  # Оставляем только management UI

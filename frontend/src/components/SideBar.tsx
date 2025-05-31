@@ -1,5 +1,5 @@
 import { Menu } from 'antd';
-import { HomeOutlined, LoginOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import { HomeOutlined, LoginOutlined, LogoutOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import '../styles/main.scss';
@@ -9,11 +9,13 @@ import authStore from '../services/stores/AuthStore';
 import { postStore } from '../services/stores/PostStore';
 import { observer } from 'mobx-react-lite';
 import { logger } from '../utils/Logger';
+import { SearchModal } from './ui/modals/SearchModal';
 
 const Sidebar = observer(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Функция для навигации на главную с очисткой состояния
   const navigateToHome = () => {
@@ -32,77 +34,68 @@ const Sidebar = observer(() => {
     }, 100);
   };
 
-const menuItems = [
-  {
-    key: '/x',
-    icon: <XIcon className="sidebar-icon" />,
-    label: '',
-    className: 'x-menu-item',
-  },
-  { 
-    key: '/', 
-    icon: <HomeOutlined className="sidebar-icon" />, 
-    label: 'Home',
-  },
-  userStore.user && {
-    key: userStore.user ? `/profile/${userStore.user.id}` : '',
-    icon: <UserOutlined className="sidebar-icon" />,
-    label: 'Me',
-  },
-  userStore.user
-    ? {
-        key: 'logout',
-        icon: <LogoutOutlined className="sidebar-icon" />,
-        label: 'Out',
-      }
-    : {
-        key: 'login',
-        icon: <LoginOutlined className="sidebar-icon" />,
-        label: 'In',
-      },
-].filter(Boolean);
-
-return (
-  <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-    <Menu
-      mode="inline"
-      className="sidebar-menu"
-      items={menuItems}
-      selectedKeys={[location.pathname]}
-      onClick={({ key }) => {
-        if (key === '/' || key === '/x') {
-          navigateToHome();
-        } else if (key === 'logout') {
-          authStore.logout();
-          userStore.setUser(null);
-          navigate('/auth');
-        } else if (key === 'login') {
-          navigate('/auth');
-        } else {
-          navigate(key);
+  const menuItems = [
+    {
+      key: '/x',
+      icon: <XIcon className="sidebar-icon" />,
+      label: '',
+      className: 'x-menu-item',
+    },
+    { 
+      key: '/', 
+      icon: <HomeOutlined className="sidebar-icon" />, 
+      label: 'Home',
+    },
+    userStore.user && {
+      key: '/profile', // Используем /profile без параметра для собственного профиля
+      icon: <UserOutlined className="sidebar-icon" />,
+      label: 'Me',
+    },
+    {
+      key: 'search',
+      icon: <SearchOutlined className="sidebar-icon" />,
+      label: 'Search',
+    },
+    userStore.user
+      ? {
+          key: 'logout',
+          icon: <LogoutOutlined className="sidebar-icon" />,
+          label: 'Out',
         }
-      }}
-    />
-  </nav>
-);
+      : {
+          key: 'login',
+          icon: <LoginOutlined className="sidebar-icon" />,
+          label: 'In',
+        },
+  ].filter(Boolean);
 
   return (
-    <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <Menu
-        mode="inline"
-        className="sidebar-menu"
-        items={menuItems}
-        selectedKeys={[location.pathname]}
-        onClick={({ key }) => {
-          // Для главной страницы используем специальную функцию
-          if (key === '/' || key === '/x') {
-            navigateToHome();
-          } else {
-            navigate(key);
-          }
-        }}
-      />
-    </nav>
+    <>
+      <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+        <Menu
+          mode="inline"
+          className="sidebar-menu"
+          items={menuItems}
+          selectedKeys={[location.pathname]}
+          onClick={({ key }) => {
+            if (key === 'search') {
+              setSearchOpen(true);
+            } else if (key === '/' || key === '/x') {
+              navigateToHome();
+            } else if (key === 'logout') {
+              authStore.logout();
+              userStore.setUser(null);
+              navigate('/auth');
+            } else if (key === 'login') {
+              navigate('/auth');
+            } else {
+              navigate(key);
+            }
+          }}
+        />
+      </nav>
+      <SearchModal visible={searchOpen} onClose={() => setSearchOpen(false)} />
+    </>
   );
 });
 

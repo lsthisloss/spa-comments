@@ -3,8 +3,8 @@ import * as ioClient from 'socket.io-client';
 const io = ioClient;
 // Ваши данные пользователя
 const userData = {
-  email: 'anon4@example.com',
-  userName: 'Anon4',
+  email: `anon_post_${Date.now()}@example.com`,
+  userName: `AnonPost${Date.now()}`,
   password: 'Aa112233',
 };
 
@@ -95,7 +95,6 @@ function main() {
                   auth: { token: loginResponse.token },
                 });
 
-                // Остальной код без изменений
                 postSocket.on('connect', () => {
                   console.log('Connected to /posts namespace!');
 
@@ -122,7 +121,6 @@ function main() {
               } else {
                 console.error('Login failed:', loginResponse);
 
-                // Альтернативный подход - попробуйте использовать токен из регистрации
                 if (registerResponse.token) {
                   console.log(
                     'Trying to use token from registration instead...',
@@ -133,13 +131,11 @@ function main() {
                     auth: { token: registerResponse.token },
                   });
 
-                  // Тот же код для подключения к /posts
                   postSocket.on('connect', () => {
                     console.log(
                       'Connected to /posts namespace with registration token!',
                     );
 
-                    // 4. Добавляем посты
                     let sent = 0;
                     for (let i = 0; i < POSTS_COUNT; i++) {
                       const postDto = {

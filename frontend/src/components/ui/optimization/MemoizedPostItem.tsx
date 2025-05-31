@@ -33,14 +33,13 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
       }}
     >
       <PostItem        
-        post={post} // Используем post как есть
+        post={post}
         onClick={() => onClick && onClick(post.id)} 
         onShowMore={handleShowMore}
       />
     </div>
   );
 });
-// Внешний компонент с memo для оптимизации
 export const MemoizedPostItem = memo(PostItemWithComments, (prevProps, nextProps) => {
   // Сравниваем только базовые свойства поста
   return (

@@ -7,6 +7,7 @@ class SocketStore {
   users: ReturnType<typeof io> | null = null;
   posts: ReturnType<typeof io> | null = null;
   comments: ReturnType<typeof io> | null = null;
+  search: ReturnType<typeof io> | null = null;
   connected = false;
   postsReady = false;
   commentsReady = false;
@@ -62,6 +63,10 @@ class SocketStore {
 
   setComments = action((socket: ReturnType<typeof io> | null) => {
     this.comments = socket;
+  })
+
+  setSearch = action((socket: ReturnType<typeof io> | null) => {
+    this.search = socket;
   })
 
   hasTokenConnection(token: string): boolean {
@@ -163,11 +168,28 @@ class SocketStore {
       this.setComments(commentsSocket);
       this.setupCommentsHandlers();
 
+      // Инициализируем search socket
+      const searchSocket = io(`${wsUrl}/search`, {
+        transports: ['websocket', 'polling'],
+        timeout: 5000,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        auth: { token },
+        transportOptions: {
+          websocket: {
+            extraHeaders: { 'Authorization': `Bearer ${token}` }
+          }
+        }
+      });
+      this.setSearch(searchSocket);
+      this.setupSearchHandlers();
       // Ждем подключения с более коротким таймаутом
       const connections = await Promise.allSettled([
         this.waitForConnection(this.users!, 'users', 3000),
         this.waitForConnection(this.posts!, 'posts', 3000),
-        this.waitForConnection(this.comments!, 'comments', 3000)
+        this.waitForConnection(this.comments!, 'comments', 3000),
+        this.waitForConnection(this.search!, 'search', 3000),
       ]);
 
       // Проверяем результаты
@@ -190,8 +212,21 @@ class SocketStore {
     }
   })
 
+  private setupSearchHandlers() {
+      if (!this.search) return;
+      this.search.on('connect', () => {
+        logger.log('[SocketStore] Search socket connected');
+      });
+      this.search.on('disconnect', () => {
+        logger.log('[SocketStore] Search socket disconnected');
+      });
+      this.search.on('connect_error', (error: Error) => {
+        logger.error('[SocketStore] Search socket connection error:', error);
+      });
+  }
+
   private async cleanupSockets(): Promise<void> {
-    const socketsToCleanup = [this.users, this.posts, this.comments];
+    const socketsToCleanup = [this.users, this.posts, this.comments, this.search];
     
     for (const socket of socketsToCleanup) {
       if (socket?.connected) {
@@ -321,6 +356,11 @@ class SocketStore {
       this.setComments(null);
     }
 
+    if (this.search) {
+      this.search.disconnect();
+      this.setSearch(null);
+    }
+
     this.setPostsReady(false);
     this.setCommentsReady(false);
 
@@ -336,6 +376,12 @@ class SocketStore {
       logger.log('[SocketStore] Users socket disconnected');
     }
     
+    if (this.search && this.search.connected) {
+      this.search.disconnect();
+      logger.log('[SocketStore] Search socket disconnected');
+    }
+    this.setSearch(null);
+
     if (this.posts && this.posts.connected) {
       this.posts.disconnect();
       logger.log('[SocketStore] Posts socket disconnected');
