@@ -171,25 +171,7 @@ const handleLoadMore = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [feed.buffer.length, feedType]);
 
-  // Клик по посту с сохранением состояния навигации
-  const handleItemClick = useCallback((postId: string) => {
-    logger.log(`[PostsThread] Handling click for post ${postId}`);
-    
-    const currentScrollPosition = window.scrollY;
-    
-    // Сохраняем состояние в PostStore (только для главной ленты)
-    if (feedType === "feed") {
-      postStore.saveFeedState(currentScrollPosition);
-    }
-    
-    // Сохраняем состояние навигации
-    const navigationState = navigationStore.saveNavigationState('post', postId);
-    
-    // Переходим на пост с сохраненным state
-    navigate(`/post/${postId}`, { 
-      state: navigationState 
-    });
-  }, [navigate, feedType]);
+
 
   // === ВОССТАНОВЛЕНИЕ СКРОЛЛА ПРИ ВОЗВРАТЕ ===
     
@@ -261,29 +243,56 @@ const handleLoadMore = useCallback(() => {
     }
   }, [feedType, userId, feed.list.length, feed.loading, feed.reset, feed.allLoaded, feed.total]);
 
-  const renderPostItem = useCallback((
-    virtualItem: VirtualListItem<Post>, 
-    measureRef: (el: HTMLElement | null) => void
-  ) => {
-    return (
-      <div
-        id={`post-${virtualItem.item.id}`}
-        ref={measureRef}
-        data-virtual-index={virtualItem.index}
-      >
-        <MemoizedPostItem 
-          post={virtualItem.item}
-          onClick={handleItemClick}
-          onHeightChange={() => {
-            const element = document.getElementById(`post-${virtualItem.item.id}`);
-            if (element) {
-              measureElement(element, virtualItem.index);
-            }
-          }}
-        />
-      </div>
-    );
-  }, [handleItemClick, measureElement]);
+  useEffect(() => {
+    // Эффект срабатывает, если лента помечена для обновления
+    if (feed.reset && !feed.loading) {
+      logger.log(`[PostsThread] Feed ${feedType} reset flag detected, forcing refresh`);
+      
+      // Очищаем флаг и загружаем свежие данные
+      postStore.clearResetFlag(feedType, userId);
+      postStore.fetchPosts(feedType, 1, userId);
+    }
+  }, [feedType, userId, feed.reset, feed.loading]);
+  
+  const handleItemClick = useCallback((postSlug: string) => {
+    logger.log(`[PostsThread] Handling click for post slug: ${postSlug}`);
+    
+    const currentScrollPosition = window.scrollY;
+    
+    if (feedType === "feed") {
+      postStore.saveFeedState(currentScrollPosition);
+    }
+    
+    const navigationState = navigationStore.saveNavigationState('post', postSlug);
+    
+    navigate(`/post/${postSlug}`, { 
+      state: navigationState 
+    });
+  }, [navigate, feedType]);
+
+const renderPostItem = useCallback((
+  virtualItem: VirtualListItem<Post>, 
+  measureRef: (el: HTMLElement | null) => void
+) => {
+  return (
+    <div
+      id={`post-${virtualItem.item.id}`}
+      ref={measureRef}
+      data-virtual-index={virtualItem.index}
+    >
+      <MemoizedPostItem 
+        post={virtualItem.item}
+        onClick={handleItemClick}
+        onHeightChange={() => {
+          const element = document.getElementById(`post-${virtualItem.item.id}`);
+          if (element) {
+            measureElement(element, virtualItem.index);
+          }
+        }}
+      />
+    </div>
+  );
+}, [handleItemClick, measureElement]);
 
   // === КОМПОНЕНТЫ UI ===
 

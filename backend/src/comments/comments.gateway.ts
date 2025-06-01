@@ -330,17 +330,25 @@ export class CommentsGateway
   @SubscribeMessage('fetchCommentBySlug')
   async handleFetchCommentBySlug(@MessageBody() data: { slug: string }) {
     try {
-      console.log(`Fetching comment by slug: ${data.slug}`);
+      console.log(`[CommentGateway] Fetching comment by slug: ${data.slug}`);
 
-      const comment = await this.commentsService.findCommentBySlug(data.slug);
-      if (!comment) {
-        return { comments: [], total: 0, error: 'Comment not found' };
+      if (!data.slug) {
+        return { error: 'Slug is required' };
       }
 
-      return { comments: [comment], total: 1 };
+      const comment = await this.commentsService.findCommentBySlug(data.slug);
+
+      if (!comment) {
+        console.warn(
+          `[CommentGateway] Comment not found by slug: ${data.slug}`,
+        );
+        return { error: 'Comment not found' };
+      }
+
+      return { comment };
     } catch (error) {
-      console.error('Error fetching comment by slug:', error);
-      return { comments: [], total: 0, error: 'Failed to fetch comment' };
+      console.error(`[CommentGateway] Error fetching comment by slug:`, error);
+      return { error: 'Server error' };
     }
   }
 }

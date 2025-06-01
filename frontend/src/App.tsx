@@ -104,8 +104,8 @@ const App = observer(() => {
                     <Route path="/" element={<MainPage {...props} />} />
                     <Route path="/profile" element={<UserProfilePage />} />
                     <Route path="/profile/:userId" element={<UserProfilePage />} />
-                    <Route path="/post/:postId" element={<PostPage />} />
-                    <Route path="/comment/:commentId" element={<CommentPage />} />
+                    <Route path="/post/:slug" element={<PostPage />} />
+                    <Route path="/comment/:slug" element={<CommentPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 )}

@@ -5,7 +5,7 @@ import PostItem from '../../posts/PostItem';
 
 interface MemoizedPostItemProps {
   post: Post;
-  onClick?: (id: string) => void;
+  onClick?: (slug: string) => void;
   onHeightChange?: () => void;
 }
 
@@ -19,6 +19,12 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
       }, 50);
     }
   }, [onHeightChange]);
+
+  const handleClick = useCallback(() => {
+    if (onClick) {
+      onClick(post.slug);
+    }
+  }, [onClick, post.slug]);
 
   return (
     <div 
@@ -34,7 +40,7 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
     >
       <PostItem        
         post={post}
-        onClick={() => onClick && onClick(post.id)} 
+        onClick={handleClick}
         onShowMore={handleShowMore}
       />
     </div>

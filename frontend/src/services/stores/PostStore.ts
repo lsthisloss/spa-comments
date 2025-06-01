@@ -123,7 +123,6 @@ class PostStore extends BaseStore<Post> {
   feedSavedPage = 1;
   feedSavedPosts = observable.array<Post>([]);
   isFeedStateRestored = false;
-  private lastRequestTimes = new Map<string, number>();
 
   // Таймеры
   intervals: Record<FeedType, NodeJS.Timeout | null> = {
@@ -853,51 +852,74 @@ loadMore = action((feedType: FeedType, targetUserId?: string) => {
  * Обработка нового поста
  */
 
-  handleNewPost = action((post: Post, type: FeedType) => {
-    const feed = this.getFeed(type);
+handleNewPost = action((post: Post, type: FeedType) => {
+  const feed = this.getFeed(type);
+  
+  // Проверяем дублирование
+  const existsInList = feed.list.some(p => p.id === post.id);
+  const existsInBuffer = feed.buffer.some(p => p.id === post.id);
+  
+  if (existsInList || existsInBuffer) {
+    logger.log(`[PostStore] Post ${post.id} already exists, skipping`);
+    return;
+  }
+  
+  // Кэшируем пользователя только если его еще нет
+  if (post.user && post.user.id) {
+    const existingUser = userStore.getCachedUser(post.user.id);
+    if (!existingUser) {
+      userStore.addCachedUser(post.user);
+      logger.log(`[PostStore] Cached new user ${post.user.userName} for new post ${post.id}`);
+    }
+  } else if (post.userId) {
+    const cachedUser = userStore.getCachedUser(post.userId);
+    if (cachedUser) {
+      post.user = cachedUser;
+      logger.log(`[PostStore] Restored user from cache for post ${post.id}`);
+    } else {
+      logger.warn(`[PostStore] No user data for post ${post.id}, userId: ${post.userId}`);
+    }
+  }
+  
+  const observablePost = observable(post);
+  this.postsMap.set(post.id, observablePost);
+  
+  runInAction(() => {
+    feed.latestPost = observablePost;
     
-    // Проверяем дублирование
-    const existsInList = feed.list.some(p => p.id === post.id);
-    const existsInBuffer = feed.buffer.some(p => p.id === post.id);
-    
-    if (existsInList || existsInBuffer) {
-      logger.log(`[PostStore] Post ${post.id} already exists, skipping`);
-      return;
+    if (feed.manualUpdateMode) {
+      feed.buffer.unshift(observablePost);
+      feed.newPostsCount = feed.buffer.length;
+      logger.log(`[PostStore] New post ${post.id} added to buffer, size: ${feed.buffer.length}`);
+    } else {
+      feed.list.unshift(observablePost);
+      logger.log(`[PostStore] New post ${post.id} added directly to ${type} feed`);
     }
     
-    // Кэшируем пользователя только если его еще нет
-    if (post.user && post.user.id) {
-      const existingUser = userStore.getCachedUser(post.user.id);
-      if (!existingUser) {
-        userStore.addCachedUser(post.user);
-        logger.log(`[PostStore] Cached new user ${post.user.userName} for new post ${post.id}`);
-      }
-    } else if (post.userId) {
-      const cachedUser = userStore.getCachedUser(post.userId);
-      if (cachedUser) {
-        post.user = cachedUser;
-        logger.log(`[PostStore] Restored user from cache for post ${post.id}`);
-      } else {
-        logger.warn(`[PostStore] No user data for post ${post.id}, userId: ${post.userId}`);
+    // Если пост создан текущим пользователем, добавляем его в user ленту
+    const currentUserId = userStore.user?.id;
+    if (post.userId === currentUserId) {
+      // Если есть активная user лента с userId текущего пользователя
+      const userFeed = this.feeds.user;
+      if (userFeed.userId === currentUserId) {
+        // Проверяем, что поста еще нет в ленте
+        const existsInUserList = userFeed.list.some(p => p.id === post.id);
+        const existsInUserBuffer = userFeed.buffer.some(p => p.id === post.id);
+        
+        if (!existsInUserList && !existsInUserBuffer) {
+          // Добавляем в ленту пользователя
+          if (userFeed.manualUpdateMode) {
+            userFeed.buffer.unshift(observablePost);
+            userFeed.newPostsCount = userFeed.buffer.length;
+          } else {
+            userFeed.list.unshift(observablePost);
+          }
+          logger.log(`[PostStore] Added new post to user feed for current user`);
+        }
       }
     }
-    
-    const observablePost = observable(post);
-    this.postsMap.set(post.id, observablePost);
-    
-    runInAction(() => {
-      feed.latestPost = observablePost;
-      
-      if (feed.manualUpdateMode) {
-        feed.buffer.unshift(observablePost);
-        feed.newPostsCount = feed.buffer.length;
-        logger.log(`[PostStore] New post ${post.id} added to buffer, size: ${feed.buffer.length}`);
-      } else {
-        feed.list.unshift(observablePost);
-        logger.log(`[PostStore] New post ${post.id} added directly to ${type} feed`);
-      }
-    });
   });
+});
   /**
    * Загрузка новых постов из буфера
    */
@@ -952,7 +974,7 @@ loadMore = action((feedType: FeedType, targetUserId?: string) => {
     });
   });
 
-  getPostBySlug(slug: string): Post | undefined {
+  getPostBySlug(slug: string): Post | null {
     // Сначала ищем в postsMap
     for (const post of this.postsMap.values()) {
       if (post.slug === slug) return post;
@@ -960,11 +982,71 @@ loadMore = action((feedType: FeedType, targetUserId?: string) => {
 
     // Потом в фидах
     for (const feed of Object.values(this.feeds)) {
-      const post = feed.list.find((p) => p.slug === slug);
+      const post = feed.list.find(p => p.slug === slug);
       if (post) return post;
     }
-    return undefined;
+
+
+    return null; // Вместо undefined
   }
+
+fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
+  try {
+    const cacheKey = `slug:${slug}`;
+    if (this.fetchPostPromises.has(cacheKey)) {
+      logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
+      return this.fetchPostPromises.get(cacheKey)!;
+    }
+    
+    logger.log(`[PostStore] Fetching post by slug: ${slug}`);
+    
+    const existingPost = this.getPostBySlug(slug);
+    if (existingPost) {
+      logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
+      return existingPost;
+    }
+    
+    if (!socketStore.posts) {
+      logger.error('[PostStore] socket not available');
+      return null;
+    }
+    
+    const fetchPromise = new Promise<Post | null>((resolve) => {
+      socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse | Post[] | null) => {
+        logger.log(`Response for slug ${slug}:`, response);
+        
+        let post: Post | null = null;
+        
+        if (response && typeof response === 'object') {
+          if ('post' in response && response.post) {
+            post = response.post;
+          } else if ('posts' in response && Array.isArray(response.posts) && response.posts.length > 0) {
+            post = response.posts[0];
+          } else if (Array.isArray(response) && response.length > 0) {
+            post = response[0];
+          }
+        }
+        
+        if (post) {
+          runInAction(() => {
+            this.processPosts([post]);
+            this.addPostToAllFeeds(post);
+          });
+        }
+        
+        this.fetchPostPromises.delete(cacheKey);
+        resolve(post);
+      });
+    });
+    
+    this.fetchPostPromises.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  } catch (error) {
+    logger.error("[PostStore] Error fetching post by slug:", error);
+    this.fetchPostPromises.delete(`slug:${slug}`);
+    return null;
+  }
+});
 
   // Помечает ленту для обновления при следующей загрузке
   markFeedForRefresh = action((feedType: FeedType) => {

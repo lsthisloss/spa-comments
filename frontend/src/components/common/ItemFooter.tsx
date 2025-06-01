@@ -18,7 +18,7 @@ interface FeedItemFooterProps<T extends FeedItemBase> {
   type: 'post' | 'comment';
   onNavigate?: (id: string) => void;
   onLikeClick?: (e: React.MouseEvent) => void;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (e: React.MouseEvent, slug?: string) => void;
   isLiked?: boolean;
   hideCommentButton?: boolean;
 }
@@ -47,47 +47,41 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
   );
 
 
-
 const handleNavigate = (e: React.MouseEvent) => {
   e.stopPropagation();
-  
+
   logger.log(`Button clicked for ${type} ${item.id}`);
-  
+
   if (onClick) {
-    onClick(e);
+    onClick(e, item.slug);
     return;
   }
-  
+
   try {
-    // Получаем текущее состояние для сохранения в истории
     const currentState = navigationStore.getSerializedState();
-    
-    // Создаем новое состояние с сохранением предыдущего
-    const navigationState = navigationStore.saveNavigationState(type, item.id, currentState);
-    
+    //сохраняем slug
+    const navigationState = navigationStore.saveNavigationState(type, item.slug, currentState);
+
     if (onNavigate) {
-      logger.log(`ItemFooter: calling onNavigate for ${type} ${item.slug || item.id}`);
-      onNavigate(item.slug || item.id);
+      logger.log(`ItemFooter: calling onNavigate for ${type} ${item.slug}`);
+      onNavigate(item.slug);
     } else if (type === "post") {
-      logger.log(`ItemFooter: Direct navigate to post ${item.slug || item.id}`);
-      navigate(`/post/${item.slug || item.id}`, { state: navigationState });
+      logger.log(`ItemFooter: Direct navigate to post ${item.slug}`);
+      navigate(`/post/${item.slug}`, { state: navigationState });
     } else if (type === "comment") {
-      logger.log(`ItemFooter: Direct navigate to comment ${item.slug || item.id}`);
-      navigate(`/comment/${item.slug || item.id}`, { state: navigationState });
+      logger.log(`ItemFooter: Direct navigate to comment ${item.slug}`);
+      navigate(`/comment/${item.slug}`, { state: navigationState });
     }
   } catch (error) {
-    // Обработка ошибок сериализации
     logger.error(`Navigation error for ${type} ${item.id}:`, error);
-    
-    // Простая навигация без состояния
+
     if (type === "post") {
-      navigate(`/post/${item.slug || item.id}`);
+      navigate(`/post/${item.slug}`);
     } else if (type === "comment") {
-      navigate(`/comment/${item.slug || item.id}`);
+      navigate(`/comment/${item.slug}`);
     }
   }
 };
-
   const fileMenu = useMemo(() => shouldShowDownload ? [
     {
       key: 'download',

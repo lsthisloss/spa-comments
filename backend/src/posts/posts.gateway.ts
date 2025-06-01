@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from 'src/auth/ws-jwt.guard';
 import { isUUID } from 'class-validator';
+import { PostResponseDto } from './dto/post-response.dto';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/posts' })
 export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -307,37 +308,47 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('fetchPost')
-  async handleFetchPostWithComments(@MessageBody() data: { postId: string }) {
+  async handleFetchPostWithComments(
+    @MessageBody() data: { postId?: string; slug?: string },
+  ) {
     console.log('[fetchPost] called with:', data);
 
-    const post = await this.postsService.getPostById(data.postId);
+    let post: PostResponseDto | undefined;
+
+    // Сначала пробуем по slug, если передан
+    if (data.slug) {
+      post = await this.postsService.getPostBySlug(data.slug);
+    }
+
+    // Если не найден по slug или slug не передан, пробуем по ID
+    if (!post && data.postId) {
+      post = await this.postsService.getPostById(data.postId);
+    }
+
     if (!post) {
-      console.log('[fetchPost] post not found:', data.postId);
+      console.log('[fetchPost] post not found:', data);
       return { post: null, total: 0 };
     }
 
     // Update the comment count before returning the post
-    await this.postsService.updateCommentCount(data.postId);
+    await this.postsService.updateCommentCount(post.id);
 
     // Get the post again with updated count
-    const updatedPost = await this.postsService.getPostById(data.postId);
+    const updatedPost = data.slug
+      ? await this.postsService.getPostBySlug(data.slug)
+      : await this.postsService.getPostById(data.postId!);
 
     const result = await this.commentsService.findCommentsByParentId(
-      data.postId,
+      post.id,
       1,
       1,
       'date',
     );
 
-    // Create a sanitized version of the post without the full user object
-    const sanitizedPost = updatedPost
-      ? {
-          ...updatedPost,
-        }
-      : null;
+    const sanitizedPost = updatedPost ? { ...updatedPost } : null;
 
     console.log('[fetchPost] result:', {
-      postId: data.postId,
+      identifier: data.slug || data.postId,
       post: sanitizedPost,
       total: result.total,
     });
@@ -432,5 +443,47 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       console.error('File upload error:', error);
       return { error: 'Failed to upload file' };
     }
+  }
+
+  @SubscribeMessage('fetchPostBySlug')
+  async handleFetchPostBySlug(@MessageBody() data: { slug: string }) {
+    console.log('[fetchPostBySlug] called with:', data);
+
+    const post = await this.postsService.getPostBySlug(data.slug);
+    if (!post) {
+      console.log('[fetchPostBySlug] post not found:', data.slug);
+      return { post: null, total: 0 };
+    }
+
+    // Update the comment count before returning the post
+    await this.postsService.updateCommentCount(post.id);
+
+    // Get the post again with updated count
+    const updatedPost = await this.postsService.getPostBySlug(data.slug);
+
+    const result = await this.commentsService.findCommentsByParentId(
+      post.id,
+      1,
+      1,
+      'date',
+    );
+
+    // Create a sanitized version of the post without the full user object
+    const sanitizedPost = updatedPost
+      ? {
+          ...updatedPost,
+        }
+      : null;
+
+    console.log('[fetchPostBySlug] result:', {
+      slug: data.slug,
+      post: sanitizedPost,
+      total: result.total,
+    });
+
+    return {
+      post: sanitizedPost,
+      total: result.total,
+    };
   }
 }

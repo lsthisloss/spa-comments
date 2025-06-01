@@ -243,6 +243,35 @@ export class PostsService {
     }
   }
 
+  async getPostBySlug(slug: string): Promise<PostResponseDto | undefined> {
+    const post = await this.postRepository.findOne({
+      where: { slug },
+      relations: ['user'],
+      select: {
+        user: {
+          id: true,
+          userName: true,
+          avatarUrl: true,
+          avatarShape: true,
+        },
+      },
+    });
+
+    if (!post) return undefined;
+
+    const response = new PostResponseDto();
+    Object.assign(response, post);
+    response.userName = post.user?.userName || 'Unknown';
+    response.user = {
+      id: post.user?.id,
+      userName: post.user?.userName,
+      avatarUrl: post.user?.avatarUrl,
+      avatarShape: post.user?.avatarShape,
+    };
+
+    return response;
+  }
+
   async getFollowingPostsCount(userId: string): Promise<number> {
     try {
       // Получаем пользователей, на которых подписан + добавляем самого себя

@@ -27,31 +27,30 @@ const CommentItemContent = observer(function CommentItemInner(props: {
     }
   }, [item.id]);
   
-  const handleNavigate = useCallback((id: string) => {
-    logger.log(`CommentItem: handling navigation for comment ${id}`);
-    
-    try {
-      // Если есть внешний обработчик, используем его
-      if (onNavigate) {
-        logger.log(`CommentItem: calling provided onNavigate`);
-        onNavigate(id);
-        return;
-      }
-      
-      // Сохраняем состояние и переходим на страницу комментария
-      logger.log(`CommentItem: direct navigation to comment ${id}`);
-      const slug = item.slug || id;
-
-      const navigationState = navigationStore.saveNavigationState("comment", id);
-      navigate(`/comment/${slug}`, { state: navigationState });
-    } catch (error) {
-      logger.error(`Navigation error for comment ${id}:`, error);
-
-      const slug = item.slug || id;
-      // Простая навигация без состояния
-      navigate(`/comment/${slug}`);
+const handleNavigate = useCallback((id: string) => {
+  logger.log(`CommentItem: handling navigation for comment ${id}`);
+  
+  try {
+    // Если есть внешний обработчик, используем его
+    if (onNavigate) {
+      logger.log(`CommentItem: calling provided onNavigate`);
+      onNavigate(id);
+      return;
     }
-  }, [onNavigate, navigate, item.slug]);
+    
+    // Сохраняем состояние и переходим на страницу комментария
+    logger.log(`CommentItem: direct navigation to comment ${id}`);
+    const slug = item.slug || id;
+
+    const navigationState = navigationStore.saveNavigationState("comment", slug);
+    navigate(`/comment/${slug}`, { state: navigationState });
+  } catch (error) {
+    logger.error(`Navigation error for comment ${id}:`, error);
+
+    const slug = item.slug || id;
+    navigate(`/comment/${slug}`);
+  }
+}, [onNavigate, navigate, item.slug]);
 
   return (
     <FeedItem

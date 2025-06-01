@@ -10,7 +10,7 @@ import { logger } from "../../utils/Logger";
 
 interface PostItemProps {
   post: Post;
-  onClick?: () => void;
+  onClick?: (slug: string) => void;
   onShowMore?: () => void;
   hideCommentButton?: boolean;
 }
@@ -31,20 +31,19 @@ const PostItem = memo(observer(function PostItem({
     }
   }, [post.id]);
 
-  const handleNavigate = useCallback((id: string) => {
-    logger.log(`PostItem: handling navigation for post ${id}`);
+  const handleNavigate = useCallback((slug: string) => {
+    logger.log(`PostItem: handling navigation for post ${slug}`);
     
     if (onClick) {
       logger.log(`PostItem: calling provided onClick`);
-      onClick();
+      onClick(post.slug);
       return;
     }
-    const post = postStore.getPostById?.(id);
-    const slug = post?.slug || id;
-    logger.log(`PostItem: direct navigation to post ${id}`);
-    const navigationState = navigationStore.saveNavigationState("post", id);
+    
+    logger.log(`PostItem: direct navigation to post ${slug}`);
+    const navigationState = navigationStore.saveNavigationState("post", post.slug);
     navigate(`/post/${slug}`, { state: navigationState });
-  }, [onClick, navigate]);
+  }, [onClick, navigate, post.slug]);
 
   return (
     <div ref={containerRef} className="post-item">
@@ -55,6 +54,7 @@ const PostItem = memo(observer(function PostItem({
         onLikeClick={handleLikeClick}
         onShowMore={onShowMore}
         hideCommentButton={hideCommentButton}
+        onClick={undefined}
       />
     </div>
   );

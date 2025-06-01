@@ -48,6 +48,31 @@ const UserProfilePage = observer(() => {
   const isOwnProfile = currentUser && user && currentUser.id === user.id;
   const isFollowing = user?.id && !isOwnProfile ? userStore.isFollowing(user.id) : false;
 
+  // Всегда обновлять ленту при переходе на собственный профиль
+  useEffect(() => {
+    if (isOwnProfile && user?.id) {
+      logger.log("[UserProfilePage] This is own profile, marking user feed for refresh");
+      
+      // Сбрасываем состояние ленты пользователя, чтобы увидеть новые посты
+      postStore.markFeedForRefresh("user");
+      
+      // Также проверяем, есть ли новые посты в основной ленте, которые принадлежат текущему пользователю
+      const mainFeedPosts = postStore.feeds.feed.list;
+      const userPosts = mainFeedPosts.filter(post => post.userId === user.id);
+      
+      if (userPosts.length > 0) {
+        logger.log(`[UserProfilePage] Found ${userPosts.length} posts in main feed belonging to current user`);
+        
+        // Убедитесь, что эти посты добавляются в кэш для быстрого доступа
+        userPosts.forEach(post => {
+          if (!postStore.postsMap.has(post.id)) {
+            postStore.postsMap.set(post.id, post);
+          }
+        });
+      }
+    }
+  }, [isOwnProfile, user?.id]);
+
   // Проверяем preserveFeeds для сохранения лент
   useEffect(() => {
     interface LocationState {
@@ -66,7 +91,7 @@ const UserProfilePage = observer(() => {
     postStore.resetFeedState("following");
   }, [location.state]);
 
-  // ЭЛЕГАНТНЫЙ ПОДХОД: Отслеживаем изменения подписок через MobX
+  //  Отслеживаем изменения подписок через MobX
   useEffect(() => {
     if (!currentUser) return;
 
@@ -98,7 +123,7 @@ const UserProfilePage = observer(() => {
       logger.log("[UserProfilePage] Disposing following changes autorun");
       disposer();
     };
-  }, [currentUser?.id]);
+  }, [currentUser]);
 
   // Мемоизируем вычисления аватара
   const avatarProps = useMemo(() => {
@@ -357,6 +382,8 @@ const UserProfilePage = observer(() => {
           <PostsThread 
             activeTab="user"
             userId={user.id}
+            // НОВОЕ: Передаем ключ, чтобы гарантировать перерендер компонента
+            key={`user-posts-${user.id}-${Date.now()}`}
           />
         )}
         {activeTab === "comments" && (

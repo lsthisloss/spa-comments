@@ -296,10 +296,10 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
       open={visible}
       onOpenChange={handleVisibleChange}
       trigger={['click']} 
-      dropdownRender={() => dropdownContent}
+      popupRender={() => dropdownContent}
       placement="bottomRight"
       arrow
-      destroyPopupOnHide={true}
+      destroyOnHidden={true}
       overlayStyle={{ width: 'auto' }}
     >
       {children}

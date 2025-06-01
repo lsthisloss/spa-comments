@@ -2,7 +2,7 @@ import { Image, Tooltip, Card, Typography, Spin } from "antd";
 import { getAvatarColor } from "../ui/particles/avatarColor";
 import ItemFooter from "./ItemFooter";
 import OptimizedText from "../ui/optimization/OptimizedText";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import React from "react";
 import { observer } from "mobx-react-lite";
 import { commentStore } from "../../services/stores/CommentStore";
@@ -21,226 +21,25 @@ interface FeedItemProps {
   item: FeedItemType;
   type: "post" | "comment";
   disableShowMore?: boolean;
-  onClick?: () => void;
-  onNavigate?: (id: string) => void;
+  onNavigate?: (slug: string) => void;
   onLikeClick?: () => void;
   onShowMore?: () => void;
   expanded?: boolean;
   hideCommentButton?: boolean;
+  onClick?: () => void;
 }
 
-const MemoizedTooltip = React.memo(
-  ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <Tooltip title={title}>{children}</Tooltip>
-  )
-);
-
-const MemoizedItemContent = React.memo(function ItemContent({
+const FeedItemComponent = ({
   item,
   type,
-  userName,
-  formattedDate,
-  localExpanded,
-  imageUrl,
   disableShowMore,
-  handleTextToggle,
-  handleImageLoad,
   onNavigate,
-  handleLikeClick,
+  onLikeClick,
+  expanded = false,
+  onShowMore,
+  hideCommentButton,
   onClick,
-  isLiked,
-  hideCommentButton = false,
-}: {
-  item: FeedItemType;
-  type: "post" | "comment";
-  userName: string;
-  formattedDate: string;
-  localExpanded: boolean;
-  imageUrl: string | null;
-  disableShowMore?: boolean;
-  handleTextToggle: () => void;
-  handleImageLoad: () => void;
-  onNavigate?: (id: string) => void;
-  handleLikeClick: () => void;
-  onClick?: () => void;
-  isLiked?: boolean;
-  hideCommentButton?: boolean;
-}) {
-  const navigate = useNavigate();
-
-  const handleUserNameClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    let userSlug: string | undefined;
-    let userId: string | undefined;
-    
-    // Сначала пробуем получить из item.user
-    if (item.user?.slug) {
-      userSlug = item.user.slug;
-      userId = item.user.id;
-    } 
-    // Если нет item.user, но есть userId в самом item, пробуем найти в userStore
-    else if (item.userId) {
-      const foundUser = userStore.getCachedUser(item.userId);
-      if (foundUser) {
-        userSlug = foundUser.slug;
-        userId = foundUser.id;
-      } else {
-        // Если пользователь не найден в кэше, но это может быть текущий пользователь
-        if (userStore.user && item.userId === userStore.user.id) {
-          userSlug = userStore.user.slug;
-          userId = userStore.user.id;
-        }
-      }
-    }
-    // Если это собственный пост (userName совпадает с текущим пользователем)
-    else if (userStore.user && (
-      item.userName === userStore.user.userName || 
-      userName === userStore.user.userName
-    )) {
-      userSlug = userStore.user.slug;
-      userId = userStore.user.id;
-    }
-    
-    if (userSlug && userId) {
-      logger.log(`Navigating to profile: ${userSlug} (${userId})`);
-      
-      // Сохраняем позицию скролла
-      const scrollPosition = window.scrollY;
-      
-      // Переходим в профиль с сохранением состояния лент
-      navigate(`/profile/${userSlug}`, {
-        state: {
-          scrollPosition: scrollPosition,
-          fromPost: type === 'post' ? true : false,
-          fromComment: type === 'comment' ? true : false,
-          postId: type === 'comment' ? (item as CommentType).postId : item.id,
-          commentId: type === 'comment' ? item.id : undefined,
-          preserveFeeds: true // Флаг для сохранения состояния лент
-        }
-      });
-    } else {
-      logger.warn('Could not find author data in item:', {
-        itemId: item.id,
-        itemUserId: item.userId,
-        itemUserName: item.userName,
-        itemUser: item.user,
-        currentUser: userStore.user?.userName
-      });
-      
-      // фолбек: если это собственный пост, переходим на /profile
-      if (userStore.user && (
-        item.userName === userStore.user.userName || 
-        userName === userStore.user.userName
-      )) {
-        logger.log('Navigating to own profile as fallback');
-        navigate('/profile', {
-          state: {
-            scrollPosition: window.scrollY,
-            fromPost: type === 'post' ? true : false,
-            fromComment: type === 'comment' ? true : false,
-            preserveFeeds: true
-          }
-        });
-      }
-    }
-  };
-  
-  return (
-    <div className="item-content">
-      <div className="item-user-info">
-        <Typography.Text 
-          strong 
-          className="clickable-username"
-          onClick={handleUserNameClick}
-          style={{ 
-            cursor: 'pointer', 
-            transition: 'color 0.2s ease',
-          }}
-        >
-          {userName}
-        </Typography.Text>
-        <span className="item-separator">·</span>
-        <MemoizedTooltip title={new Date(item.createdAt).toLocaleString()}>
-          <span className="item-date">
-            {formattedDate}
-          </span>
-        </MemoizedTooltip>
-      </div>
-
-      {!disableShowMore ? (
-        <OptimizedText
-          content={item.content}
-          maxLength={250}
-          expanded={localExpanded}
-          onToggle={handleTextToggle}
-          className="item-text"
-        />
-      ) : (
-        <div
-          className="item-text expanded"
-          style={{
-            contain: "layout style",
-            wordBreak: "break-word",
-            overflowWrap: "break-word",
-          }}
-          dangerouslySetInnerHTML={{ __html: item.content.replace(/\n/g, "<br/>") }}
-        />
-      )}
-
-      {imageUrl && (
-        <div className="item-image-container" onClick={(e) => e.stopPropagation()}>
-          <Image
-            src={imageUrl}
-            alt={`Image attached to post ${item.id}`}
-            placeholder={
-              <div style={{ 
-                height: item.imageHeight || 300,
-                background: '#f0f0f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Spin />
-              </div>
-            }
-            loading="lazy"
-            onLoad={handleImageLoad}
-            preview={true} 
-          />
-        </div>
-      )}
-
-      <ItemFooter
-        item={item}
-        type={type}
-        onNavigate={onNavigate}
-        onLikeClick={(e) => {
-          e.stopPropagation();
-          handleLikeClick();
-        }}
-        onClick={onClick ? (e) => {
-          e.stopPropagation();
-          onClick();
-        } : undefined}
-        isLiked={isLiked}
-        hideCommentButton={hideCommentButton}
-      />
-    </div>
-  );
-});
-
-function FeedItemComponent(props: FeedItemProps) {
-  const {
-    item,
-    type,
-    disableShowMore,
-    onNavigate,
-    onLikeClick,
-    expanded = false,
-    onShowMore,
-  } = props;
-
+}: FeedItemProps) => {
   const navigate = useNavigate();
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const [, setImageLoaded] = useState(false);
@@ -280,7 +79,7 @@ function FeedItemComponent(props: FeedItemProps) {
     }
 
     const currentUserId = userStore.user?.id;
-    
+
     if (!currentUserId) {
       logger.warn("User not logged in");
       return;
@@ -304,108 +103,50 @@ function FeedItemComponent(props: FeedItemProps) {
     }
   }, [localExpanded, onShowMore]);
 
-  const handleProfileNavigation = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    let userSlug: string | undefined;
-    let userId: string | undefined;
-    
-    // Пробуем получить данные пользователя из разных источников
-    if (item.user?.slug) {
-      userSlug = item.user.slug;
-      userId = item.user.id;
-    } 
-    else if (item.userId) {
-      const foundUser = userStore.getCachedUser(item.userId);
-      if (foundUser) {
-        userSlug = foundUser.slug;
-        userId = foundUser.id;
-      } else if (userStore.user && item.userId === userStore.user.id) {
-        userSlug = userStore.user.slug;
-        userId = userStore.user.id;
-      }
-    }
-    else if (userStore.user && (
-      item.userName === userStore.user.userName || 
-      userName === userStore.user.userName
-    )) {
-      userSlug = userStore.user.slug;
-      userId = userStore.user.id;
-    }
-    
-    if (userSlug && userId) {
-      navigate(`/profile/${userSlug}`, {
-        state: {
-          scrollPosition: window.scrollY,
-          fromPost: type === 'post',
-          fromComment: type === 'comment',
-          postId: type === 'comment' ? (item as CommentType).postId : item.id,
-          commentId: type === 'comment' ? item.id : undefined,
-          preserveFeeds: true
-        }
-      });
-    } else if (userStore.user && (
-      item.userName === userStore.user.userName || 
-      userName === userStore.user.userName
-    )) {
-      // Fallback для собственного профиля
-      navigate('/profile', {
-        state: {
-          scrollPosition: window.scrollY,
-          fromPost: type === 'post',
-          fromComment: type === 'comment',
-          preserveFeeds: true
-        }
-      });
-    }
-  }, [item, type, userName, navigate]);
-  
-  // Обработчик клика по всему элементу - только для внешнего onClick, без навигации
-  const { onClick } = props;
-
-  const handleItemClick = useCallback(() => {
-    if (onClick) {
-      onClick();
-    }
-  }, [onClick]);
-
-  // Синхронизация локального состояния с пропсами
-  useEffect(() => {
-    setLocalExpanded(expanded);
-  }, [expanded]);
-
-  useEffect(() => {
-    if (disableShowMore) {
-      setLocalExpanded(true);
-    }
-  }, [disableShowMore]);
-
   const formattedDate = React.useMemo(() => {
     return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
   }, [item.createdAt]);
 
+  // Обработчик клика по аватару пользователя
+  const handleAvatarClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.user?.id) {
+      logger.log(`Avatar clicked for user ${item.user.id}`);
+      navigate(`/profile/${item.user.id}`);
+    }
+  }, [item.user, navigate]);
+
+  // Обработчик клика по имени пользователя
+  const handleUsernameClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.user?.id) {
+      logger.log(`Username clicked for user ${item.user.id}`);
+      navigate(`/profile/${item.user.id}`);
+    }
+  }, [item.user, navigate]);
+
   return (
-    <Card 
-      className={`${type}-item fade-in`} 
+    <Card
+      className={`${type}-item fade-in`}
       variant="borderless"
-      {...(props.onClick ? { onClick: handleItemClick } : {})}
-      style={{ cursor: 'default' }}
+      style={{ cursor: "default" }}
+      onClick={onClick} // Оставляем undefined для отключения клика по карточке
     >
       <div className="item-layout" data-id={item.id}>
         {item.user?.avatarUrl ? (
-          <div 
-            className="item-avatar" 
-            onClick={handleProfileNavigation}
-            style={{ cursor: 'pointer' }}
+          <div
+            className="item-avatar"
+            style={{ cursor: "pointer" }}
+            onClick={handleAvatarClick} // Добавляем обработчик для аватарки
           >
-            <img 
-              src={item.user.avatarUrl} 
+            <img
+              src={item.user.avatarUrl}
               alt={`${userName}'s avatar`}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: item.user.avatarShape === 'square' ? '4px' : '50%'
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: item.user.avatarShape === "square" ? "4px" : "50%",
               }}
             />
           </div>
@@ -414,37 +155,99 @@ function FeedItemComponent(props: FeedItemProps) {
             className="item-avatar"
             style={{
               background: getAvatarColor(avatarLetter),
-              borderRadius: item.user?.avatarShape === 'square' ? '4px' : '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
+              borderRadius: item.user?.avatarShape === "square" ? "4px" : "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
             }}
-            onClick={handleProfileNavigation}
+            onClick={handleAvatarClick} // Добавляем обработчик для аватарки
           >
             {avatarLetter}
           </div>
         )}
-        <MemoizedItemContent
-          item={item}
-          type={type}
-          userName={userName}
-          formattedDate={formattedDate}
-          localExpanded={localExpanded}
-          imageUrl={imageUrl}
-          disableShowMore={disableShowMore}
-          handleTextToggle={handleTextToggle}
-          handleImageLoad={handleImageLoad}
-          onNavigate={onNavigate}
-          handleLikeClick={handleLikeClick}
-          onClick={props.onClick}
-          isLiked={isLiked}
-          hideCommentButton={props.hideCommentButton}
-        />
+        <div className="item-content">
+          <div className="item-user-info">
+            <Typography.Text
+              strong
+              className="clickable-username"
+              style={{
+                cursor: "pointer",
+                transition: "color 0.2s ease",
+              }}
+              onClick={handleUsernameClick} // Добавляем обработчик для имени пользователя
+            >
+              {userName}
+            </Typography.Text>
+            <span className="item-separator">·</span>
+            <Tooltip title={new Date(item.createdAt).toLocaleString()}>
+              <span className="item-date">{formattedDate}</span>
+            </Tooltip>
+          </div>
+
+          {!disableShowMore ? (
+            <OptimizedText
+              content={item.content}
+              maxLength={250}
+              expanded={localExpanded}
+              onToggle={handleTextToggle}
+              className="item-text"
+            />
+          ) : (
+            <div
+              className="item-text expanded"
+              style={{
+                contain: "layout style",
+                wordBreak: "break-word",
+                overflowWrap: "break-word",
+              }}
+              dangerouslySetInnerHTML={{
+                __html: item.content.replace(/\n/g, "<br/>"),
+              }}
+            />
+          )}
+
+          {imageUrl && (
+            <div className="item-image-container">
+              <Image
+                src={imageUrl}
+                alt={`Image attached to post ${item.id}`}
+                placeholder={
+                  <div
+                    style={{
+                      height: item.imageHeight || 300,
+                      background: "#f0f0f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Spin />
+                  </div>
+                }
+                loading="lazy"
+                onLoad={handleImageLoad}
+                preview={true}
+              />
+            </div>
+          )}
+
+          <ItemFooter
+            item={item}
+            type={type}
+            onNavigate={onNavigate}
+            onLikeClick={(e) => {
+              e.stopPropagation();
+              handleLikeClick();
+            }}
+            isLiked={isLiked}
+            hideCommentButton={hideCommentButton}
+          />
+        </div>
       </div>
     </Card>
   );
-}
+};
 
 const FeedItem = observer(FeedItemComponent);
 export default FeedItem;

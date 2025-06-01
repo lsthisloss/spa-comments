@@ -15,7 +15,10 @@ export interface NavigationState {
   navigationType?: string;
   slug?: string;
   preserveFeeds?: boolean;
+  commentId?: string;
+  fromComment?: boolean;
 }
+
 
 class NavigationStore {
   currentState: NavigationState = { scrollPosition: 0, timestamp: Date.now() };
@@ -36,41 +39,69 @@ class NavigationStore {
   /**
    * Сохраняет состояние перед навигацией
    */
-  saveNavigationState(navigationType?: string, targetId?: string, previousState?: NavigationState): NavigationState {
-    const scrollPosition = window.scrollY;
-    const currentPath = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const tab = searchParams.get('tab');
-    
-    const state: NavigationState = {
-      scrollPosition,
-      timestamp: Date.now(),
-      // Сохраняем предыдущее состояние если есть
-      ...(previousState || {})
-    };
-    
-    // Определяем откуда переходим
-    if (currentPath === '/' || currentPath === '') {
-      if (tab === 'following') {
-        state.fromFollowing = true;
-        this.followingScrollPosition = scrollPosition;
-      } else {
-        state.fromFeed = true;
-        this.feedScrollPosition = scrollPosition;
-      }
-    } else if (currentPath.includes('/profile/')) {
-      state.fromUserProfile = true;
-      state.userId = currentPath.split('/').pop();
-    } else if (currentPath.includes('/post/')) {
-      state.fromPost = true;
-      state.postId = currentPath.split('/').pop();
+/**
+ * Сохраняет состояние перед навигацией
+ */
+saveNavigationState(navigationType?: string, targetId?: string, previousState?: NavigationState): NavigationState {
+  const scrollPosition = window.scrollY;
+  const currentPath = window.location.pathname;
+  const searchParams = new URLSearchParams(window.location.search);
+  const tab = searchParams.get('tab');
+  
+  const state: NavigationState = {
+    scrollPosition,
+    timestamp: Date.now(),
+    // Сохраняем предыдущее состояние если есть
+    ...(previousState || {})
+  };
+  
+  // Определяем откуда переходим
+  if (currentPath === '/' || currentPath === '') {
+    if (tab === 'following') {
+      state.fromFollowing = true;
+      this.followingScrollPosition = scrollPosition;
+    } else {
+      state.fromFeed = true;
+      this.feedScrollPosition = scrollPosition;
     }
-    
-    this.currentState = state;
-    logger.log(`[NAV] Saved state for ${navigationType || 'navigation'} to ${targetId}:`, toJS(state));
-    
-    return toJS(state);
+  } else if (currentPath.includes('/profile/')) {
+    state.fromUserProfile = true;
+    state.userId = currentPath.split('/').pop();
+  } else if (currentPath.includes('/post/')) {
+    state.fromPost = true;
+    // Берем slug из URL
+    const urlSlug = currentPath.split('/').pop();
+    state.postId = urlSlug;
+    // Также сохраняем slug отдельно
+    state.slug = urlSlug;
+  } else if (currentPath.includes('/comment/')) {
+    // Добавляем поддержку для комментариев
+    state.fromComment = true; // Установите флаг откуда пришли
+    const urlSlug = currentPath.split('/').pop();
+    state.commentId = urlSlug;
   }
+  
+  // Сохраняем переданный targetId и тип навигации
+  if (navigationType === 'post') {
+    state.postId = targetId;
+    state.slug = targetId;
+  } else if (navigationType === 'comment') {
+    state.commentId = targetId;
+    state.slug = targetId;
+  } else if (targetId) {
+    state.slug = targetId;
+  }
+  
+  // Сохраняем тип навигации
+  if (navigationType) {
+    state.navigationType = navigationType;
+  }
+  
+  this.currentState = state;
+  logger.log(`[NAV] Saved state for ${navigationType || 'navigation'} to ${targetId}:`, toJS(state));
+  
+  return toJS(state);
+}
 
   /**
    * Получить сериализованное состояние для передачи в navigate
@@ -138,7 +169,24 @@ class NavigationStore {
     const state = this.currentState;
     
     logger.log("[NAV] Handling back navigation with state:", toJS(state));
-    
+
+      // Если пришли с комментария и есть postId, переходим на пост
+    if (state.fromComment && state.postId) {
+      logger.log(`[NAV] Returning from comment to post ${state.postId}`);
+      
+      // Создаем новое состояние для страницы поста, сохраняя исходный контекст
+      const postState = {
+        ...state,
+        fromComment: false, // Обнуляем флаг, что пришли с комментария
+        commentId: undefined // Очищаем ID комментария
+      };
+      
+      navigate(`/post/${state.postId}`, { 
+        replace: true,
+        state: postState // Передаем обновленное состояние
+      });
+      return;
+    }
     // Если пришли с главной ленты
     if (state.fromFeed) {
       logger.log("[NAV] Returning to main feed");
@@ -183,7 +231,7 @@ class NavigationStore {
       return;
     }
     
-    // Остальная логика остается без изменений...
+    
     if (state.fromUserProfile) {
       logger.log("[NAV] Returning from profile to main feed - loading fresh");
       this.navigateToFreshHome(navigate);

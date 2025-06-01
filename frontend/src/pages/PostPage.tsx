@@ -14,7 +14,7 @@ import { logger } from "../utils/Logger";
 import { navigationStore } from '../services/stores/NavigationStore';
 
 const PostPage = observer(() => {
-  const { postId } = useParams<{ postId: string }>();
+  const { slug } = useParams<{ slug: string }>(); // Используем slug вместо postId
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
@@ -24,46 +24,60 @@ const PostPage = observer(() => {
   const [error, setError] = useState<string | null>(null);
   
   // Navigation state handling
-  useEffect(() => {
-    logger.log(`[PostPage] Mount with postId=${postId}`);
-    
-    // Сохраняем состояние из location или создаем дефолтное
-    const stateToSave = location.state || 
-      navigationStore.getStateForDirectUrl(location.pathname) || 
-      { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
-    
-    navigationStore.saveStateFromLocation(stateToSave);
-    
-    // Если это прямой переход (нет location.state), очищаем сохраненные посты
-    if (!location.state) {
-      logger.log('[PostPage] Direct URL access detected, clearing saved feed state');
-      postStore.feedSavedPosts.clear();
-      postStore.feedScrollPosition = 0;
-    }
-    
-    return () => {
-      logger.log(`[PostPage] Unmounting, saving scroll position: ${window.scrollY}`);
-      navigationStore.currentState.scrollPosition = window.scrollY;
-    };
-  }, [location.pathname, location.state, postId]);
-
-  // Load post and comments - simplified with clear sequence
 useEffect(() => {
-  if (!postId) return;
+  logger.log(`[PostPage] Mount with slug=${slug}`);
   
+  // Сохраняем состояние из location или создаем дефолтное
+  const stateToSave = location.state || 
+    navigationStore.getStateForDirectUrl(location.pathname) || 
+    { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
+  
+  navigationStore.saveStateFromLocation(stateToSave);
+  
+  // Проверяем, является ли это переходом обратно с комментария
+  const isBackFromComment = navigationStore.currentState && 
+                            navigationStore.currentState.fromComment === true;
+  
+  // Очищаем состояние только если это настоящий прямой доступ (не навигация назад)
+  if (!location.state && !isBackFromComment) {
+    logger.log('[PostPage] Direct URL access detected, clearing saved feed state');
+    postStore.feedSavedPosts.clear();
+    postStore.feedScrollPosition = 0;
+  } else if (isBackFromComment) {
+    logger.log('[PostPage] Back navigation from comment detected, preserving state');
+  }
+  
+  return () => {
+    logger.log(`[PostPage] Unmounting, saving scroll position: ${window.scrollY}`);
+    navigationStore.currentState.scrollPosition = window.scrollY;
+  };
+}, [location.pathname, location.state, slug]);
+// Load post and comments
+useEffect(() => {
+  if (!slug) return;
+
   let isMounted = true;
-  
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      logger.log(`[PostPage] Loading post: ${postId}`);
-      // 1. Сначала ищем по slug
-      let fetchedPost = postStore.getPostBySlug(postId);
+      logger.log(`[PostPage] Loading post by slug: ${slug}`);
+
+      // 1. Сначала ищем по slug в сторе
+      let fetchedPost: Post | null = postStore.getPostBySlug(slug);
+
       if (!fetchedPost) {
-        // 2. Если нет в сторе — пробуем загрузить с backend (slug или id)
-        fetchedPost = await postStore.fetchPostById(postId) ?? undefined;
+        // 2. Если нет в сторе — загружаем с бэкенда по slug
+        logger.log(`[PostPage] Post not found in store, fetching by slug: ${slug}`);
+        fetchedPost = await postStore.fetchPostBySlug(slug);
+      }
+
+      // 3. Если все еще нет — пробуем fallback на ID
+      if (!fetchedPost) {
+        logger.log(`[PostPage] Post not found by slug, trying by ID as fallback: ${slug}`);
+        fetchedPost = await postStore.fetchPostById(slug);
       }
 
       if (!isMounted) return;
@@ -77,11 +91,30 @@ useEffect(() => {
       setPost(fetchedPost);
       setLoading(false);
 
-      setCommentsLoading(true);
-      logger.log(`[PostPage] Loading comments for post: ${postId}`);
-      await commentStore.loadComments(fetchedPost.id, 25, 1, commentsSort);
-
-      if (!isMounted) return;
+      // Проверяем наличие комментариев в хранилище
+      const comments = commentStore.getComments(fetchedPost.id);
+      logger.log(`[PostPage] Checking existing comments for ${fetchedPost.id}: found ${comments.length}`);
+      
+      // Проверяем тип доступа - с навигации или прямой
+      const isDirectNavigation = 
+        location.state && 
+        (location.state.fromFeed === true || 
+         location.state.fromComment === true || 
+         location.state.fromUserProfile === true);
+      
+      logger.log(`[PostPage] Access type: ${isDirectNavigation ? 'navigation' : 'direct URL'}`);
+      
+      // Загружаем комментарии если их нет или это прямой доступ
+      if (!isDirectNavigation || comments.length === 0) {
+        logger.log(`[PostPage] Loading comments for post ${fetchedPost.id}`);
+        setCommentsLoading(true);
+        await commentStore.loadComments(fetchedPost.id, 25, 1, commentsSort);
+        if (isMounted) {
+          setCommentsLoading(false);
+        }
+      } else {
+        logger.log(`[PostPage] Comments already loaded for post ${fetchedPost.id}, skipping load`);
+      }
     } catch (error) {
       if (!isMounted) return;
       logger.error(`[PostPage] Error loading data:`, error);
@@ -99,13 +132,13 @@ useEffect(() => {
   return () => {
     isMounted = false;
   };
-}, [postId, commentsSort]);
+}, [slug, commentsSort, location.state]);
   
   // Handle back button
   const handleBackClick = useCallback(() => {
-    if (!postId) return;
+    if (!slug) return;
     
-    logger.log(`[PostPage] Back navigation from post ${postId}`);
+    logger.log(`[PostPage] Back navigation from post ${slug}`);
     
     const currentState = navigationStore.currentState;
     
@@ -117,49 +150,49 @@ useEffect(() => {
     } else {
       navigate(-1);
     }
-  }, [postId, navigate]);
+  }, [slug, navigate]);
 
   // Handle comment added
   const handleCommentSuccess = useCallback(() => {
-    if (!postId || !post) return;
+    if (!post) return;
     
-    logger.log(`[PostPage] Comment added to post ${postId}`);
+    logger.log(`[PostPage] Comment added to post ${post.slug}`);
     setPost(prev => prev ? {...prev, commentCount: (prev.commentCount || 0) + 1} : null);
     message.success("Comment added");
     
     // Refresh comments
-    commentStore.loadComments(postId, 25, 1, commentsSort);
-  }, [postId, post, commentsSort]);
+    commentStore.loadComments(post.id, 25, 1, commentsSort);
+  }, [post, commentsSort]);
   
   // Handle sort change
   const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (sort === commentsSort || !postId) return;
+    if (sort === commentsSort || !post) return;
     
     logger.log(`[PostPage] Changing comments sort to: ${sort}`);
     setCommentsSort(sort);
     setCommentsLoading(true);
     
-    commentStore.loadComments(postId, 25, 1, sort)
+    commentStore.loadComments(post.id, 25, 1, sort)
       .finally(() => {
         setCommentsLoading(false);
       });
-  }, [postId, commentsSort]);
+  }, [post, commentsSort]);
   
   // Handle load more comments
   const handleLoadMoreComments = useCallback(() => {
-    if (!postId || commentsLoading) return;
+    if (!post || commentsLoading) return;
     
-    const comments = commentStore.getComments(postId);
+    const comments = commentStore.getComments(post.id);
     const page = Math.floor(comments.length / 25) + 1;
     
     logger.log(`[PostPage] Loading more comments, page: ${page}`);
     setCommentsLoading(true);
     
-    commentStore.loadComments(postId, 25, page, commentsSort)
+    commentStore.loadComments(post.id, 25, page, commentsSort)
       .finally(() => {
         setCommentsLoading(false);
       });
-  }, [postId, commentsSort, commentsLoading]);
+  }, [post, commentsSort, commentsLoading]);
 
   // Render
   return (
@@ -210,7 +243,7 @@ useEffect(() => {
             <div className="comment-form-container">
               <SendForm 
                 type="comment" 
-                postId={postId}
+                postId={post.id} // Используем ID для создания комментария
                 placeholder="Add a comment..."
                 onSuccess={handleCommentSuccess}
               />
@@ -219,7 +252,7 @@ useEffect(() => {
 
           <div className="comments-section">
             <CommentsThread 
-              postId={postId}
+              postId={post.id} // Используем ID для загрузки комментариев
               loading={commentsLoading}
               onSortChange={handleSortChange}
               onLoadMore={handleLoadMoreComments}

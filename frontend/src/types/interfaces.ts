@@ -32,7 +32,7 @@ export interface FeedItemBase {
   likedUserIds?: string[];
   userId: string;
   fileType?: string;
-  slug?: string;
+  slug: string;
   avatarUrl?: string | null;
   avatarShape?: string;
   updatedAt?: string;

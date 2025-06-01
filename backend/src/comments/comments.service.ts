@@ -290,7 +290,7 @@ export class CommentsService {
     // Удаляем комментарий
     await this.commentRepository.delete(commentId);
 
-    // ИЗМЕНЕНО: Правильно обновляем счетчики после удаления
+    // Правильно обновляем счетчики после удаления
     if (!comment.parentId) {
       // Если это комментарий к посту
       const commentCount = await this.commentRepository.count({
@@ -417,50 +417,10 @@ export class CommentsService {
   /**
    * Поиск комментария по слагу
    */
-  async findCommentBySlug(slug: string): Promise<CommentResponseDto | null> {
-    try {
-      const comment = await this.commentRepository
-        .createQueryBuilder('entity')
-        .leftJoinAndSelect('entity.user', 'user')
-        .select([
-          'entity',
-          'user.id',
-          'user.userName',
-          'user.avatarUrl',
-          'user.avatarShape',
-          'user.slug',
-          'user.email',
-        ])
-        .where('entity.slug = :slug', { slug })
-        .getOne();
-
-      if (!comment) {
-        console.log(`Comment with slug ${slug} not found`);
-        return null;
-      }
-
-      const repliesCount = await this.commentRepository.count({
-        where: { parentId: comment.id },
-      });
-
-      const response = new CommentResponseDto();
-      Object.assign(response, comment);
-      response.userName = comment.user?.userName || 'Unknown';
-      response.repliesCount = repliesCount;
-      response.user = {
-        id: comment.user?.id,
-        userName: comment.user?.userName,
-        avatarUrl: comment.user?.avatarUrl,
-        avatarShape: comment.user?.avatarShape,
-        slug: comment.user?.slug,
-        email: comment.user?.email,
-      };
-
-      console.log(`Found comment by slug ${slug}: ${comment.id}`);
-      return response;
-    } catch (error) {
-      console.error(`Error finding comment by slug ${slug}:`, error);
-      throw error;
-    }
+  async findCommentBySlug(slug: string): Promise<Comment | null> {
+    return this.commentRepository.findOne({
+      where: { slug },
+      relations: ['user'],
+    });
   }
 }
