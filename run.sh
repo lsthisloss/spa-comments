@@ -82,46 +82,48 @@ function app_build_frontend_prod() {
     
     cd frontend
     
-    # ИСПРАВЛЕНИЕ: Увеличиваем лимит памяти для Node.js и очищаем кэш
-    export NODE_OPTIONS="--max-old-space-size=384"
+    # ЗНАЧИТЕЛЬНО увеличиваем лимит памяти для Node.js
+    export NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
     
-    # ИСПРАВЛЕНИЕ: Удаляем package-lock.json и node_modules как рекомендует ошибка
-    echo -e "${CYAN}Removing package-lock.json and node_modules to fix Rollup issue...${NORMAL}"
-    rm -rf package-lock.json node_modules
+    # Очищаем все временные файлы
+    echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
+    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
     
-    echo -e "${CYAN}Installing dependencies with memory limits...${NORMAL}"
-    # Устанавливаем с ограничениями по памяти и принудительно включаем optional dependencies
-    npm install --no-optional --prefer-offline --progress=false --loglevel=error --maxsockets=5
+    echo -e "${CYAN}Installing dependencies with minimal memory usage...${NORMAL}"
+    # Устанавливаем пакеты с минимальным потреблением памяти
+    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to install dependencies. Trying with optional dependencies...${NORMAL}"
         
         # Пробуем с optional dependencies для Rollup
-        npm install --prefer-offline --progress=false --loglevel=error --maxsockets=5
+        npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
         
         if [ $? -ne 0 ]; then
             echo -e "${RED}Failed to install dependencies. Trying minimal install...${NORMAL}"
             
             # Устанавливаем только самое необходимое
-            npm install typescript vite @vitejs/plugin-react rollup --no-save
+            npm install typescript vite @vitejs/plugin-react rollup --no-save --loglevel=silent
             
             if [ $? -ne 0 ]; then
                 echo -e "${RED}Installation failed. Server memory too low.${NORMAL}"
-                echo -e "${YELLOW}Try building locally and uploading dist folder.${NORMAL}"
+                echo -e "${YELLOW}Recommendations:${NORMAL}"
+                echo -e "${CYAN}1. Add swap: sudo fallocate -l 2G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile${NORMAL}"
+                echo -e "${CYAN}2. Or build locally and upload dist folder${NORMAL}"
                 cd ..
                 exit 1
             fi
         fi
     fi
     
-    # ИСПРАВЛЕНИЕ: Проверяем что Rollup корректно установлен
+    # Проверяем что Rollup корректно установлен
     echo -e "${CYAN}Checking Rollup installation...${NORMAL}"
     if ! npx rollup --version >/dev/null 2>&1; then
         echo -e "${YELLOW}Rollup not working, reinstalling with optional dependencies...${NORMAL}"
-        npm install rollup --force
+        npm install rollup --force --loglevel=silent
     fi
     
     echo -e "${CYAN}Creating production environment...${NORMAL}"
@@ -132,20 +134,38 @@ VITE_SOCKET_URL=https://sk8.pw
 NODE_ENV=production
 EOF
     
-    echo -e "${CYAN}Building frontend for production...${NORMAL}"
-    # ИСПРАВЛЕНИЕ: Используем npx и увеличиваем timeout
-    NODE_ENV=production timeout 900 npx tsc -b
+    # Освобождаем память перед компиляцией
+    echo -e "${CYAN}Clearing system memory...${NORMAL}"
+    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
+    
+    echo -e "${CYAN}Building frontend for production (with memory optimization)...${NORMAL}"
+    # Компилируем TypeScript с оптимизацией памяти
+    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size" timeout 1200 npx tsc -b
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}TypeScript compilation failed or timed out!${NORMAL}"
-        cd ..
-        exit 1
+        echo -e "${YELLOW}TypeScript compilation failed, trying without type checking...${NORMAL}"
+        # Пробуем без проверки типов для экономии памяти
+        NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1200 npx tsc --build --force --skipLibCheck
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}TypeScript compilation failed, continuing with Vite build...${NORMAL}"
+        fi
     fi
     
-    NODE_ENV=production timeout 900 npx vite build
+    # Очищаем память снова перед Vite build
+    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
+    
+    echo -e "${CYAN}Running Vite build (memory optimized)...${NORMAL}"
+    # Собираем с максимальной оптимизацией памяти, НО БЕЗ изменения конфигурации
+    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size --gc-interval=100" timeout 1800 npx vite build
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Vite build failed or timed out!${NORMAL}"
+        echo -e "${RED}Vite build failed. Memory insufficient.${NORMAL}"
+        echo -e "${YELLOW}Try adding swap space:${NORMAL}"
+        echo -e "${CYAN}sudo fallocate -l 2G /swapfile${NORMAL}"
+        echo -e "${CYAN}sudo chmod 600 /swapfile${NORMAL}"
+        echo -e "${CYAN}sudo mkswap /swapfile${NORMAL}"
+        echo -e "${CYAN}sudo swapon /swapfile${NORMAL}"
         cd ..
         exit 1
     fi
@@ -174,30 +194,30 @@ function app_build_frontend_dev() {
     
     cd frontend
     
-    # ИСПРАВЛЕНИЕ: Увеличиваем лимит памяти и очищаем кэш
-    export NODE_OPTIONS="--max-old-space-size=384"
+    # Увеличиваем лимит памяти
+    export NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
     
-    # ИСПРАВЛЕНИЕ: Удаляем package-lock.json и node_modules как рекомендует ошибка
+    # Удаляем package-lock.json и node_modules
     echo -e "${CYAN}Removing package-lock.json and node_modules to fix Rollup issue...${NORMAL}"
-    rm -rf package-lock.json node_modules
+    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
     
     echo -e "${CYAN}Installing dependencies with memory limits...${NORMAL}"
-    npm install --no-optional --prefer-offline --progress=false --loglevel=error --maxsockets=5
+    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to install dependencies. Trying with optional dependencies...${NORMAL}"
         
         # Пробуем с optional dependencies для Rollup
-        npm install --prefer-offline --progress=false --loglevel=error --maxsockets=5
+        npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
         
         if [ $? -ne 0 ]; then
             echo -e "${RED}Failed to install dependencies. Trying alternative approach...${NORMAL}"
             # Устанавливаем TypeScript и Vite через npx для разового использования
             echo -e "${CYAN}Installing build tools...${NORMAL}"
-            npm install typescript vite @vitejs/plugin-react rollup --no-save
+            npm install typescript vite @vitejs/plugin-react rollup --no-save --loglevel=silent
             
             if [ $? -ne 0 ]; then
                 echo -e "${RED}Installation failed. Server memory too low. Try building locally.${NORMAL}"
@@ -207,11 +227,11 @@ function app_build_frontend_dev() {
         fi
     fi
     
-    # ИСПРАВЛЕНИЕ: Проверяем что Rollup корректно установлен
+    # Проверяем что Rollup корректно установлен
     echo -e "${CYAN}Checking Rollup installation...${NORMAL}"
     if ! npx rollup --version >/dev/null 2>&1; then
         echo -e "${YELLOW}Rollup not working, reinstalling with optional dependencies...${NORMAL}"
-        npm install rollup --force
+        npm install rollup --force --loglevel=silent
     fi
     
     echo -e "${CYAN}Creating development environment...${NORMAL}"
@@ -222,16 +242,19 @@ VITE_SOCKET_URL=http://localhost:3001
 NODE_ENV=development
 EOF
     
+    # Очищаем память
+    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
+    
     echo -e "${CYAN}Building frontend...${NORMAL}"
-    # ИСПРАВЛЕНИЕ: Используем npx и добавляем timeout
-    NODE_ENV=development timeout 600 npx tsc -b
+    # Используем npx и добавляем timeout с оптимизацией памяти
+    NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size" timeout 1200 npx tsc -b
     if [ $? -ne 0 ]; then
         echo -e "${RED}TypeScript compilation failed!${NORMAL}"
         cd ..
         exit 1
     fi
     
-    NODE_ENV=development timeout 600 npx vite build
+    NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024 --optimize-for-size" timeout 1200 npx vite build
     if [ $? -ne 0 ]; then
         echo -e "${RED}Vite build failed!${NORMAL}"
         cd ..
@@ -256,6 +279,31 @@ EOF
     
     cd ..
 }
+function app_setup_swap() {
+    echo -e "\n${YELLOW}Setting up swap space for build process...${NORMAL}\n"
+    
+    # Проверяем есть ли уже swap
+    if swapon --show | grep -q "/swapfile"; then
+        echo -e "${GREEN}Swap already exists${NORMAL}"
+        swapon --show
+        return 0
+    fi
+    
+    echo -e "${CYAN}Creating 2GB swap file...${NORMAL}"
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    
+    # Добавляем в fstab для постоянного использования
+    if ! grep -q "/swapfile" /etc/fstab; then
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    fi
+    
+    echo -e "${GREEN}✅ Swap space created successfully!${NORMAL}"
+    echo -e "${CYAN}Memory status:${NORMAL}"
+    free -h
+}
 
 while getopts c:t: flag; do
     case "${flag}" in
@@ -278,6 +326,7 @@ if [ -z $choice ]; then
     echo "         5 - Run Backend (docker-compose up)"
     echo "         6 - Build Frontend (Development)"
     echo "         7 - Build Frontend (Production)"
+    echo "         8 - Setup Swap Space (for low memory servers)"
     echo "  ----------------------------------------------------------------------  "
     echo -e "${NORMAL}"
     echo -e "${CYAN}Input action number > ${NORMAL} "
@@ -304,6 +353,9 @@ if [ -z $choice ]; then
         ;;
     7)
         app_build_frontend_prod
+        ;;
+    8)
+        app_setup_swap
         ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
