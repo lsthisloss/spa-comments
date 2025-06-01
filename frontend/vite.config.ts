@@ -5,15 +5,28 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   server: {
     host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
     watch: {
       usePolling: true, // Важно для Docker, особенно на Windows/Mac
     },
+    hmr: {
+      port: 3000,
+    },
     proxy: {
+      // WebSocket proxy для socket.io
       '/socket.io': {
-        target: 'ws://backend:3001',
+        target: 'http://backend:3001',
         ws: true,
+        changeOrigin: true,
       },
+      // Proxy для загрузки файлов
       '/uploads': {
+        target: 'http://backend:3001',
+        changeOrigin: true,
+      },
+      // Дополнительно можно добавить API proxy если нужно
+      '/api': {
         target: 'http://backend:3001',
         changeOrigin: true,
       },

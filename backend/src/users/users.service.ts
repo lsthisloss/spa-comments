@@ -351,13 +351,13 @@ export class UsersService {
       }
 
       // Проверяем существование связи НАПРЯМУЮ через SQL
-      const existingRelation = (await this.userRepository.query(
+      const existingRelation = await this.userRepository.query(
         `SELECT * FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
         [currentUserId, targetUser.id],
-      )) as Array<{ userId: string; followingId: string }>;
+      );
 
-      if (existingRelation && existingRelation.length > 0) {
+      if (Array.isArray(existingRelation) && existingRelation.length > 0) {
         this.logger.log(
           `User ${currentUserId} is already following ${targetUser.id} (direct DB check)`,
         );
@@ -417,14 +417,16 @@ export class UsersService {
       }
 
       // Удаляем связь напрямую через SQL
-      const result = (await this.userRepository.query(
+      const result = await this.userRepository.query(
         `DELETE FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
         [currentUserId, targetUser.id],
-      )) as { affectedRows?: number };
+      ) as { affectedRows?: number }[];
+
+      const deletedCount = Array.isArray(result) ? result.length : 0;
 
       this.logger.log(
-        `User ${currentUserId} unfollowed ${targetUser.id}. Deleted ${result.affectedRows || 0} rows`,
+        `User ${currentUserId} unfollowed ${targetUser.id}. Deleted ${deletedCount} rows`,
       );
     } catch (error) {
       this.logger.error(`Error unfollowing user:`, error);
@@ -505,16 +507,16 @@ export class UsersService {
     followers: Array<{ userId: string; followingId: string }>;
   }> {
     // Прямой SQL-запрос для проверки junction table
-    const followingRelations = (await this.userRepository.query(
+    const followingRelations = await this.userRepository.query(
       `SELECT * FROM user_following WHERE "userId" = $1`,
       [userId],
-    )) as Array<{ userId: string; followingId: string }>;
+    ) as Array<{ userId: string; followingId: string }>;
 
     // Прямой SQL-запрос для проверки followers
-    const followerRelations = (await this.userRepository.query(
+    const followerRelations = await this.userRepository.query(
       `SELECT * FROM user_following WHERE "followingId" = $1`,
       [userId],
-    )) as Array<{ userId: string; followingId: string }>;
+    ) as Array<{ userId: string; followingId: string }>;
 
     this.logger.log(
       `User ${userId} has ${followingRelations.length} following relations and ${followerRelations.length} follower relations in DB`,

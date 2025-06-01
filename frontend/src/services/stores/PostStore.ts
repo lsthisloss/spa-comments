@@ -795,39 +795,17 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
     
     logger.log(`[PostStore] Received ${result.posts.length} posts, total: ${result.total}`);
 
-    runInAction(() => {
-      const posts = result.posts || [];
-      const total = result.total || 0;
+  runInAction(() => {
+    const posts = result.posts || [];
+    const total = result.total || 0;
 
-      // ЗАЩИТА 5: Обработка специальных флагов и пустых результатов
-      const isEmptyResult = result.isEmpty === true;
-      const isAllLoaded = result.allLoaded === true;
-      const isEmptyResponse = total === 0 && posts.length === 0;
-      
-      if (isEmptyResult || isAllLoaded || isEmptyResponse) {
-        logger.log(`[PostStore] ${feedType} feed is empty or fully loaded, marking as complete`, {
-          isEmpty: isEmptyResult,
-          allLoaded: isAllLoaded,
-          emptyResponse: isEmptyResponse
-        });
-        
-        if (page === 1) {
-          // Первая страница пустая - очищаем ленту
-          feed.list.replace([]);
-        }
-        
-        feed.total = total;
-        feed.allLoaded = true;
-        feed.loading = false;
-        
-        if (result.message) {
-          logger.log(`[PostStore] Backend message: ${result.message}`);
-        }
-        
-        return;
-      }
-
-      // Остальная логика обработки постов
+    // Обработка специальных флагов
+    const isEmptyResult = result.isEmpty === true;
+    const isAllLoaded = result.allLoaded === true;
+    const isEmptyResponse = total === 0 && posts.length === 0;
+    
+    // Добавляем посты ПЕРЕД проверкой флагов завершения
+    if (posts.length > 0) {
       this.processPosts(posts, feedType);
 
       if (page === 1) {
@@ -844,21 +822,44 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
           logger.log(`[PostStore] No new posts to add for page ${page}`);
         }
       }
+    }
 
-      feed.page = page;
+    // проверяем флаги завершения
+    if (isEmptyResult || (isAllLoaded && posts.length === 0) || isEmptyResponse) {
+      logger.log(`[PostStore] ${feedType} feed is empty or fully loaded, marking as complete`, {
+        isEmpty: isEmptyResult,
+        allLoaded: isAllLoaded,
+        emptyResponse: isEmptyResponse,
+        postsLength: posts.length
+      });
+      
       feed.total = total;
-
-      // Проверяем окончание данных
-      const hasReachedEnd = posts.length < POSTS_PER_PAGE;
-      const hasLoadedAll = feed.list.length >= total;
-      const backendSaysAllLoaded = isAllLoaded;
-
-      feed.allLoaded = hasReachedEnd || hasLoadedAll || backendSaysAllLoaded;
-
-      logger.log(`[PostStore] ${feedType} feed: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded} (reachedEnd: ${hasReachedEnd}, loadedAll: ${hasLoadedAll}, backend: ${backendSaysAllLoaded})`);
-
+      feed.allLoaded = true;
       feed.loading = false;
-    });
+      
+      if (result.message) {
+        logger.log(`[PostStore] Backend message: ${result.message}`);
+      }
+      
+      feed.page = page;
+      return;
+    }
+
+    // логика для случаев когда данные не закончились
+    feed.page = page;
+    feed.total = total;
+
+    // Проверяем окончание данных
+    const hasReachedEnd = posts.length < POSTS_PER_PAGE;
+    const hasLoadedAll = feed.list.length >= total;
+    const backendSaysAllLoaded = isAllLoaded;
+
+    feed.allLoaded = hasReachedEnd || hasLoadedAll || backendSaysAllLoaded;
+
+    logger.log(`[PostStore] ${feedType} feed: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded} (reachedEnd: ${hasReachedEnd}, loadedAll: ${hasLoadedAll}, backend: ${backendSaysAllLoaded})`);
+
+    feed.loading = false;
+  });
   } catch (error) {
     runInAction(() => {
       feed.loading = false;

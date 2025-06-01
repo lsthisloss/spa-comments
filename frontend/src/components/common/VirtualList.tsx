@@ -235,6 +235,20 @@ function VirtualList<T>(props: VirtualListProps<T>) {
   
   // Показывать индикатор пагинации только когда есть элементы
   const shouldShowPaginationIndicator = hasItems;
+  useEffect(() => {
+    console.log(`[VirtualList DEBUG] State:`, {
+      itemsLength: items.length,
+      virtualItemsLength: virtualItems.length,
+      loading,
+      hasItems,
+      isInitialLoading,
+      isLoadingMore,
+      isEmpty,
+      shouldShowPaginationIndicator,
+      feedContextId,
+      totalHeight
+    });
+  }, [items.length, virtualItems.length, loading, hasItems, isInitialLoading, isLoadingMore, isEmpty, shouldShowPaginationIndicator, feedContextId, totalHeight]);
 
   // Показать начальную загрузку (вместо списка)
   if (isInitialLoading) {
@@ -335,7 +349,7 @@ function VirtualList<T>(props: VirtualListProps<T>) {
         </div>
       )}
       
-      {process.env.NODE_ENV === 'development' && <DebugInfo {...debugProps} />}
+      {<DebugInfo {...debugProps} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { OnModuleInit, OnModuleDestroy, Injectable } from '@nestjs/common';
 import * as amqp from 'amqplib';
 import * as dotenv from 'dotenv';
+import { createConnection } from 'net';
 
 dotenv.config();
 
@@ -24,6 +25,77 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       !(this.connection as { closed: boolean }).closed
     );
   }
+
+  private getRabbitMQConfig() {
+    // Поддерживаем разные варианты переменных окружения
+    const user = process.env.RABBITMQ_USER;
+    const pass = process.env.RABBITMQ_PASSWORD;
+    const host = process.env.RABBITMQ_HOST;
+    const port = process.env.RABBITMQ_PORT;
+
+    // Если есть готовый URL, используем его
+    if (process.env.RABBITMQ_URL) {
+      return {
+        url: process.env.RABBITMQ_URL ?? '',
+        host,
+        port: parseInt(port || '5672'),
+      };
+    }
+
+    return {
+      url: `amqp://${user}:${pass}@${host}:${port ?? '5672'}`,
+      host,
+      port: parseInt(port ?? '5672'),
+    };
+  }
+
+  private async waitForRabbitMQ() {
+    if (process.env.NODE_ENV !== 'production') {
+      return;
+    }
+
+    const maxRetries = 30;
+    const retryDelay = 3000;
+    const { host, port } = this.getRabbitMQConfig();
+
+    console.log(`🐰 Waiting for RabbitMQ at ${host}:${port}...`);
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await new Promise((resolve, reject) => {
+          const socket = createConnection({ host, port }, () => {
+            socket.end();
+            resolve(void 0);
+          });
+
+          socket.on('error', (err) => {
+            reject(err);
+          });
+
+          socket.setTimeout(3000, () => {
+            socket.destroy();
+            reject(new Error('Connection timeout'));
+          });
+        });
+
+        console.log('✅ RabbitMQ port is open!');
+
+        // Дополнительная пауза для полной готовности
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        return;
+      } catch (error) {
+        console.log(
+          `⏳ RabbitMQ not ready (${i + 1}/${maxRetries}): ${(error as Error).message}`,
+        );
+        if (i === maxRetries - 1) {
+          console.warn('⚠️  RabbitMQ not available, continuing without it...');
+          return; // Не падаем, если RabbitMQ недоступен
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    }
+  }
+
   async onModuleInit() {
     if (RabbitMQService.isInitialized) {
       if (RabbitMQService.connection && RabbitMQService.channel) {
@@ -37,35 +109,69 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    while (true) {
+    // Ждем готовности RabbitMQ
+    await this.waitForRabbitMQ();
+
+    const maxRetries = 10;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
       try {
+        const { url } = this.getRabbitMQConfig();
         console.log('Connecting to RabbitMQ...');
-        console.log('ENV:', {
-          RABBITMQ_DEFAULT_USER: process.env.RABBITMQ_DEFAULT_USER,
-          RABBITMQ_DEFAULT_PASS: process.env.RABBITMQ_DEFAULT_PASS,
-          RABBITMQ_DEFAULT_HOST: process.env.RABBITMQ_DEFAULT_HOST,
-          RABBITMQ_DEFAULT_PORT: process.env.RABBITMQ_DEFAULT_PORT,
+        console.log('RabbitMQ Config:', {
+          RABBITMQ_URL: process.env.RABBITMQ_URL,
+          RABBITMQ_USER: process.env.RABBITMQ_USER,
+          RABBITMQ_PASSWORD: process.env.RABBITMQ_PASSWORD ? '***' : undefined,
+          RABBITMQ_HOST: process.env.RABBITMQ_HOST,
+          RABBITMQ_PORT: process.env.RABBITMQ_PORT,
+          computed_url: url.replace(/:[^:@]*@/, ':***@'),
+          attempt: retryCount + 1,
         });
-        this.connection = await amqp.connect(
-          `amqp://${process.env.RABBITMQ_DEFAULT_USER}:${process.env.RABBITMQ_DEFAULT_PASS}@${process.env.RABBITMQ_DEFAULT_HOST}:${process.env.RABBITMQ_DEFAULT_PORT}`,
-        );
+
+        const connection: amqp.Connection = await amqp.connect(url);
+        if (!connection || typeof connection !== 'object') {
+          throw new Error('Failed to establish a RabbitMQ connection.');
+        }
+        this.connection = connection;
         this.channel = await this.connection.createChannel();
 
         RabbitMQService.connection = this.connection;
         RabbitMQService.channel = this.channel;
         RabbitMQService.isInitialized = true;
+
+        console.log('✅ RabbitMQ connected successfully!');
         break;
       } catch (error) {
-        console.error('Failed to connect to RabbitMQ:', error);
+        retryCount++;
+        console.error(
+          `Failed to connect to RabbitMQ (attempt ${retryCount}/${maxRetries}):`,
+          (error as Error).message,
+        );
+
+        if (retryCount >= maxRetries) {
+          console.warn(
+            '⚠️  Maximum RabbitMQ connection attempts reached. Service will continue without RabbitMQ.',
+          );
+          return; // Не падаем, продолжаем работу без RabbitMQ
+        }
+
         await new Promise((res) => setTimeout(res, 5000));
       }
     }
 
     // Listen for connection closure to reinitialize
-    this.connection.on('close', () => {
-      RabbitMQService.isInitialized = false;
-      void this.onModuleInit(); // Attempt to reconnect
-    });
+    if (this.connection) {
+      this.connection.on('close', () => {
+        console.log(
+          '🔌 RabbitMQ connection closed, attempting to reconnect...',
+        );
+        RabbitMQService.isInitialized = false;
+        setTimeout(() => {
+          void this.onModuleInit(); // Attempt to reconnect after delay
+        }, 5000);
+      });
+    }
   }
 
   async checkQueue(
@@ -76,9 +182,16 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const { messageCount, consumerCount } = await this.channel.checkQueue(
-        queue,
-      );
+      if (
+        !(this.channel instanceof Object) ||
+        typeof this.channel?.checkQueue !== 'function'
+      ) {
+        throw new Error(
+          'Channel is not initialized or checkQueue is not a function.',
+        );
+      }
+
+      const { messageCount, consumerCount } = await this.channel.checkQueue(queue);
       if (messageCount === undefined || consumerCount === undefined) {
         throw new Error('Failed to retrieve queue information.');
       }
@@ -109,17 +222,31 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private async ensureChannelInitialized(queueName: string) {
     if (!RabbitMQService.isInitialized) {
       console.log(queueName + '. Waiting for RabbitMQ to be initialized...');
-      while (!RabbitMQService.isInitialized) {
+      let waitCount = 0;
+      while (!RabbitMQService.isInitialized && waitCount < 100) {
         await new Promise((res) => setTimeout(res, 100));
+        waitCount++;
+      }
+
+      if (!RabbitMQService.isInitialized) {
+        console.warn(
+          `${queueName}. RabbitMQ not initialized after waiting, skipping operation.`,
+        );
+        return false;
       }
     }
+    return true;
   }
+
   async sendToQueue(
     queue: string,
     message: Record<string, any>,
   ): Promise<void> {
     if (!this.channel) {
-      throw new Error('RabbitMQ channel is not initialized.');
+      console.warn(
+        'RabbitMQ channel is not initialized. Message will be skipped.',
+      );
+      return;
     }
 
     try {
@@ -130,16 +257,19 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       console.log(`Message sent to queue "${queue}":`, message);
     } catch (error) {
       console.error(`Failed to send message to queue "${queue}":`, error);
-      throw error;
+      // Не бросаем ошибку, просто логируем
     }
   }
+
   public getQueueName(queueName: string): string {
     return `${'local'}${queueName}`;
   }
 
   async sendMessage(queueName: string, message: any): Promise<void> {
     try {
-      await this.ensureChannelInitialized(queueName);
+      const initialized = await this.ensureChannelInitialized(queueName);
+      if (!initialized) return;
+
       const queue = this.getQueueName(queueName);
       await this.channel.assertQueue(queue, { durable: true });
       this.channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)));
@@ -151,7 +281,9 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
   async consume(queue: string, callback: (msg: amqp.ConsumeMessage) => void) {
     try {
-      await this.ensureChannelInitialized(queue);
+      const initialized = await this.ensureChannelInitialized(queue);
+      if (!initialized) return;
+
       await this.channel.prefetch(this.chunkLengthLimit);
       await this.channel.assertQueue(queue, { durable: true });
       this.channel.consume(queue, (msg) => {

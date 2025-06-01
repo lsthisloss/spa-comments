@@ -213,7 +213,19 @@ const handleLoadMore = useCallback(() => {
     
 
   // === ОСНОВНАЯ ЛОГИКА ЗАГРУЗКИ ПОСТОВ ===
-  
+    useEffect(() => {
+    console.log(`[PostsThread DEBUG] Feed state:`, {
+      feedType,
+      userId,
+      feedListLength: feed.list.length,
+      loading: feed.loading,
+      allLoaded: feed.allLoaded,
+      virtualItemsLength: virtualItems.length,
+      totalHeight,
+      items: feed.list.slice(0, 3).map(p => ({ id: p.id, userName: p.userName })) // Первые 3 поста для проверки
+    });
+  }, [feedType, userId, feed.list.length, feed.loading, feed.allLoaded, virtualItems.length, totalHeight, feed.list]);
+
 useEffect(() => {
   // Отслеживаем смену типа фида или пользователя
   const feedChanged = feedType !== lastActiveTabRef.current || userId !== lastUserIdRef.current;

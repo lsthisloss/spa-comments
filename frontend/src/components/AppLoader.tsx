@@ -13,7 +13,7 @@ export const AppLoader = () => {
       if (!appInitializer.initialized) {
         await appInitializer.initialize();
       }
-      setTimeout(() => setLoading(false), 100);
+      setTimeout(() => setLoading(false), 600);
     };
     
     checkInitialized();
