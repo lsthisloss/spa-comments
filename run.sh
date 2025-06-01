@@ -82,8 +82,8 @@ function app_build_frontend_prod() {
     
     cd frontend
     
-    # Увеличиваем лимит памяти для Node.js (убираем неправильную опцию)
-    export NODE_OPTIONS="--max-old-space-size=1024"
+    # Увеличиваем лимит памяти для Node.js (ТОЛЬКО валидные опции)
+    export NODE_OPTIONS="--max-old-space-size=1536"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
@@ -110,11 +110,29 @@ function app_build_frontend_prod() {
             
             if [ $? -ne 0 ]; then
                 echo -e "${RED}Installation failed. Server memory too low.${NORMAL}"
-                echo -e "${YELLOW}Recommendations:${NORMAL}"
-                echo -e "${CYAN}1. Add swap: sudo fallocate -l 2G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile${NORMAL}"
-                echo -e "${CYAN}2. Or build locally and upload dist folder${NORMAL}"
-                cd ..
-                exit 1
+                echo -e "${YELLOW}Creating swap space automatically...${NORMAL}"
+                
+                # Автоматически создаем swap если его нет
+                if ! swapon --show | grep -q "/swapfile"; then
+                    echo -e "${CYAN}Creating 2GB swap file...${NORMAL}"
+                    sudo fallocate -l 2G /swapfile
+                    sudo chmod 600 /swapfile
+                    sudo mkswap /swapfile
+                    sudo swapon /swapfile
+                    
+                    # Пробуем установить еще раз после создания swap
+                    npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
+                    
+                    if [ $? -ne 0 ]; then
+                        echo -e "${RED}Installation still failed even with swap. Build locally.${NORMAL}"
+                        cd ..
+                        exit 1
+                    fi
+                else
+                    echo -e "${RED}Swap exists but installation still failed. Build locally.${NORMAL}"
+                    cd ..
+                    exit 1
+                fi
             fi
         fi
     fi
@@ -140,12 +158,12 @@ EOF
     
     echo -e "${CYAN}Building frontend for production (with memory optimization)...${NORMAL}"
     # Компилируем TypeScript с оптимизацией памяти
-    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1200 npx tsc -b
+    NODE_ENV=production timeout 1200 npx tsc -b
     
     if [ $? -ne 0 ]; then
         echo -e "${YELLOW}TypeScript compilation failed, trying without type checking...${NORMAL}"
         # Пробуем без проверки типов для экономии памяти
-        NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1200 npx tsc --build --force --skipLibCheck
+        NODE_ENV=production timeout 1200 npx tsc --build --force --skipLibCheck
         
         if [ $? -ne 0 ]; then
             echo -e "${YELLOW}TypeScript compilation failed, continuing with Vite build...${NORMAL}"
@@ -156,18 +174,22 @@ EOF
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     
     echo -e "${CYAN}Running Vite build (memory optimized)...${NORMAL}"
-    # Собираем с максимальной оптимизацией памяти
-    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024 --gc-interval=100" timeout 1800 npx vite build
+    # Собираем с максимальной оптимизацией
+    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1800 npx vite build
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Vite build failed. Memory insufficient.${NORMAL}"
-        echo -e "${YELLOW}Try adding swap space:${NORMAL}"
-        echo -e "${CYAN}sudo fallocate -l 2G /swapfile${NORMAL}"
-        echo -e "${CYAN}sudo chmod 600 /swapfile${NORMAL}"
-        echo -e "${CYAN}sudo mkswap /swapfile${NORMAL}"
-        echo -e "${CYAN}sudo swapon /swapfile${NORMAL}"
-        cd ..
-        exit 1
+        echo -e "${RED}Vite build failed. Trying with even more memory...${NORMAL}"
+        
+        # Увеличиваем лимит еще больше
+        export NODE_OPTIONS="--max-old-space-size=2048"
+        NODE_ENV=production timeout 2400 npx vite build
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Build failed even with 2GB memory limit.${NORMAL}"
+            echo -e "${YELLOW}Server memory insufficient. Please build locally and upload dist/ folder.${NORMAL}"
+            cd ..
+            exit 1
+        fi
     fi
     
     if [ ! -d "dist" ]; then
@@ -194,8 +216,8 @@ function app_build_frontend_dev() {
     
     cd frontend
     
-    # Увеличиваем лимит памяти (исправляем опции)
-    export NODE_OPTIONS="--max-old-space-size=1024"
+    # Увеличиваем лимит памяти (ТОЛЬКО валидные опции)
+    export NODE_OPTIONS="--max-old-space-size=1536"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
@@ -246,15 +268,15 @@ EOF
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     
     echo -e "${CYAN}Building frontend...${NORMAL}"
-    # Используем npx и добавляем timeout с оптимизацией памяти
-    NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024" timeout 1200 npx tsc -b
+    # Используем npx и добавляем timeout БЕЗ неправильных опций
+    NODE_ENV=development timeout 1200 npx tsc -b
     if [ $? -ne 0 ]; then
         echo -e "${RED}TypeScript compilation failed!${NORMAL}"
         cd ..
         exit 1
     fi
     
-    NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024" timeout 1200 npx vite build
+    NODE_ENV=development timeout 1200 npx vite build
     if [ $? -ne 0 ]; then
         echo -e "${RED}Vite build failed!${NORMAL}"
         cd ..
@@ -279,6 +301,7 @@ EOF
     
     cd ..
 }
+
 function app_setup_swap() {
     echo -e "\n${YELLOW}Setting up swap space for build process...${NORMAL}\n"
     
