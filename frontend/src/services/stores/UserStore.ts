@@ -222,7 +222,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
         this.usersCache.set(fullUser.slug, fullUser);
       }
       
-      logger.log(`[UserStore] Cached user ${fullUser.userName} (${fullUser.id})`);
+      logger.log(`[UserStore] Cached user ${fullUser.userName}`);
     } else {
       logger.warn(`[UserStore] Cannot cache user - missing required fields:`, user);
     }

@@ -8,6 +8,7 @@ import { getAvatarColor } from '../ui/particles/avatarColor';
 import { useNavigate } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
 import { logger } from '../../utils/Logger';
+import { postStore } from '../../services/stores/PostStore';
 
 const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
   comment: Comment;
@@ -117,14 +118,14 @@ const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
 
 interface CommentPreviewDropdownProps {
   children: React.ReactNode;
-  postId: string;
+  postSlug: string;
 }
 
-const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDropdownProps) => {
+const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewDropdownProps) => {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const isMountedRef = useRef(true);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const userId = userStore.user?.id;
   const navigate = useNavigate();
@@ -135,30 +136,41 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
     
     return () => {
       isMountedRef.current = false;
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
     };
   }, []);
   
-  // Пробуем получить данные и как посты, и как комментарии
-  const postComments = commentStore.getComments(postId);
-  const commentReplies = commentStore.getReplies(postId);
+  // Сброс hasLoaded при смене postSlug
+  useEffect(() => {
+    setHasLoaded(false);
+    setLoading(false);
+  }, [postSlug]);
   
-  // Определяем тип по наличию данных
-  const isPost = postComments.length > 0 || commentReplies.length === 0;
-  const comments = isPost ? postComments : commentReplies;
+  // ПОЛУЧАЕМ ДАННЫЕ ИЗ КЭША - observer-реактивно БЕЗ useMemo
+  const post = postStore.getPostBySlug(postSlug);
+  const comment = !post ? commentStore.getCommentBySlug(postSlug) : null;
   
-  const isLoading = commentStore.isLoadingReplies(postId);
+  // Определяем тип и получаем комментарии НАПРЯМУЮ (observer-реактивно)
+  let entityType: 'post' | 'comment' | null = null;
+  let entity = null;
+  let comments: Comment[] = [];
   
-  // Сортируем и берем топ-3 с проверкой наличия данных
-  const sortedComments = React.useMemo(() => {
-    if (!comments || comments.length === 0) return [];
-    return [...comments]
-      .sort((a, b) => (b.likes || 0) - (a.likes || 0))
-      .slice(0, 3);
-  }, [comments]);
+  if (post) {
+    entityType = 'post';
+    entity = post;
+    comments = commentStore.getComments(post.id);
+  } else if (comment) {
+    entityType = 'comment';
+    entity = comment;
+    comments = commentStore.getReplies(comment.id);
+  }
+  
+  // Логируем для отладки
+  logger.log(`[CommentPreviewDropdown] Entity type: ${entityType}, comments count: ${comments.length} for ${postSlug}`);
+  
+  // Сортируем топ-3 комментария НАПРЯМУЮ (observer-реактивно)
+  const sortedComments = comments.length > 0 
+    ? [...comments].sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 3)
+    : [];
   
   // Проверяем, лайкнул ли пользователь комментарий
   const isCommentLiked = useCallback((comment: Comment): boolean => {
@@ -171,74 +183,85 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
     commentStore.toggleLike(commentId, userId);
   }, [userId]);
   
-  // Безопасная установка состояния loading
-  const setLoadingSafe = useCallback((newLoading: boolean) => {
-    if (isMountedRef.current) {
-      setLoading(newLoading);
+  // Загружаем данные ТОЛЬКО при открытии дропдауна
+  const loadCommentsOnOpen = useCallback(async () => {
+    if (!isMountedRef.current || hasLoaded || loading || !entity) return;
+    
+    logger.log(`[CommentPreviewDropdown] Loading comments for ${postSlug}, type: ${entityType}`);
+    
+    setLoading(true);
+    
+    try {
+      if (entityType === 'post') {
+        logger.log(`[CommentPreviewDropdown] Loading comments for post ${postSlug}`);
+        await commentStore.loadCommentsBySlug(postSlug, 10, 1, undefined, false);
+      } else if (entityType === 'comment') {
+        logger.log(`[CommentPreviewDropdown] Loading replies for comment ${postSlug}`);
+        await commentStore.loadCommentsBySlug(postSlug, 10, 1, undefined, true);
+      }
+      
+      if (isMountedRef.current) {
+        setHasLoaded(true);
+        logger.log(`[CommentPreviewDropdown] Successfully loaded data for ${postSlug}`);
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        logger.error(`[CommentPreviewDropdown] Error loading data:`, error);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [postSlug, hasLoaded, loading, entityType, entity]);
   
-  // Оптимизированный loadCommentsForPost с проверкой mounted состояния
-  const loadCommentsForPost = useCallback((targetPostId: string) => {
-    if (!isMountedRef.current) return;
-    
-    setLoadingSafe(true);
-    
-    logger.log(`[CommentPreviewDropdown] Loading ${isPost ? 'comments' : 'replies'} for ${targetPostId}`);
-    
-    const loadPromise = commentStore.loadComments(targetPostId, 10, 1, undefined, !isPost);
-    
-    loadPromise
-      .catch(error => {
-        if (isMountedRef.current) {
-          logger.error(`[CommentPreviewDropdown] Error loading data: ${error}`);
-        }
-      })
-      .finally(() => {
-        // Используем timeout для безопасного обновления состояния
-        loadingTimeoutRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            setLoadingSafe(false);
-          }
-          loadingTimeoutRef.current = null;
-        }, 100);
-      });
-  }, [isPost, setLoadingSafe]);
-  
-  // Обработчик видимости дропдауна
+  // Обработчик изменения видимости дропдауна
   const handleVisibleChange = useCallback((newVisible: boolean) => {
     if (!isMountedRef.current) return;
+    
+    logger.log(`[CommentPreviewDropdown] Visibility changed to ${newVisible} for ${postSlug}`);
     setVisible(newVisible);
-  }, []);
-  
-  // Загрузка данных при открытии дропдауна
-  useEffect(() => {
-    if (visible && postId && comments.length === 0 && !isLoading && !loading && isMountedRef.current) {
-      loadCommentsForPost(postId);
+    
+    // Загружаем данные при открытии
+    if (newVisible && !hasLoaded && !loading && entity) {
+      loadCommentsOnOpen();
     }
-  }, [visible, postId, comments.length, isLoading, loading, loadCommentsForPost]);
+  }, [hasLoaded, loading, loadCommentsOnOpen, entity, postSlug]);
   
   // Обработчик клика по комментарию
   const handleCommentClick = useCallback((commentId: string) => {
     if (!isMountedRef.current) return;
+    
+    const comment = commentStore.getItemById(commentId);
+    const commentSlug = comment?.slug;
+    
+    if (!commentSlug) {
+      logger.error(`[CommentPreviewDropdown] Comment ${commentId} has no slug`);
+      return;
+    }
+    
     setVisible(false);
-    navigate(`/comment/${commentId}`);
+    navigate(`/comment/${commentSlug}`);
   }, [navigate]);
   
   // Обработчик "View all"
   const handleViewAll = useCallback(() => {
     if (!isMountedRef.current) return;
     setVisible(false);
-    navigate(isPost ? `/post/${postId}` : `/comment/${postId}`);
-  }, [navigate, isPost, postId]);
+    navigate(entityType === 'post' ? `/post/${postSlug}` : `/comment/${postSlug}`);
+  }, [navigate, entityType, postSlug]);
   
-  // Не рендерим если компонент unmounted
-  if (!isMountedRef.current) {
+  // Не рендерим если нет entity
+  if (!entity) {
+    logger.log(`[CommentPreviewDropdown] No entity found for ${postSlug}`);
     return null;
   }
   
+  // Логируем состояние перед рендерингом
+  logger.log(`[CommentPreviewDropdown] Rendering dropdown for ${postSlug}: loading=${loading}, sortedComments=${sortedComments.length}`);
+  
   // Содержимое дропдауна
-  const dropdownContent = React.useMemo(() => (
+  const dropdownContent = (
     <Card 
       size="small" 
       variant="borderless"
@@ -247,13 +270,16 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
       <div className="comment-preview-header">
         <MessageOutlined className="comment-preview-icon" />
         <Typography.Text type="secondary" className="comment-preview-title">
-          {isPost ? 'Top comments' : 'Top replies'}
+          {entityType === 'post' ? 'Top comments' : 'Top replies'}
         </Typography.Text>
       </div>
       
-      {(loading || isLoading) ? (
+      {loading ? (
         <div className="comment-preview-loading">
           <Spin size="small" />
+          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+            Loading...
+          </Typography.Text>
         </div>
       ) : sortedComments.length > 0 ? (
         <>
@@ -273,7 +299,7 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
               onClick={handleViewAll}
               className="comment-preview-view-all"
             >
-              {isPost ? 'View all comments' : 'View all replies'}
+              {entityType === 'post' ? 'View all comments' : 'View all replies'}
             </Button>
           </div>
         </>
@@ -282,14 +308,14 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
           image={Empty.PRESENTED_IMAGE_SIMPLE} 
           description={
             <Typography.Text className="comment-preview-text">
-              {isPost ? 'No comments yet' : 'No replies yet'}
+              {entityType === 'post' ? 'No comments yet' : 'No replies yet'}
             </Typography.Text>
           }
           className="comment-preview-empty"
         />
       )}
     </Card>
-  ), [loading, isLoading, sortedComments, isPost, handleCommentClick, handleLike, isCommentLiked, handleViewAll]);
+  );
 
   return (
     <Dropdown 
@@ -306,7 +332,6 @@ const CommentPreviewDropdown = observer(({ children, postId }: CommentPreviewDro
     </Dropdown>
   );
 });
-
 CommentPreview.displayName = 'CommentPreview';
 CommentPreviewDropdown.displayName = 'CommentPreviewDropdown';
 

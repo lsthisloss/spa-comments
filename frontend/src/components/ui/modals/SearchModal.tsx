@@ -59,7 +59,7 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
       footer={null}
       width={600}
       style={{ top: 40 }}
-      destroyOnClose
+      destroyOnHidden
       className="search-modal"
       centered
     >

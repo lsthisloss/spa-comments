@@ -7,16 +7,18 @@ import { getAvatarColor } from "../ui/particles/avatarColor";
 import { sendFormStore } from "../../services/stores/SendFormStore";
 import { useEffect } from 'react';
 import userStore from '../../services/stores/UserStore';
+import { SendFormProps } from "../../types/interfaces";
 
-interface SendFormProps {
-  type: "post" | "comment";
-  parentId?: string;
-  postId?: string;
-  placeholder?: string;
-  onSuccess?: () => void;
-}
 
-const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: SendFormProps) => {
+const SendForm = observer(({ 
+  type, 
+  parentId, 
+  parentSlug,
+  postId, 
+  postSlug,
+  placeholder, 
+  onSuccess 
+}: SendFormProps) => {
   const maxLength = 600;
   const dragCounterRef = useRef(0);
   const isFormDisabled = sendFormStore.loading;
@@ -30,7 +32,7 @@ const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: S
         userStore.user.avatarShape as 'circle' | 'square'
       );
     }
-  });
+  }, []);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -258,7 +260,14 @@ const SendForm = observer(({ type, parentId, postId, placeholder, onSuccess }: S
         <CaptchaModal
           visible={sendFormStore.captchaVisible}
           onClose={() => sendFormStore.setCaptchaVisible(false)}
-          onSubmit={() => sendFormStore.send(type, parentId ?? postId, parentId ? postId : undefined, onSuccess)}
+          onSubmit={() => sendFormStore.send(
+            type, 
+            parentId, 
+            postId, 
+            onSuccess,
+            parentSlug,
+            postSlug
+          )}
           text={sendFormStore.text}
           userInfo={{
             id: sendFormStore.userId,

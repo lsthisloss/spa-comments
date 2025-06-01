@@ -351,4 +351,102 @@ export class CommentsGateway
       return { error: 'Server error' };
     }
   }
+
+  @SubscribeMessage('fetchCommentsBySlug')
+  async handleFetchCommentsBySlug(
+    @MessageBody()
+    data: {
+      slug: string;
+      page?: number;
+      limit: number;
+      sort?: 'date' | 'likes';
+    },
+  ) {
+    try {
+      console.log(
+        `[CommentGateway] Fetching comments for post with slug: ${data.slug}`,
+      );
+
+      if (!data.slug) {
+        return { comments: [], total: 0, error: 'Post slug is required' };
+      }
+
+      // Получаем пост по slug
+      const postResult = await this.postsGateway.handleFetchPostBySlug({
+        slug: data.slug,
+      });
+      const post = postResult.post;
+
+      if (!post || !post.id) {
+        console.warn(`[CommentGateway] Post not found by slug: ${data.slug}`);
+        return { comments: [], total: 0, error: 'Post not found' };
+      }
+
+      // Используем ID поста для загрузки комментариев через существующий метод
+      const result = await this.commentsService.findCommentsByParentId(
+        post.id,
+        data.page || 1,
+        data.limit,
+        data.sort || 'date',
+      );
+
+      return result;
+    } catch (error) {
+      console.error(
+        `[CommentGateway] Error fetching comments by post slug:`,
+        error,
+      );
+      return { comments: [], total: 0, error: 'Failed to fetch comments' };
+    }
+  }
+
+  /**
+   * Получение списка ответов на комментарий по slug комментария
+   */
+  @SubscribeMessage('fetchRepliesBySlug')
+  async handleFetchRepliesBySlug(
+    @MessageBody()
+    data: {
+      slug: string;
+      page?: number;
+      limit: number;
+      sort?: 'date' | 'likes';
+    },
+  ) {
+    try {
+      console.log(
+        `[CommentGateway] Fetching replies for comment with slug: ${data.slug}`,
+      );
+
+      if (!data.slug) {
+        return { comments: [], total: 0, error: 'Comment slug is required' };
+      }
+
+      // Получаем комментарий по slug
+      const comment = await this.commentsService.findCommentBySlug(data.slug);
+
+      if (!comment) {
+        console.warn(
+          `[CommentGateway] Comment not found by slug: ${data.slug}`,
+        );
+        return { comments: [], total: 0, error: 'Comment not found' };
+      }
+
+      // Используем ID комментария для загрузки ответов
+      const result = await this.commentsService.findCommentsByParentId(
+        comment.id,
+        data.page || 1,
+        data.limit,
+        data.sort || 'date',
+      );
+
+      return result;
+    } catch (error) {
+      console.error(
+        `[CommentGateway] Error fetching replies by comment slug:`,
+        error,
+      );
+      return { comments: [], total: 0, error: 'Failed to fetch comments' };
+    }
+  }
 }

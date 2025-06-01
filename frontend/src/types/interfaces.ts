@@ -48,11 +48,13 @@ export interface Post extends FeedItemBase {
 export interface Comment extends FeedItemBase {
   parentId?: string;
   postId: string; 
+  postSlug?: string; 
   imageHeight?: number;
   repliesShown?: boolean; 
   numericId?: string; 
   repliesCount?: number;
 }
+
 // UI-свойства
 export interface FeedItemUIProps {
   hideCommentButton?: boolean;
@@ -121,3 +123,26 @@ export interface NavigationState {
   returnedFromComment?: boolean;
   previousState?: NavigationState;
 }
+
+
+export interface SendFormProps {
+  type: 'post' | 'comment';
+  parentId?: string;
+  parentSlug?: string;
+  postId?: string;
+  postSlug?: string;
+  placeholder?: string;
+  onSuccess?: () => void;
+}
+
+export interface FetchCommentsResponse {
+  comments?: Comment[];
+  total?: number;
+  error?: string;
+}
+export  interface FetchCommentBySlugResponse {
+    comment?: Comment;
+    comments?: Comment[];
+    error?: string;
+  }
+  

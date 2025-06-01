@@ -153,7 +153,7 @@ useEffect(() => {
         
         {(item.repliesCount ?? 0) > 0 && (
           <CommentPreviewDropdown 
-            postId={item.id}
+            postSlug={item.slug}
           >
             <Button
               type="text"

@@ -38,15 +38,19 @@ const handleNavigate = useCallback((id: string) => {
       return;
     }
     
-    // Сохраняем состояние и переходим на страницу комментария
-    logger.log(`CommentItem: direct navigation to comment ${id}`);
-    const slug = item.slug || id;
+    // Всегда используем slug для навигации
+    const slug = item.slug;
+    if (!slug) {
+      logger.error(`Comment ${id} has no slug, cannot navigate`);
+      return;
+    }
 
     const navigationState = navigationStore.saveNavigationState("comment", slug);
     navigate(`/comment/${slug}`, { state: navigationState });
   } catch (error) {
     logger.error(`Navigation error for comment ${id}:`, error);
 
+    // Fallback на slug или ID в случае ошибки
     const slug = item.slug || id;
     navigate(`/comment/${slug}`);
   }

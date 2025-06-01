@@ -3,6 +3,8 @@ import { message } from 'antd';
 import { socketStore } from './SocketStore';
 import { logger } from "../../utils/Logger";
 import { BaseData } from '../../types/interfaces';
+import { postStore } from './PostStore';
+import { commentStore } from './CommentStore';
 
 class SendFormStore {
   text = "";
@@ -17,13 +19,11 @@ class SendFormStore {
   userName = "";
   MAX_TEXT_LENGTH = 1000;
   dragActive = false;
+  avatarUrl: string | null = null;
+  avatarShape: 'circle' | 'square' = 'circle';
 
   // Разрешенные HTML теги
   private readonly ALLOWED_TAGS = ['b', 'i', 'u', 'br'];
-
-// Добавьте эти свойства в класс SendFormStore
-avatarUrl: string | null = null;
-avatarShape: 'circle' | 'square' = 'circle';
 
   constructor() {
     makeObservable(this, {
@@ -56,7 +56,6 @@ avatarShape: 'circle' | 'square' = 'circle';
     });
   }
 
-  // Обновите метод initializeUser
   initializeUser = (userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
     this.userId = userId;
     this.userName = userName;
@@ -364,27 +363,29 @@ avatarShape: 'circle' | 'square' = 'circle';
     return true;
   }
 
-  // Основной метод отправки
-  async send(
+ // Обновленный метод отправки
+ async send(
     type: "post" | "comment",
     parentIdOrPostId?: string,
     postIdForNestedComment?: string,
-    onSuccess?: () => void
+    onSuccess?: () => void,
+    parentSlug?: string,
+    postSlug?: string
   ) {
     if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
       runInAction(() => {
-        this.setError("Please add some content");
+        this.setError("Please enter some text, upload an image, or attach a file.");
       });
       return;
     }
 
     if (!this.isValidContent(this.text)) {
-      return; // setError уже вызван в isValidContent
+      return;
     }
 
     if (!this.userId || this.userId.trim() === '') {
       runInAction(() => {
-        this.setError("User not authenticated");
+        this.setError("You must be logged in to post.");
       });
       return;
     }
@@ -392,7 +393,7 @@ avatarShape: 'circle' | 'square' = 'circle';
     const socket = socketStore[type === "post" ? "posts" : "comments"];
     if (!socket) {
       runInAction(() => {
-        this.setError("Connection not available");
+        this.setError("Connection error. Please try again.");
       });
       return;
     }
@@ -400,6 +401,36 @@ avatarShape: 'circle' | 'square' = 'circle';
     runInAction(() => {
       this.setLoading(true);
     });
+
+    // Получаем ID ТОЛЬКО из slug если ID не передан
+    let effectiveParentId = parentIdOrPostId;
+    let effectivePostId = postIdForNestedComment;
+    
+    if (type === "comment" && !effectiveParentId && parentSlug) {
+      const comment = commentStore.getCommentBySlug(parentSlug);
+      if (comment) {
+        effectiveParentId = comment.id;
+      } else {
+        runInAction(() => {
+          this.setError("Parent comment not found");
+          this.setLoading(false);
+        });
+        return;
+      }
+    }
+    
+    if (!effectivePostId && postSlug) {
+      const post = postStore.getPostBySlug(postSlug);
+      if (post) {
+        effectivePostId = post.id;
+      } else {
+        runInAction(() => {
+          this.setError("Post not found");
+          this.setLoading(false);
+        });
+        return;
+      }
+    }
 
     const baseData: BaseData = {
       userId: this.userId,
@@ -415,11 +446,16 @@ avatarShape: 'circle' | 'square' = 'circle';
     };
 
     if (type === "comment") {
-      if (parentIdOrPostId && !postIdForNestedComment) {
-        baseData.postId = parentIdOrPostId;
-      } else if (parentIdOrPostId && postIdForNestedComment) {
-        baseData.parentId = parentIdOrPostId;
-        baseData.postId = postIdForNestedComment;
+      if (effectiveParentId && !effectivePostId) {
+        // Ответ на комментарий
+        baseData.parentId = effectiveParentId;
+      } else if (effectiveParentId && effectivePostId) {
+        // Вложенный комментарий
+        baseData.parentId = effectiveParentId;
+        baseData.postId = effectivePostId;
+      } else if (effectivePostId) {
+        // Комментарий к посту
+        baseData.postId = effectivePostId;
       }
     }
 
@@ -443,7 +479,7 @@ avatarShape: 'circle' | 'square' = 'circle';
     };
 
     try {
-      // Логика отправки файлов
+      // Логика отправки файлов (без изменений)
       if (this.selectedImageFile && this.selectedFile) {
         // И изображение, и файл
         const imageBase64 = this.imagePreview!.split(",")[1];

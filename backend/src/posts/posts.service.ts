@@ -403,6 +403,42 @@ export class PostsService {
       return { posts: [], total: 0, isEmpty: true };
     }
   }
+  async findPostBySlug(slug: string): Promise<Post | null> {
+    try {
+      console.log(`[PostsService] Finding post by slug: ${slug}`);
+
+      const post = await this.postRepository.findOne({
+        where: { slug },
+        relations: ['user'],
+        select: {
+          user: {
+            id: true,
+            userName: true,
+            avatarUrl: true,
+            avatarShape: true,
+            slug: true,
+            email: true,
+          },
+        },
+      });
+
+      if (!post) {
+        console.log(`[PostsService] Post with slug ${slug} not found`);
+        return null;
+      }
+
+      console.log(
+        `[PostsService] Found post with id ${post.id} for slug ${slug}`,
+      );
+      return post;
+    } catch (error) {
+      console.error(
+        `[PostsService] Error finding post by slug ${slug}:`,
+        error,
+      );
+      return null;
+    }
+  }
 
   /**
    * Обновить счетчик комментариев в посте

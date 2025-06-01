@@ -583,7 +583,6 @@ class PostStore extends BaseStore<Post> {
         const existingUser = userStore.getCachedUser(post.user.id);
         if (!existingUser) {
           userStore.addCachedUser(post.user);
-          logger.log(`[PostStore] Cached new user ${post.user.userName} (${post.user.id}) for post ${post.id}`);
         }
       } else if (!post.user && post.userId) {
         // Если нет user объекта, но есть userId, пробуем восстановить из кэша
@@ -869,7 +868,6 @@ handleNewPost = action((post: Post, type: FeedType) => {
     const existingUser = userStore.getCachedUser(post.user.id);
     if (!existingUser) {
       userStore.addCachedUser(post.user);
-      logger.log(`[PostStore] Cached new user ${post.user.userName} for new post ${post.id}`);
     }
   } else if (post.userId) {
     const cachedUser = userStore.getCachedUser(post.userId);
@@ -958,10 +956,7 @@ handleNewPost = action((post: Post, type: FeedType) => {
       uniqueUsers.forEach(user => {
         userStore.addCachedUser(user);
       });
-      
-      if (uniqueUsers.size > 0) {
-        logger.log(`[PostStore] Cached ${uniqueUsers.size} unique users from buffer`);
-      }
+  
       
       // Добавляем все посты из буфера в начало списка
       feed.list.unshift(...feed.buffer);
@@ -1048,6 +1043,12 @@ fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
   }
 });
 
+  updatePostCommentCountBySlug = action((postSlug: string, count: number) => {
+    const post = this.getPostBySlug(postSlug);
+    if (!post) return;
+    
+    this.updatePostCommentCount(post.id, count);
+  });
   // Помечает ленту для обновления при следующей загрузке
   markFeedForRefresh = action((feedType: FeedType) => {
     const feed = this.feeds[feedType];

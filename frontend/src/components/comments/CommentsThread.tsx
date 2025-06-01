@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Empty, Spin, Button, Dropdown, Badge } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
 import { commentStore } from '../../services/stores/CommentStore';
+import { postStore } from '../../services/stores/PostStore';
 import { useCommentsFeed } from '../../hooks/useFeedItems';
 import { useVirtualItems } from '../../hooks/useVirtualItems';
 import VirtualList from '../common/VirtualList';
@@ -12,26 +13,50 @@ import { logger } from '../../utils/Logger';
 
 interface CommentsThreadProps {
   postId?: string;
+  postSlug?: string;
   parentId?: string;
+  parentSlug?: string;
   loading?: boolean;
-  onSortChange?: (sort: 'date' | 'likes') => void;
   onLoadMore?: () => void;
+  onSortChange?: (sort: 'date' | 'likes') => void;
 }
 
 const CommentsThread = observer(({ 
   postId, 
+  postSlug,
   parentId,
+  parentSlug,
   loading = false,
   onSortChange,
   onLoadMore
 }: CommentsThreadProps) => {
-  const targetId = postId || parentId;
-  const isPost = !!postId;
+  // Получаем ID из slug если предоставлены
+  const effectivePostId = useMemo(() => {
+    if (postId) return postId;
+    if (postSlug) {
+      const post = postStore.getPostBySlug(postSlug);
+      return post?.id;
+    }
+    return undefined;
+  }, [postId, postSlug]);
+  
+  const effectiveParentId = useMemo(() => {
+    if (parentId) return parentId;
+    if (parentSlug) {
+      const comment = commentStore.getCommentBySlug(parentSlug);
+      return comment?.id;
+    }
+    return undefined;
+  }, [parentId, parentSlug]);
+  
+  // Определяем целевой ID для получения комментариев
+  const targetId = effectivePostId || effectiveParentId;
+  const isPost = !!effectivePostId;
   
   if (!targetId) {
     return <Empty description="No post or comment ID specified" />;
   }
-
+  
   // Получаем комментарии или ответы в зависимости от типа
   const comments = isPost 
     ? commentStore.getComments(targetId)
@@ -60,23 +85,21 @@ const CommentsThread = observer(({
     if (!targetId) return;
     
     // Если это страница с комментарием (есть parentId), всегда показываем ответы
-    if (parentId && !postId) {
+    if (effectiveParentId && !effectivePostId) {
       // Принудительно показываем ответы
-      commentStore.setRepliesShown(parentId, true);
+      commentStore.setRepliesShown(effectiveParentId, true);
       
       // Загружаем ответы при необходимости
-      const replies = commentStore.getReplies(parentId);
+      const replies = commentStore.getReplies(effectiveParentId);
       if (!replies || replies.length === 0) {
-        logger.log(`CommentsThread: Загружаем ответы для комментария ${parentId}`);
         if (onLoadMore) {
           onLoadMore();
         } else {
-          commentStore.loadComments(parentId, 10, 1);
+          commentStore.loadComments(effectiveParentId, 10, 1);
         }
       }
     }
-  }, [targetId, parentId, postId, onLoadMore]);
-
+  }, [targetId, effectiveParentId, effectivePostId, onLoadMore]);
 
   const renderComment = useCallback((virtualItem: { item: Comment; index: number }, measureRef: (el: HTMLElement | null) => void) => {
     const comment = virtualItem.item as Comment;

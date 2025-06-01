@@ -59,6 +59,12 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { posts, total };
   }
 
+  async findPostBySlug(slug: string) {
+    console.log(
+      `[PostsGateway] Received request to find post by slug: ${slug}`,
+    );
+    return await this.postsService.getPostBySlug(slug);
+  }
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('addPost')
   async handleAddPost(

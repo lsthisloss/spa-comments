@@ -18,355 +18,277 @@ const CommentPage = observer(() => {
   const location = useLocation();
   const params = useParams();
   
-  // Используем useMemo для стабильного commentId
-  const commentId = useMemo(() => {
-    // Получаем из параметров URL
-    const id = params.commentId;
+  // Получаем slug комментария из URL
+  const commentSlug = useMemo(() => {
+    // Из параметров URL
+    const slug = params.commentId;
     
-    // Пробуем получить из location.pathname, если параметры пусты
-    if (!id && location.pathname.includes('/comment/')) {
+    // Из пути URL, если параметры пусты
+    if (!slug && location.pathname.includes('/comment/')) {
       const pathParts = location.pathname.split('/');
       const lastPart = pathParts[pathParts.length - 1];
       if (lastPart && lastPart !== 'comment') {
-        logger.log(`[CommentPage] Extracted commentId from pathname: ${lastPart}`);
         return lastPart;
       }
     }
     
-    // Пробуем получить из состояния навигации
-    if (!id && location.state && location.state.commentId) {
-      logger.log(`[CommentPage] Using commentId from navigation state: ${location.state.commentId}`);
-      return location.state.commentId;
+    // Из состояния навигации
+    if (!slug && location.state?.slug) {
+      return location.state.slug;
     }
     
-    // Возвращаем ID из параметров или undefined
-    logger.log(`[CommentPage] Using commentId from params: ${id}`);
-    return id;
+    return slug;
   }, [params.commentId, location.pathname, location.state]);
   
+  // Состояние компонента
+  const mountedRef = useRef(true);
+  const loadingRef = useRef(false);
+  const repliesLoadedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState<Comment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [repliesSort, setRepliesSort] = useState<'date' | 'likes'>('date');
   
-  // Заменяем useState на useRef для fetchAttempted
-  const fetchAttemptedRef = useRef(false);
-  
-  // Debugging mount/unmount cycle
+  // Управление жизненным циклом компонента
   useEffect(() => {
-    logger.log(`[CommentPage] MOUNTED with commentId=${commentId}`);
-    
-    // Сбрасываем флаг загрузки при изменении commentId
-    if (commentId) {
-      logger.log(`[CommentPage] New commentId detected, resetting fetchAttempted`);
-      fetchAttemptedRef.current = false;
-    }
+    mountedRef.current = true;
     
     return () => {
-      logger.log(`[CommentPage] UNMOUNTING with commentId=${commentId}`);
+      mountedRef.current = false;
     };
-  }, [commentId]);
+  }, []);
 
-  // Проверка валидности commentId - перенаправляем если невалидный
+  // Проверка наличия slug и перенаправление если нет
   useEffect(() => {
-    if (!commentId) {
-      logger.error('[CommentPage] No commentId provided in URL parameters');
-      // Если нет commentId, возвращаемся на главную страницу
+    if (!commentSlug) {
       if (location.pathname.includes('/comment/')) {
-        logger.warn('[CommentPage] Invalid URL, navigating to home');
         navigate('/', { replace: true });
       }
-      setError('Comment ID is missing');
+      setError('Comment slug is missing');
       setLoading(false);
       return;
     }
     
-    // Если commentId есть, но в URL его нет, обновляем URL
-    if (commentId && !location.pathname.includes(commentId)) {
-      logger.log(`[CommentPage] Updating URL to match commentId: ${commentId}`);
-      navigate(`/comment/${commentId}`, { 
+    // Обновляем URL если slug есть, но его нет в пути
+    if (commentSlug && !location.pathname.includes(commentSlug)) {
+      navigate(`/comment/${commentSlug}`, { 
         replace: true,
         state: location.state 
       });
     }
-  }, [commentId, navigate, location.pathname, location.state]);
+  }, [commentSlug, navigate, location.pathname, location.state]);
 
-  // State management effect
+  // Сохранение состояния навигации
   useEffect(() => {
-    if (!commentId) {
-      return;
-    }
+    if (!commentSlug) return;
     
-    logger.log(`[CommentPage] State management for comment slug=${commentId}`);
-    
-    // Сохраняем состояние из location или создаем дефолтное
     const stateToSave = location.state || 
       navigationStore.getStateForDirectUrl(location.pathname) || 
       { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
     
-    logger.log(`[CommentPage] State from location:`, stateToSave);
     navigationStore.saveStateFromLocation(stateToSave);
     
     return () => {
-      logger.log(`[CommentPage] Saving scroll position: ${window.scrollY}`);
-      navigationStore.currentState.scrollPosition = window.scrollY;
+      if (mountedRef.current) {
+        navigationStore.currentState.scrollPosition = window.scrollY;
+      }
     };
-  }, [location.pathname, location.state, commentId]);
+  }, [location.pathname, location.state, commentSlug]);
 
-  // Socket availability check
+  // Загрузка комментария
   useEffect(() => {
-    logger.log(`[CommentPage] Socket check: comments=${!!socketStore.comments}, connected=${socketStore.comments?.connected}`);
-  }, []);
-
-  // Эффект для загрузки комментария - зависит только от commentId
-  useEffect(() => {
-    if (!commentId) {
-      logger.error('[CommentPage] No commentId for data loading');
-      return;
-    }
+    if (!commentSlug || loadingRef.current) return;
     
-    let isMounted = true;
-    logger.log(`[CommentPage] Starting to load comment data for: ${commentId}`);
-    
-    // Prevent duplicate fetches - теперь используем ref
-    if (fetchAttemptedRef.current) {
-      logger.log(`[CommentPage] Fetch already attempted, skipping`);
-      return;
-    }
-
     const loadComment = async () => {
+      loadingRef.current = true;
+      
       try {
+        if (!mountedRef.current) return;
         setLoading(true);
         setError(null);
-        // Устанавливаем ref вместо state
-        fetchAttemptedRef.current = true;
 
-        logger.log(`[CommentPage] Loading comment by slug: ${commentId}`);
-        logger.log(`[CommentPage] Socket connected: ${socketStore.comments?.connected}`);
+        // Сначала ищем в кэше
+        let fetchedComment = commentStore.getCommentBySlug(commentSlug);
 
-        // 1. Сначала ищем комментарий в кэше
-        let fetchedComment: Comment | null = commentStore.getCommentBySlug(commentId);
-        logger.log(`[CommentPage] Cache lookup result: ${fetchedComment ? 'FOUND' : 'NOT FOUND'}`);
-
+        // Если нет в кэше - загружаем с сервера
         if (!fetchedComment) {
-          // Код загрузки комментария с сервера...
-          logger.log(`[CommentPage] Comment not in cache, fetching by slug: ${commentId}`);
-          
-          // Проверяем состояние сокета перед запросом
-          if (!socketStore.comments || !socketStore.comments.connected) {
-            // Код ожидания подключения сокета...
+          // Проверяем соединение сокета
+          if (!socketStore.comments?.connected) {
             await new Promise<void>((resolve, reject) => {
               let attempts = 0;
-              const maxAttempts = 50;
-              
               const interval = setInterval(() => {
                 attempts++;
+                if (!mountedRef.current) {
+                  clearInterval(interval);
+                  reject(new Error('Component unmounted'));
+                  return;
+                }
+                
                 if (socketStore.comments?.connected) {
                   clearInterval(interval);
-                  logger.log('[CommentPage] Socket connected, continuing');
                   resolve();
-                } else if (attempts >= maxAttempts) {
+                } else if (attempts >= 20) {
                   clearInterval(interval);
-                  logger.error('[CommentPage] Socket connection timeout');
                   reject(new Error('Socket connection timeout'));
                 }
               }, 100);
             });
           }
           
-          // Выполняем запрос
-          logger.log('[CommentPage] Calling fetchCommentBySlug...');
-          fetchedComment = await commentStore.fetchCommentBySlug(commentId);
-          logger.log(`[CommentPage] Fetch result: ${fetchedComment ? 'SUCCESS' : 'FAILED'}`);
+          if (!mountedRef.current) return;
           
-          // 3. Если все еще нет - пробуем по ID как fallback
-          if (!fetchedComment) {
-            logger.log(`[CommentPage] Comment not found by slug, trying by ID: ${commentId}`);
-            fetchedComment = await commentStore.fetchComment(commentId);
-            logger.log(`[CommentPage] Fetch by ID result: ${fetchedComment ? 'SUCCESS' : 'FAILED'}`);
-          }
-        } else {
-          logger.log(`[CommentPage] Comment found in cache: ${fetchedComment.id}`);
+          // Загружаем комментарий с сервера
+          fetchedComment = await commentStore.fetchCommentBySlug(commentSlug);
         }
 
-        if (!isMounted) {
-          logger.warn('[CommentPage] Component unmounted during fetch, aborting');
-          return;
-        }
+        if (!mountedRef.current) return;
 
         if (!fetchedComment) {
-          logger.error(`[CommentPage] Comment not found with id/slug: ${commentId}`);
           setError("Comment not found");
           setLoading(false);
           return;
         }
 
-        logger.log(`[CommentPage] Successfully loaded comment: ${fetchedComment.id}`);
         setComment(fetchedComment);
         setLoading(false);
       } catch (error) {
+        if (!mountedRef.current) return;
+        
         logger.error('[CommentPage] Error loading comment:', error);
-        
-        if (isMounted) {
-          setError('Error loading comment');
-          setLoading(false);
-        }
+        setError('Error loading comment');
+        setLoading(false);
       } finally {
-        if (isMounted) {
+        loadingRef.current = false;
+        if (mountedRef.current) {
           setLoading(false);
         }
       }
     };
 
-    // Execute load immediately
     loadComment();
+  }, [commentSlug]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [commentId]); // Убрали repliesSort из зависимостей
-
-  // Отдельный эффект для загрузки ответов на комментарий
+  // Загрузка ответов на комментарий
   useEffect(() => {
-    // Только если комментарий уже загружен и имеет ответы
-    if (!comment || !comment.id || !comment.repliesCount) {
-      return;
-    }
+    if (!comment?.slug || !comment.repliesCount || repliesLoadedRef.current) return;
     
-    let isMounted = true;
-    logger.log(`[CommentPage] Loading replies for comment: ${comment.id}`);
+    setRepliesLoading(true);
     
-    const loadReplies = async () => {
-      try {
-        setRepliesLoading(true);
-        await commentStore.loadComments(comment.id, 10, 1, repliesSort, true);
-        logger.log(`[CommentPage] Replies loaded`);
-        
-        if (isMounted) {
+    commentStore.loadCommentsBySlug(comment.slug, 10, 1, repliesSort, true)
+      .then(() => {
+        if (mountedRef.current) {
+          repliesLoadedRef.current = true;
+        }
+      })
+      .finally(() => {
+        if (mountedRef.current) {
           setRepliesLoading(false);
         }
-      } catch (error) {
-        logger.error('[CommentPage] Error loading replies:', error);
-        if (isMounted) {
-          setRepliesLoading(false);
-        }
-      }
-    };
-    
-    loadReplies();
+      });
     
     return () => {
-      isMounted = false;
+      repliesLoadedRef.current = false;
     };
-  }, [comment?.id, repliesSort]);
+  }, [comment?.slug, comment?.repliesCount, repliesSort]);
 
+  // Обработчик загрузки дополнительных ответов
   const handleLoadMoreReplies = useCallback(() => {
-    if (!comment?.id) return;
+    if (!comment?.slug || !mountedRef.current) return;
     
-    const replies = commentStore.getReplies(comment.id);
+    const replies = commentStore.getRepliesBySlug(comment.slug);
     const page = Math.floor(replies.length / 10) + 1;
     
-    logger.log(`[CommentPage] Loading more replies, page: ${page}`);
     setRepliesLoading(true);
     
-    commentStore.loadComments(comment.id, 10, page, repliesSort, true) 
+    commentStore.loadCommentsBySlug(comment.slug, 10, page, repliesSort, true)
       .finally(() => {
-        setRepliesLoading(false);
+        if (mountedRef.current) {
+          setRepliesLoading(false);
+        }
       });
-  }, [comment?.id, repliesSort]);
+  }, [comment?.slug, repliesSort]);
 
+  // Обработчик изменения сортировки
   const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (sort === repliesSort || !comment?.id) return;
+    if (sort === repliesSort || !comment?.slug || !mountedRef.current) return;
     
-    logger.log(`[CommentPage] Changing replies sort to: ${sort}`);
     setRepliesSort(sort);
     setRepliesLoading(true);
+    repliesLoadedRef.current = false;
     
-    commentStore.loadComments(comment.id, 10, 1, sort, true)
+    commentStore.loadCommentsBySlug(comment.slug, 10, 1, sort, true)
       .finally(() => {
-        setRepliesLoading(false);
+        if (mountedRef.current) {
+          setRepliesLoading(false);
+          repliesLoadedRef.current = true;
+        }
       });
-  }, [comment?.id, repliesSort]);
+  }, [comment?.slug, repliesSort]);
 
+  // Обработчик повторной попытки
   const handleRetry = useCallback(() => {
-    if (!commentId) return;
+    if (!commentSlug || !mountedRef.current) return;
     
-    logger.log(`[CommentPage] Retrying fetch for comment: ${commentId}`);
+    loadingRef.current = false;
     setLoading(true);
     setError(null);
-    // Используем ref вместо state
-    fetchAttemptedRef.current = false;
-  }, [commentId]);
+  }, [commentSlug]);
 
   // Обработчик возврата назад
   const handleBackClick = useCallback(() => {
-    if (!commentId) return;
-    
-    logger.log(`[CommentPage] Back navigation requested from comment ${commentId}`);
-    logger.log(`[CommentPage] Current scroll position: ${window.scrollY}`);
+    if (!commentSlug) return;
     
     const currentState = navigationStore.currentState;
     
-    if (!location.state) {
-      logger.log('[CommentPage] No location state, checking if comment belongs to post');
+    // Если нет истории навигации, но есть связанный пост
+    if (!location.state && comment?.postId) {
+      const postState = {
+        fromComment: true,
+        slug: commentSlug,
+        postId: comment.postSlug || comment.postId,
+        scrollPosition: 0,
+        timestamp: Date.now()
+      };
       
-      if (comment?.postId) {
-        logger.log(`[CommentPage] Comment belongs to post ${comment.postId}, navigating there`);
-        
-        // Передаем явное состояние для перехода на страницу поста
-        const postState = {
-          fromComment: true,
-          commentId: commentId,
-          postId: comment.postId,
-          scrollPosition: 0,
-          timestamp: Date.now()
-        };
-        
-        // Сохраняем это состояние в navigationStore
-        navigationStore.currentState = postState;
-        
-        navigate(`/post/${comment.postId}`, { 
-          replace: true,
-          state: postState
-        });
-        return;
-      }
-      
-      logger.log('[CommentPage] No post association found, going to home');
-      navigate('/', { replace: true });
+      navigationStore.currentState = postState;
+      navigate(`/post/${comment.postSlug || comment.postId}`, { 
+        replace: true,
+        state: postState
+      });
       return;
     }
     
-    if (currentState && (currentState.fromFeed || currentState.fromFollowing || currentState.fromUserProfile || currentState.fromPost)) {
-      // Если возвращаемся на пост, явно устанавливаем признак, что это переход с комментария
+    // Если есть история навигации
+    if (currentState && (currentState.fromFeed || currentState.fromFollowing || 
+                         currentState.fromUserProfile || currentState.fromPost)) {
+      // Если возвращаемся на пост
       if (currentState.fromPost && currentState.postId) {
         currentState.fromComment = true;
       }
       
-      logger.log(`[CommentPage] Using navigation store to handle back navigation`);
       navigationStore.handleBackNavigation(navigate);
     } else {
-      logger.log(`[CommentPage] No specific navigation context, going back`);
       navigate(-1);
     }
-  }, [commentId, navigate, location.state, comment]);
+  }, [commentSlug, navigate, location.state, comment]);
 
   // Обработчик успешного добавления ответа
   const handleReplySuccess = useCallback(() => {
-    if (commentId) {
-      logger.log("[CommentPage] Ответ добавлен");
-      message.success('Ответ добавлен');
+    if (!mountedRef.current) return;
+    
+    message.success('Reply added successfully');
+    
+    // Прокрутка к секции ответов
+    setTimeout(() => {
+      if (!mountedRef.current) return;
       
-      // Прокручиваем к секции ответов
-      setTimeout(() => {
-        const repliesSection = document.querySelector('.comments-section');
-        if (repliesSection) {
-          repliesSection.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 300);
-    }
-  }, [commentId]);
+      const repliesSection = document.querySelector('.comments-section');
+      if (repliesSection) {
+        repliesSection.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 300);
+  }, []);
 
   return (
     <section className="post-page-container">
@@ -390,7 +312,7 @@ const CommentPage = observer(() => {
       {loading ? (
         <div style={{ padding: '20px', textAlign: 'center' }}>
           <Spin size="large" />
-          <p>Загрузка комментария...</p>
+          <p>Loading comment...</p>
         </div>
       ) : error ? (
         <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -400,7 +322,7 @@ const CommentPage = observer(() => {
             onClick={handleRetry}
             style={{ marginTop: '16px' }}
           >
-            Повторить попытку
+            Retry
           </Button>
         </div>
       ) : comment ? (
@@ -416,8 +338,8 @@ const CommentPage = observer(() => {
             <div className="comment-form-container">
               <SendForm 
                 type="comment" 
-                parentId={comment.id}
-                postId={comment.postId}
+                parentSlug={comment.slug}
+                postSlug={comment.postSlug || comment.postId}
                 placeholder="Post your reply..."
                 onSuccess={handleReplySuccess}
               />
@@ -426,8 +348,8 @@ const CommentPage = observer(() => {
 
           <div className="comments-section">
             <CommentsThread 
-              key={`replies-${comment.id}`}
-              parentId={comment.id} 
+              key={`replies-${comment.slug}-${repliesSort}`}
+              parentSlug={comment.slug}
               loading={repliesLoading}
               onLoadMore={handleLoadMoreReplies}
               onSortChange={handleSortChange}
@@ -435,7 +357,7 @@ const CommentPage = observer(() => {
           </div>
         </>
       ) : (
-        <Empty description="Комментарий не найден" />
+        <Empty description="Comment not found" />
       )}
     </section>
   );

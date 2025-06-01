@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { postStore } from '../services/stores/PostStore';
@@ -14,127 +14,139 @@ import { logger } from "../utils/Logger";
 import { navigationStore } from '../services/stores/NavigationStore';
 
 const PostPage = observer(() => {
-  const { slug } = useParams<{ slug: string }>(); // Используем slug вместо postId
+  const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Refs для отслеживания состояния
+  const mountedRef = useRef(true);
+  const loadingRef = useRef(false);
+  const commentsLoadedRef = useRef(false);
+  
+  // Состояние компонента
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsSort, setCommentsSort] = useState<'date' | 'likes'>('date');
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Navigation state handling
-useEffect(() => {
-  logger.log(`[PostPage] Mount with slug=${slug}`);
+  // Управление жизненным циклом компонента
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    return () => {
+      logger.log(`[PostPage] Unmounting, saving scroll position: ${window.scrollY}`);
+      navigationStore.currentState.scrollPosition = window.scrollY;
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Сохранение состояния навигации
+  useEffect(() => {
+    if (!slug) return;
+    
+    logger.log(`[PostPage] Mount with slug=${slug}`);
+    
+    // Сохраняем состояние из location или создаем дефолтное
+    const stateToSave = location.state || 
+      navigationStore.getStateForDirectUrl(location.pathname) || 
+      { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
+    
+    navigationStore.saveStateFromLocation(stateToSave);
+    
+    // Проверяем, является ли это переходом обратно с комментария
+    const isBackFromComment = navigationStore.currentState && navigationStore.currentState.fromComment === true;
+    
+    // Очищаем состояние только если это настоящий прямой доступ (не навигация назад)
+    if (!location.state && !isBackFromComment) {
+      logger.log('[PostPage] Direct URL access detected, clearing saved feed state');
+      postStore.feedSavedPosts.clear();
+      postStore.feedScrollPosition = 0;
+    } else if (isBackFromComment) {
+      logger.log('[PostPage] Back navigation from comment detected, preserving state');
+    }
+  }, [location.pathname, location.state, slug]);
   
-  // Сохраняем состояние из location или создаем дефолтное
-  const stateToSave = location.state || 
-    navigationStore.getStateForDirectUrl(location.pathname) || 
-    { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
-  
-  navigationStore.saveStateFromLocation(stateToSave);
-  
-  // Проверяем, является ли это переходом обратно с комментария
-  const isBackFromComment = navigationStore.currentState && 
-                            navigationStore.currentState.fromComment === true;
-  
-  // Очищаем состояние только если это настоящий прямой доступ (не навигация назад)
-  if (!location.state && !isBackFromComment) {
-    logger.log('[PostPage] Direct URL access detected, clearing saved feed state');
-    postStore.feedSavedPosts.clear();
-    postStore.feedScrollPosition = 0;
-  } else if (isBackFromComment) {
-    logger.log('[PostPage] Back navigation from comment detected, preserving state');
-  }
-  
-  return () => {
-    logger.log(`[PostPage] Unmounting, saving scroll position: ${window.scrollY}`);
-    navigationStore.currentState.scrollPosition = window.scrollY;
-  };
-}, [location.pathname, location.state, slug]);
-// Load post and comments
-useEffect(() => {
-  if (!slug) return;
+  // Загрузка поста
+  useEffect(() => {
+    if (!slug || loadingRef.current) return;
+    
+    const loadData = async () => {
+      loadingRef.current = true;
+      
+      try {
+        if (!mountedRef.current) return;
+        setLoading(true);
+        setError(null);
 
-  let isMounted = true;
+        logger.log(`[PostPage] Loading post by slug: ${slug}`);
 
-  const loadData = async () => {
-    setLoading(true);
-    setError(null);
+        // 1. Сначала ищем по slug в сторе
+        let fetchedPost: Post | null = postStore.getPostBySlug(slug);
 
-    try {
-      logger.log(`[PostPage] Loading post by slug: ${slug}`);
+        if (!fetchedPost) {
+          // 2. Если нет в сторе — загружаем с бэкенда по slug
+          logger.log(`[PostPage] Post not found in store, fetching by slug: ${slug}`);
+          fetchedPost = await postStore.fetchPostBySlug(slug);
+        }
 
-      // 1. Сначала ищем по slug в сторе
-      let fetchedPost: Post | null = postStore.getPostBySlug(slug);
+        if (!mountedRef.current) return;
 
-      if (!fetchedPost) {
-        // 2. Если нет в сторе — загружаем с бэкенда по slug
-        logger.log(`[PostPage] Post not found in store, fetching by slug: ${slug}`);
-        fetchedPost = await postStore.fetchPostBySlug(slug);
-      }
+        if (!fetchedPost) {
+          setError("Post not found");
+          setLoading(false);
+          return;
+        }
 
-      // 3. Если все еще нет — пробуем fallback на ID
-      if (!fetchedPost) {
-        logger.log(`[PostPage] Post not found by slug, trying by ID as fallback: ${slug}`);
-        fetchedPost = await postStore.fetchPostById(slug);
-      }
-
-      if (!isMounted) return;
-
-      if (!fetchedPost) {
-        setError("Post not found");
+        setPost(fetchedPost);
         setLoading(false);
-        return;
-      }
 
-      setPost(fetchedPost);
-      setLoading(false);
-
-      // Проверяем наличие комментариев в хранилище
-      const comments = commentStore.getComments(fetchedPost.id);
-      logger.log(`[PostPage] Checking existing comments for ${fetchedPost.id}: found ${comments.length}`);
-      
-      // Проверяем тип доступа - с навигации или прямой
-      const isDirectNavigation = 
-        location.state && 
-        (location.state.fromFeed === true || 
-         location.state.fromComment === true || 
-         location.state.fromUserProfile === true);
-      
-      logger.log(`[PostPage] Access type: ${isDirectNavigation ? 'navigation' : 'direct URL'}`);
-      
-      // Загружаем комментарии если их нет или это прямой доступ
-      if (!isDirectNavigation || comments.length === 0) {
-        logger.log(`[PostPage] Loading comments for post ${fetchedPost.id}`);
-        setCommentsLoading(true);
-        await commentStore.loadComments(fetchedPost.id, 25, 1, commentsSort);
-        if (isMounted) {
+        // Загрузка комментариев
+        // Проверяем наличие комментариев в хранилище
+        const comments = commentStore.getCommentsByPostSlug(slug);
+        logger.log(`[PostPage] Checking existing comments for ${slug}: found ${comments.length}`);
+        
+        // Проверяем тип доступа - с навигации или прямой
+        const isDirectNavigation = 
+          location.state && 
+          (location.state.fromFeed === true || 
+           location.state.fromComment === true || 
+           location.state.fromUserProfile === true);
+        
+        logger.log(`[PostPage] Access type: ${isDirectNavigation ? 'navigation' : 'direct URL'}`);
+        
+        // Загружаем комментарии если их нет или это прямой доступ
+        if ((!isDirectNavigation || comments.length === 0) && !commentsLoadedRef.current) {
+          logger.log(`[PostPage] Loading comments for post ${slug}`);
+          setCommentsLoading(true);
+          await commentStore.loadCommentsBySlug(slug, 25, 1, commentsSort, false);
+          
+          if (mountedRef.current) {
+            commentsLoadedRef.current = true;
+            setCommentsLoading(false);
+          }
+        } else {
+          logger.log(`[PostPage] Comments already loaded for post ${slug}, skipping load`);
+        }
+      } catch (error) {
+        if (!mountedRef.current) return;
+        
+        logger.error(`[PostPage] Error loading data:`, error);
+        setError("Error loading data");
+      } finally {
+        loadingRef.current = false;
+        
+        if (mountedRef.current) {
+          setLoading(false);
           setCommentsLoading(false);
         }
-      } else {
-        logger.log(`[PostPage] Comments already loaded for post ${fetchedPost.id}, skipping load`);
       }
-    } catch (error) {
-      if (!isMounted) return;
-      logger.error(`[PostPage] Error loading data:`, error);
-      setError("Error loading data");
-    } finally {
-      if (isMounted) {
-        setLoading(false);
-        setCommentsLoading(false);
-      }
-    }
-  };
+    };
 
-  loadData();
+    loadData();
+  }, [slug, location.state, commentsSort]);
 
-  return () => {
-    isMounted = false;
-  };
-}, [slug, commentsSort, location.state]);
-  
-  // Handle back button
+  // Обработчик возврата назад
   const handleBackClick = useCallback(() => {
     if (!slug) return;
     
@@ -152,49 +164,64 @@ useEffect(() => {
     }
   }, [slug, navigate]);
 
-  // Handle comment added
+  // Обработчик успешного добавления комментария
   const handleCommentSuccess = useCallback(() => {
-    if (!post) return;
+    if (!post || !mountedRef.current) return;
     
     logger.log(`[PostPage] Comment added to post ${post.slug}`);
     setPost(prev => prev ? {...prev, commentCount: (prev.commentCount || 0) + 1} : null);
     message.success("Comment added");
     
-    // Refresh comments
-    commentStore.loadComments(post.id, 25, 1, commentsSort);
+    // Обновление комментариев
+    commentStore.loadCommentsBySlug(post.slug, 25, 1, commentsSort);
   }, [post, commentsSort]);
   
-  // Handle sort change
+  // Обработчик изменения сортировки комментариев
   const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (sort === commentsSort || !post) return;
+    if (sort === commentsSort || !post || !mountedRef.current) return;
     
     logger.log(`[PostPage] Changing comments sort to: ${sort}`);
     setCommentsSort(sort);
     setCommentsLoading(true);
+    commentsLoadedRef.current = false;
     
-    commentStore.loadComments(post.id, 25, 1, sort)
+    commentStore.loadCommentsBySlug(post.slug, 25, 1, sort, false)
       .finally(() => {
-        setCommentsLoading(false);
+        if (mountedRef.current) {
+          setCommentsLoading(false);
+          commentsLoadedRef.current = true;
+        }
       });
   }, [post, commentsSort]);
   
-  // Handle load more comments
+  // Обработчик загрузки дополнительных комментариев
   const handleLoadMoreComments = useCallback(() => {
-    if (!post || commentsLoading) return;
+    if (!post || commentsLoading || !mountedRef.current) return;
     
-    const comments = commentStore.getComments(post.id);
+    const comments = commentStore.getCommentsByPostSlug(post.slug);
     const page = Math.floor(comments.length / 25) + 1;
     
     logger.log(`[PostPage] Loading more comments, page: ${page}`);
     setCommentsLoading(true);
     
-    commentStore.loadComments(post.id, 25, page, commentsSort)
+    commentStore.loadCommentsBySlug(post.slug, 25, page, commentsSort, true)
       .finally(() => {
-        setCommentsLoading(false);
+        if (mountedRef.current) {
+          setCommentsLoading(false);
+        }
       });
   }, [post, commentsSort, commentsLoading]);
 
-  // Render
+  // Обработчик повторной попытки загрузки
+  const handleRetry = useCallback(() => {
+    if (!slug || !mountedRef.current) return;
+    
+    loadingRef.current = false;
+    commentsLoadedRef.current = false;
+    setLoading(true);
+    setError(null);
+  }, [slug]);
+
   return (
     <section className="post-page-container">
       <div className="post-header">
@@ -224,7 +251,7 @@ useEffect(() => {
           <Empty description={error} />
           <Button 
             type="primary" 
-            onClick={() => window.location.reload()}
+            onClick={handleRetry}
             style={{ marginTop: '16px' }}
           >
             Retry
@@ -243,7 +270,7 @@ useEffect(() => {
             <div className="comment-form-container">
               <SendForm 
                 type="comment" 
-                postId={post.id} // Используем ID для создания комментария
+                postSlug={post.slug}
                 placeholder="Add a comment..."
                 onSuccess={handleCommentSuccess}
               />
@@ -252,7 +279,8 @@ useEffect(() => {
 
           <div className="comments-section">
             <CommentsThread 
-              postId={post.id} // Используем ID для загрузки комментариев
+              key={`comments-${post.slug}-${commentsSort}`}
+              postSlug={post.slug}
               loading={commentsLoading}
               onSortChange={handleSortChange}
               onLoadMore={handleLoadMoreComments}

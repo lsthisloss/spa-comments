@@ -185,13 +185,11 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
     
     observerRef.current = new IntersectionObserver(handleIntersection, options);
     observerRef.current.observe(sentinelRef.current);
-    logger.log(`[VirtualList] Load-more IntersectionObserver setup with threshold ${endReachedThreshold}px`);
     
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
         observerRef.current = null;
-        logger.log(`[VirtualList] Load-more IntersectionObserver disconnected`);
       }
     };
   }, [onEndReached, endReachedThreshold, handleIntersection]);

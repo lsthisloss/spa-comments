@@ -47,15 +47,20 @@ export abstract class BaseStore<T extends BaseItem> {
    * Применяет сортировку к списку элементов
    */
   applySorting(items: T[]): T[] {
-    return items.sort((a, b) => {
-      if (this.sort === 'likes') {
-        const likeDiff = (b.likes || 0) - (a.likes || 0);
-        if (likeDiff !== 0) return likeDiff;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      } else {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
-    });
+    if (!items || items.length === 0) return items;
+    
+    // всегда создаем новый массив для сортировки
+    const itemsToSort = [...items];
+    
+    switch (this.sort) {
+      case 'likes':
+        return itemsToSort.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+      case 'date':
+      default:
+        return itemsToSort.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+    }
   }
 
   /**
