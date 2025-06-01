@@ -555,21 +555,23 @@ class PostStore extends BaseStore<Post> {
     });
   });
 
-  /**
-   * Добавление поста
-   */
+/**
+ * Добавление поста
+ */
   addPost = action((post: Post, feedType?: FeedType) => {
     runInAction(() => {
-      // Кэшируем пользователя если есть данные
+      // кэширование пользователя
       if (post.user && post.user.id) {
         userStore.addCachedUser(post.user);
-      }
-      
-      // Если нет user объекта, но есть userId, пробуем восстановить из кэша
-      if (!post.user && post.userId) {
+        logger.log(`[PostStore] Cached user ${post.user.userName} (${post.user.id}) for post ${post.id}`);
+      } else if (!post.user && post.userId) {
+        // Если нет user объекта, но есть userId, пробуем восстановить из кэша
         const cachedUser = userStore.getCachedUser(post.userId);
         if (cachedUser) {
           post.user = cachedUser;
+          logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
+        } else {
+          logger.warn(`[PostStore] Could not restore user data for post ${post.id}, userId: ${post.userId}`);
         }
       }
       
@@ -799,12 +801,7 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
     const posts = result.posts || [];
     const total = result.total || 0;
 
-    // Обработка специальных флагов
-    const isEmptyResult = result.isEmpty === true;
-    const isAllLoaded = result.allLoaded === true;
-    const isEmptyResponse = total === 0 && posts.length === 0;
-    
-    // Добавляем посты ПЕРЕД проверкой флагов завершения
+    // Сначала ВСЕГДА добавляем посты, если они есть
     if (posts.length > 0) {
       this.processPosts(posts, feedType);
 
@@ -818,47 +815,39 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
         if (newPosts.length > 0) {
           feed.list.push(...newPosts.map(post => observable(post)));
           logger.log(`[PostStore] Added ${newPosts.length} new posts to ${feedType} feed`);
-        } else {
-          logger.log(`[PostStore] No new posts to add for page ${page}`);
         }
       }
     }
 
-    // проверяем флаги завершения
-    if (isEmptyResult || (isAllLoaded && posts.length === 0) || isEmptyResponse) {
-      logger.log(`[PostStore] ${feedType} feed is empty or fully loaded, marking as complete`, {
+    // Обработка флагов завершения
+    const isEmptyResult = result.isEmpty === true;
+    const isAllLoaded = result.allLoaded === true;
+    const isEmptyResponse = total === 0 && posts.length === 0;
+    
+    // allLoaded от сервера означает "это последняя порция"
+    if (isEmptyResult || isAllLoaded || isEmptyResponse) {
+      logger.log(`[PostStore] ${feedType} feed completed loading`, {
         isEmpty: isEmptyResult,
         allLoaded: isAllLoaded,
         emptyResponse: isEmptyResponse,
-        postsLength: posts.length
+        postsLength: posts.length,
+        finalListLength: feed.list.length
       });
       
-      feed.total = total;
       feed.allLoaded = true;
-      feed.loading = false;
+    } else {
+      // Проверяем окончание данных по другим критериям
+      const hasReachedEnd = posts.length < POSTS_PER_PAGE;
+      const hasLoadedAll = feed.list.length >= total;
       
-      if (result.message) {
-        logger.log(`[PostStore] Backend message: ${result.message}`);
-      }
-      
-      feed.page = page;
-      return;
+      feed.allLoaded = hasReachedEnd || hasLoadedAll;
     }
 
-    // логика для случаев когда данные не закончились
     feed.page = page;
     feed.total = total;
-
-    // Проверяем окончание данных
-    const hasReachedEnd = posts.length < POSTS_PER_PAGE;
-    const hasLoadedAll = feed.list.length >= total;
-    const backendSaysAllLoaded = isAllLoaded;
-
-    feed.allLoaded = hasReachedEnd || hasLoadedAll || backendSaysAllLoaded;
-
-    logger.log(`[PostStore] ${feedType} feed: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded} (reachedEnd: ${hasReachedEnd}, loadedAll: ${hasLoadedAll}, backend: ${backendSaysAllLoaded})`);
-
     feed.loading = false;
+
+    logger.log(`[PostStore] ${feedType} feed final state: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded}`);
   });
   } catch (error) {
     runInAction(() => {
@@ -885,9 +874,9 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
     this.fetchPosts(feedType, nextPage, targetUserId);
   });
 
-  /**
-   * Обработка нового поста
-   */
+/**
+ * Обработка нового поста
+ */
   handleNewPost = action((post: Post, type: FeedType) => {
     const feed = this.getFeed(type);
     
@@ -905,7 +894,25 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
       return;
     }
     
+    // Обрабатываем пользователя перед добавлением поста
+    if (post.user) {
+      userStore.addCachedUser(post.user);
+      logger.log(`[PostStore] Cached user ${post.user.userName} (${post.user.id}) for new post ${post.id}`);
+    } else if (post.userId) {
+      // Если нет объекта user, но есть userId, пытаемся восстановить из кэша
+      const cachedUser = userStore.getCachedUser(post.userId);
+      if (cachedUser) {
+        post.user = cachedUser;
+        logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
+      } else {
+        logger.warn(`[PostStore] No user data found for post ${post.id}, userId: ${post.userId}`);
+      }
+    }
+    
     const observablePost = observable(post);
+    
+    // Добавляем в postsMap для глобального доступа
+    this.postsMap.set(post.id, observablePost);
     
     runInAction(() => {
       feed.latestPost = observablePost;
@@ -922,7 +929,6 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
       }
     });
   });
-
   /**
    * Загрузка новых постов из буфера
    */
@@ -937,8 +943,19 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
       
       logger.log(`[PostStore] Moving ${feed.buffer.length} posts from buffer to list`);
       
-      // Просто добавляем все посты из буфера в начало списка
-      // Дедупликация уже сделана при добавлении в буфер
+      // Обрабатываем каждый пост перед добавлением
+      feed.buffer.forEach(post => {
+        if (post.user) {
+          userStore.addCachedUser(post.user);
+        } else if (post.userId) {
+          const cachedUser = userStore.getCachedUser(post.userId);
+          if (cachedUser) {
+            post.user = cachedUser;
+          }
+        }
+      });
+      
+      // Добавляем все посты из буфера в начало списка
       feed.list.unshift(...feed.buffer);
       
       // Очищаем буфер
