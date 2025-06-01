@@ -1,24 +1,27 @@
 import { Button, Dropdown } from 'antd';
 import { MessageOutlined, HeartFilled, HeartOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import type { FeedItemBase } from '../../types/interfaces';
 import { analyzeFile } from '../../utils/fileTypeDetector';
 import { logger } from "../../utils/Logger";
 import { observer } from "mobx-react-lite";
-import { commentStore } from '../../services/stores/CommentStore';
-import { useEffect, useMemo } from 'react';
-import { reaction } from 'mobx';
+import { useMemo, useCallback } from 'react';
 import React from 'react';
 import CommentPreviewDropdown from "../comments/CommentPreviewDropdown";
-import { navigationStore } from '../../services/stores/NavigationStore';
-
+import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 
 interface FeedItemFooterProps<T extends FeedItemBase> {
-  item: T & { likedUserIds?: string[]; repliesCount?: number; fileUrl?: string; fileName?: string; fileType?: string; postId?: string; };
+  item: T & { 
+    likedUserIds?: string[]; 
+    repliesCount?: number; 
+    fileUrl?: string; 
+    fileName?: string; 
+    fileType?: string; 
+    postId?: string;
+    slug?: string;
+  };
   type: 'post' | 'comment';
   onNavigate?: (id: string) => void;
   onLikeClick?: (e: React.MouseEvent) => void;
-  onClick?: (e: React.MouseEvent, slug?: string) => void;
   isLiked?: boolean;
   hideCommentButton?: boolean;
 }
@@ -29,13 +32,12 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
   onNavigate,
   onLikeClick,
   isLiked,
-  onClick,
   hideCommentButton = false,
 }: FeedItemFooterProps<T>) {
-  const navigate = useNavigate();
+  const { navigateToEntity } = useNavigationHelper();
   const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
-  // Мемоизированные вычисления
+  // File information
   const fileInfo = useMemo(() => 
     analyzeFile(item.fileType, item.fileName), 
     [item.fileType, item.fileName]
@@ -46,42 +48,16 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
     [item.fileUrl, item.fileName, fileInfo.isImage]
   );
 
+  // Navigation handler
+  const handleNavigate = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    logger.log(`[ItemFooter] Button clicked for ${type} ${item.id}`);
+    
+    // Use the navigation helper to handle all navigation scenarios
+    navigateToEntity(type, item.slug || item.id, onNavigate);
+  }, [type, item.id, item.slug, onNavigate, navigateToEntity]);
 
-const handleNavigate = (e: React.MouseEvent) => {
-  e.stopPropagation();
-
-  logger.log(`Button clicked for ${type} ${item.id}`);
-
-  if (onClick) {
-    onClick(e, item.slug);
-    return;
-  }
-
-  try {
-    const currentState = navigationStore.getSerializedState();
-    //сохраняем slug
-    const navigationState = navigationStore.saveNavigationState(type, item.slug, currentState);
-
-    if (onNavigate) {
-      logger.log(`ItemFooter: calling onNavigate for ${type} ${item.slug}`);
-      onNavigate(item.slug);
-    } else if (type === "post") {
-      logger.log(`ItemFooter: Direct navigate to post ${item.slug}`);
-      navigate(`/post/${item.slug}`, { state: navigationState });
-    } else if (type === "comment") {
-      logger.log(`ItemFooter: Direct navigate to comment ${item.slug}`);
-      navigate(`/comment/${item.slug}`, { state: navigationState });
-    }
-  } catch (error) {
-    logger.error(`Navigation error for ${type} ${item.id}:`, error);
-
-    if (type === "post") {
-      navigate(`/post/${item.slug}`);
-    } else if (type === "comment") {
-      navigate(`/comment/${item.slug}`);
-    }
-  }
-};
+  // File download menu items
   const fileMenu = useMemo(() => shouldShowDownload ? [
     {
       key: 'download',
@@ -98,32 +74,10 @@ const handleNavigate = (e: React.MouseEvent) => {
     },
   ] : [], [shouldShowDownload, item.fileUrl, item.fileName, apiUrl]);
 
-  // Отслеживаем изменения для отладки
-useEffect(() => {
-  let isComponentMounted = true;
-  
-  const unsubscribe = reaction(
-    () => ({
-      replies: commentStore.getReplies(item.id),
-      shown: commentStore.isRepliesShown(item.id),
-      loading: commentStore.isLoadingReplies(item.id)
-    }),
-    (data) => {
-      if (isComponentMounted) {
-        logger.log(`[ItemFooter] Replies data changed for ${type} ${item.id}:`, data);
-      }
-    }
-  );
-
-  return () => {
-    isComponentMounted = false;
-    unsubscribe();
-  };
-}, [item.id, type]);
-
   return (
     <div className="item-footer">
       <div className="footer-row">
+        {/* Like button */}
         <Button
           type="text"
           icon={isLiked ? <HeartFilled className="heart-icon liked" /> : <HeartOutlined className="heart-icon" />}
@@ -137,24 +91,21 @@ useEffect(() => {
           {item.likedUserIds ? item.likedUserIds.length : 0}
         </Button>
         
+        {/* Comment/Reply button */}
         {!hideCommentButton && (
-            <Button
-              type="text"
-              icon={<MessageOutlined />}
-              onClick={handleNavigate}
-              style={{ 
-                cursor: 'pointer',
-              }}
-              onMouseDown={() => logger.log(`Button mouse down on ${type} ${item.id}`)}
-            >
-              {(item.repliesCount ?? 0) > 0 && item.repliesCount}
-            </Button>
-          )}
-        
-        {(item.repliesCount ?? 0) > 0 && (
-          <CommentPreviewDropdown 
-            postSlug={item.slug}
+          <Button
+            type="text"
+            icon={<MessageOutlined />}
+            onClick={handleNavigate}
+            style={{ cursor: 'pointer' }}
           >
+            {(item.repliesCount ?? 0) > 0 && item.repliesCount}
+          </Button>
+        )}
+        
+        {/* Comment preview dropdown */}
+        {(item.repliesCount ?? 0) > 0 && (
+          <CommentPreviewDropdown postSlug={item.slug || ''}>
             <Button
               type="text"
               icon={<EyeOutlined />}
@@ -168,6 +119,7 @@ useEffect(() => {
           </CommentPreviewDropdown>
         )}
         
+        {/* File download dropdown */}
         {fileMenu.length > 0 && (
           <Dropdown 
             menu={{ items: fileMenu }} 

@@ -1,7 +1,8 @@
-import  { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Post } from '../../../types/interfaces';
 import PostItem from '../../posts/PostItem';
+import { useNavigationHelper } from '../../../hooks/useNavigationHelper';
 
 interface MemoizedPostItemProps {
   post: Post;
@@ -11,20 +12,17 @@ interface MemoizedPostItemProps {
 
 const PostItemWithComments = observer(({ post, onClick, onHeightChange }: MemoizedPostItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { navigateToEntity } = useNavigationHelper();
   
   const handleShowMore = useCallback(() => {
     if (onHeightChange) {
-      setTimeout(() => {
-        onHeightChange();
-      }, 50);
+      setTimeout(() => onHeightChange(), 50);
     }
   }, [onHeightChange]);
 
   const handleClick = useCallback(() => {
-    if (onClick) {
-      onClick(post.slug);
-    }
-  }, [onClick, post.slug]);
+    navigateToEntity('post', post.slug, onClick);
+  }, [onClick, post.slug, navigateToEntity]);
 
   return (
     <div 
@@ -46,8 +44,8 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
     </div>
   );
 });
+
 export const MemoizedPostItem = memo(PostItemWithComments, (prevProps, nextProps) => {
-  // Сравниваем только базовые свойства поста
   return (
     prevProps.post.id === nextProps.post.id &&
     prevProps.post.content === nextProps.post.content &&

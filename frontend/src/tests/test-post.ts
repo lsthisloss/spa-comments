@@ -1,6 +1,6 @@
-import * as ioClient from 'socket.io-client';
+import io from 'socket.io-client';
 
-const io = ioClient;
+
 
 // Генерация случайного текста до 600 символов
 function randomText(length = 30) {
@@ -46,12 +46,6 @@ function randomUserName() {
   return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 1000)}`;
 }
 
-// Генерация случайного аватара
-function randomAvatar() {
-  const colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
-  const initials = `${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}`;
-  return `https://via.placeholder.com/150/${colors[Math.floor(Math.random() * colors.length)]}/fff?text=${initials}`;
-}
 
 // Основная функция
 function main(usersCount: number, postsPerUser: number) {
@@ -60,7 +54,6 @@ function main(usersCount: number, postsPerUser: number) {
       email: `user_${Date.now()}_${i}@example.com`,
       userName: randomUserName(),
       password: 'Aa112233',
-      avatar: randomAvatar(),
     };
 
     const userSocket = io('ws://localhost:3001/users', {
@@ -101,7 +94,7 @@ function main(usersCount: number, postsPerUser: number) {
                   content: randomText(Math.floor(Math.random() * 600) + 1),
                   userId: registerResponse.user?.id ?? null,
                 };
-                postSocket.emit('addPost', postDto, (postResponse) => {
+                postSocket.emit('addPost', postDto, (postResponse: { success: boolean; message: string; postId?: string }) => {
                   console.log(
                     `Post #${j + 1} for user ${userData.userName}:`,
                     postResponse,

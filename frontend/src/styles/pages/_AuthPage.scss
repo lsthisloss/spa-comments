@@ -92,3 +92,25 @@
     }
   }
 }
+
+.password-requirements {
+  margin-top: -16px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+}
+
+.password-requirements ul {
+  margin-bottom: 0;
+}
+
+.password-input.ant-input-affix-wrapper-focused {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.ant-form-item-with-help .password-requirements {
+  margin-top: 0;
+}

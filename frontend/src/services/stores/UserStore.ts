@@ -11,6 +11,7 @@ class UserStore implements IUserStore {
   isAuthenticated = false;
   usersCache = observable.map<string, User>();
   loadingUsers = observable.set<string>();
+  followingUserIds = observable.set<string>(); 
 
   constructor() {
     makeObservable(this, {
@@ -577,7 +578,25 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
     
     return Promise.reject(new Error("Invalid avatar data"));
   }
+  
+  /**
+     * Проверяет, подписан ли текущий пользователь на указанного пользователя
+     * @param userId ID пользователя для проверки
+     * @returns true, если подписан, иначе false
+     */
+    isFollowedByCurrentUser(userId: string): boolean {
+      return this.followingUserIds.has(userId);
+    }
 
+    /**
+     * Обновляет список подписок текущего пользователя
+     */
+    updateFollowing(userIds: string[]) {
+      runInAction(() => {
+        this.followingUserIds.replace(userIds);
+      });
+      logger.log(`[UserStore] Updated following list: ${userIds.length} users`);
+    }
 // Вспомогательный метод для конвертации файла в base64
 private fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

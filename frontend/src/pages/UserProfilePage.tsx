@@ -48,31 +48,6 @@ const UserProfilePage = observer(() => {
   const isOwnProfile = currentUser && user && currentUser.id === user.id;
   const isFollowing = user?.id && !isOwnProfile ? userStore.isFollowing(user.id) : false;
 
-  // Всегда обновлять ленту при переходе на собственный профиль
-  useEffect(() => {
-    if (isOwnProfile && user?.id) {
-      logger.log("[UserProfilePage] This is own profile, marking user feed for refresh");
-      
-      // Сбрасываем состояние ленты пользователя, чтобы увидеть новые посты
-      postStore.markFeedForRefresh("user");
-      
-      // Также проверяем, есть ли новые посты в основной ленте, которые принадлежат текущему пользователю
-      const mainFeedPosts = postStore.feeds.feed.list;
-      const userPosts = mainFeedPosts.filter(post => post.userId === user.id);
-      
-      if (userPosts.length > 0) {
-        logger.log(`[UserProfilePage] Found ${userPosts.length} posts in main feed belonging to current user`);
-        
-        // Убедитесь, что эти посты добавляются в кэш для быстрого доступа
-        userPosts.forEach(post => {
-          if (!postStore.postsMap.has(post.id)) {
-            postStore.postsMap.set(post.id, post);
-          }
-        });
-      }
-    }
-  }, [isOwnProfile, user?.id]);
-
   // Проверяем preserveFeeds для сохранения лент
   useEffect(() => {
     interface LocationState {
@@ -151,12 +126,12 @@ const UserProfilePage = observer(() => {
   // Загружаем данные пользователя через UserStore
   useEffect(() => {
     if (!userIdParam) {
-      console.log('[UserProfilePage] Own profile, using current user');
+      logger.log('[UserProfilePage] Own profile, using current user');
       return;
     }
     
     if (!user && !isLoading && effectiveUserId) {
-      console.log(`[UserProfilePage] Loading user: ${effectiveUserId}`);
+      logger.log(`[UserProfilePage] Loading user: ${effectiveUserId}`);
       userStore.getUserById(effectiveUserId);
     }
   }, [userIdParam, effectiveUserId, user, isLoading]);
@@ -382,8 +357,8 @@ const UserProfilePage = observer(() => {
           <PostsThread 
             activeTab="user"
             userId={user.id}
-            // НОВОЕ: Передаем ключ, чтобы гарантировать перерендер компонента
-            key={`user-posts-${user.id}-${Date.now()}`}
+            // Убираем key с timestamp - это вызывает полную перезагрузку
+            key={`user-posts-${user.id}`}
           />
         )}
         {activeTab === "comments" && (

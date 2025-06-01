@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { VirtualListItem } from '../../common/VirtualList';
 import userStore from '../../../services/stores/UserStore';
+import { generateTestData } from '../../../tests/test-post';
 
 interface DebugInfoProps {
   itemsCount: number;
@@ -37,6 +38,13 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
     const saved = localStorage.getItem('debugInfoVisible');
     return saved ? JSON.parse(saved) : false;
   });
+  const [testGenExpanded, setTestGenExpanded] = useState(false);
+  const [usersCount, setUsersCount] = useState(5);
+  const [postsPerUser, setPostsPerUser] = useState(20);
+
+  const handleGenerateTestData = () => {
+    generateTestData(usersCount, postsPerUser);
+  };
 
   // Состояние для раскрытия формы
   const [isExpanded, setIsExpanded] = useState(() => {
@@ -102,19 +110,19 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
     e.preventDefault();
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isDragging) {
       const newLeft = e.clientX - dragStart.x;
       const newTop = e.clientY - dragStart.y;
-
+  
       const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
       const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
       const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
       const boundedTop = Math.max(10, Math.min(newTop, maxY));
-
+  
       setPosition({ left: boundedLeft, top: boundedTop });
     }
-  };
+  }, [isDragging, dragStart]);
 
   const handleMouseUp = () => {
     setIsDragging(false);
@@ -130,7 +138,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
     });
   };
 
-  const handleTouchMove = (e: TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     if (isDragging && e.touches.length > 0) {
       const touch = e.touches[0];
       const newLeft = touch.clientX - dragStart.x;
@@ -144,7 +152,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
       setPosition({ left: boundedLeft, top: boundedTop });
       e.preventDefault();
     }
-  };
+  }, [isDragging, dragStart]);
 
   const handleTouchEnd = () => {
     setIsDragging(false);
@@ -164,7 +172,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, dragStart]);
+  }, [isDragging, dragStart, handleMouseMove, handleTouchMove]);
 
   // Не показываем, если не включен режим дебага
   if (!shouldShow) {
@@ -242,7 +250,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
       </div>
 
       {isExpanded && (
-        <div className="debug-info__content">
+        <div className="debug-info__content">  
           <div className="debug-info__info-row">
             <span className="debug-info__label">Items:</span>
             <span className="debug-info__value">{itemsCount}</span>
@@ -305,6 +313,44 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
             <span className="debug-info__label">Height:</span>
             <span className="debug-info__value">{totalHeight}px</span>
           </div>
+          <div className="debug-info__test-data">
+  <button
+    className="debug-info__button"
+    style={{ marginBottom: 8 }}
+    onClick={() => setTestGenExpanded(v => !v)}
+  >
+    Generate Test Data {testGenExpanded ? '▲' : '▼'}
+  </button>
+  {testGenExpanded && (
+    <div style={{ marginTop: 8 }}>
+      <div>
+        <label htmlFor="usersCount">Users:</label>
+        <input
+          id="usersCount"
+          type="number"
+          value={usersCount}
+          onChange={(e) => setUsersCount(Number(e.target.value))}
+          min={1}
+          max={100}
+        />
+      </div>
+      <div>
+        <label htmlFor="postsPerUser">Posts per User:</label>
+        <input
+          id="postsPerUser"
+          type="number"
+          value={postsPerUser}
+          onChange={(e) => setPostsPerUser(Number(e.target.value))}
+          min={1}
+          max={50}
+        />
+      </div>
+      <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
+        Generate
+      </button>
+    </div>
+  )}
+</div>
         </div>
       )}
     </div>

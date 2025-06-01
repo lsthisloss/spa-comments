@@ -28,31 +28,35 @@ export default function Layout({ children }: LayoutProps) {
   }, [location.search]);
 
   const handleTabClick = (tab: 'all' | 'my') => {
-    if (tab === activeTab) return;
-    
-    logger.log(`[Layout] Switching tab from ${activeTab} to ${tab}`);
-    
-    // Сохраняем позицию скролла
-    navigationStore.saveTabScrollPosition(activeTab);
-    
-    // Переключаем вкладку
-    setActiveTab(tab);
-    navigationStore.setActiveTab(tab);
-    
-    // Обновляем URL
-    const newUrl = tab === 'my' ? '/?tab=following' : '/';
-    window.history.pushState({}, '', newUrl);
-    
-    // Восстанавливаем позицию скролла для новой вкладки
-    // Небольшая задержка для завершения рендера
-    setTimeout(() => {
-      const restored = navigationStore.restoreTabScrollPosition(tab);
-      if (!restored) {
-        // Если нет сохраненной позиции - скроллим в начало
-        window.scrollTo({ top: 0, behavior: 'auto' });
-      }
-    }, 100);
-  };
+  if (tab === activeTab) {
+    // Если пользователь кликает на активный таб, прокручиваем страницу к началу
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    logger.log(`[Layout] Active tab ${tab} clicked, scrolling to top`);
+    return;
+  }
+
+  logger.log(`[Layout] Switching tab from ${activeTab} to ${tab}`);
+  
+  // Сохраняем позицию скролла
+  navigationStore.saveTabScrollPosition(activeTab);
+  
+  // Переключаем вкладку
+  setActiveTab(tab);
+  navigationStore.setActiveTab(tab);
+  
+  // Обновляем URL
+  const newUrl = tab === 'my' ? '/?tab=following' : '/';
+  window.history.pushState({}, '', newUrl);
+  
+  // Восстанавливаем позицию скролла для новой вкладки
+  setTimeout(() => {
+    const restored = navigationStore.restoreTabScrollPosition(tab);
+    if (!restored) {
+      // Если нет сохраненной позиции - скроллим в начало
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, 100);
+};
 
   const hideTabs =
     /^\/post\/\w+/.test(location.pathname) ||

@@ -141,38 +141,35 @@ function VirtualList<T>(props: VirtualListProps<T>) {
       onScrollDown?.();
     }
   }, [virtualItems, manualMode, enableManualModeTracking, onScrollDown]);
-
 const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
   const entry = entries[0];
   if (!entry || !onEndReached) return;
 
   if (entry.isIntersecting) {
-    // Простые защиты
-    if (loading || allLoaded || isHandlingRef.current) {
-      logger.log(`[VirtualList] Intersection ignored: loading=${loading}, allLoaded=${allLoaded}, handling=${isHandlingRef.current}`);
+    if (loading) {
+      logger.log(`[VirtualList] Intersection ignored: loading=${loading}`);
       return;
     }
 
-    // Простой cooldown
-    const now = Date.now();
-    if (now - lastLoadTimeRef.current < 500) {
-      logger.log(`[VirtualList] Intersection ignored: cooldown active`);
+    if (allLoaded) {
+      logger.log(`[VirtualList] Intersection ignored: allLoaded=${allLoaded}`);
       return;
     }
 
-    // Запускаем загрузку
-    logger.log(`[VirtualList] Intersection triggered loading (${items.length} items)`);
-    isHandlingRef.current = true;
-    lastLoadTimeRef.current = now;
-
-    onEndReached();
+    // ПРОВЕРКА RANGE: подгружаем за 5 элементов до конца
+    const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
+    const totalItems = items.length;
+    const remainingItems = totalItems - lastVisibleIndex - 1;
     
-    // Сброс флага
-    setTimeout(() => {
-      isHandlingRef.current = false;
-    }, 300);
+    if (remainingItems > 5) {
+      logger.log(`[VirtualList] Intersection ignored: ${remainingItems} items remaining (need ≤5)`);
+      return;
+    }
+
+    logger.log(`[VirtualList] Range triggered loading: ${remainingItems} items remaining (${items.length} total)`);
+    onEndReached();
   }
-}, [onEndReached, allLoaded, items.length, loading]);
+}, [onEndReached, allLoaded, loading, items.length, virtualItems]);
   // 8. Setup IntersectionObserver
   useEffect(() => {
     if (!sentinelRef.current || !onEndReached) return;

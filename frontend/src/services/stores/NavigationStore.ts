@@ -75,8 +75,8 @@ saveNavigationState(navigationType?: string, targetId?: string, previousState?: 
     // Также сохраняем slug отдельно
     state.slug = urlSlug;
   } else if (currentPath.includes('/comment/')) {
-    // Добавляем поддержку для комментариев
-    state.fromComment = true; // Установите флаг откуда пришли
+    // поддержка для комментариев
+    state.fromComment = true; //
     const urlSlug = currentPath.split('/').pop();
     state.commentId = urlSlug;
   }

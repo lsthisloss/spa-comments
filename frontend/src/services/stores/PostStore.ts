@@ -1,48 +1,16 @@
 import { makeObservable, observable, action, runInAction, IObservableArray, reaction } from "mobx";
 import { BaseStore } from "./BaseStore";
-import { Post, User } from "../../types/interfaces";
+import { Post, User, PostsSocketResponse, 
+  FetchPostResponse, NestedPostsSocketResponse, 
+  SocketResponseVariant, SocketEventData  } from "../../types/interfaces";
 import { socketStore } from "./SocketStore";
 import { commentStore } from "./CommentStore";
 import userStore from "./UserStore";
 import { logger } from "../../utils/Logger";
 import io from "socket.io-client";
 
-interface BaseSocketResponse {
-  error?: string;
-  isEmpty?: boolean;
-  allLoaded?: boolean;
-  message?: string;
-}
-
-interface PostsSocketResponse extends BaseSocketResponse {
-  posts?: Post[];
-  total?: number;
-}
-
-interface FetchPostResponse extends BaseSocketResponse {
-  post?: Post;
-  posts?: Post[];
-}
-
-interface NestedPostsSocketResponse extends BaseSocketResponse {
-  posts?: {
-    posts: Post[];
-    total: number;
-  };
-  total?: number;
-}
-
-type SocketResponseVariant = PostsSocketResponse | NestedPostsSocketResponse | Post[] | BaseSocketResponse;
-
-interface SocketEventData {
-  userId?: string;
-  page?: number;
-  limit?: number;
-  postId?: string;
-}
 
 const POSTS_PER_PAGE = 25;
-const TIME_WINDOW_MS = 2000;
 
 /**
  * Типы лент постов
@@ -160,19 +128,17 @@ class PostStore extends BaseStore<Post> {
       onBackToFeed: action,
       startTrackingScroll: action,
       stopTrackingScroll: action,
-      fetchPostById: action,
+      fetchPostBySlug: action,
       addPostToAllFeeds: action,
       clearResetFlag: action,
       updatePostCommentCount: action,
+      updatePostCommentCountBySlug: action,
       processPosts: action,
       markFeedForRefresh: action,
     });
 
     logger.log("[PostStore] Initialized");
     this.setupSocketListeners();
-    this.startBufferInterval("feed");
-    this.startBufferInterval("following");
-    this.startBufferInterval("user");
   }
 
   /**
@@ -226,36 +192,16 @@ class PostStore extends BaseStore<Post> {
     }
   });
 
-  /**
-   * Конфигурация socket событий
-   */
-  private getSocketEventConfig(feedType: FeedType, targetUserId?: string, page = 1) {
-    const limit = POSTS_PER_PAGE;
-
-    if (targetUserId) {
-      return {
-        eventName: "fetchUserPosts",
-        eventData: { userId: targetUserId, page, limit }
-      };
-    }
-
-    if (feedType === "following") {
-      return {
-        eventName: "fetchFollowingPosts", 
-        eventData: { page, limit }
-      };
-    }
-
-    return {
-      eventName: "fetchPosts",
-      eventData: { page, limit }
-    };
-  }
+  updatePostCommentCountBySlug = action((postSlug: string, count: number) => {
+    const post = this.getPostBySlug(postSlug);
+    if (!post) return;
+    
+    this.updatePostCommentCount(post.id, count);
+  });
 
   /**
    * Socket запрос с правильной обработкой ответа
    */
-
   private emitSocketRequest(eventName: string, eventData: SocketEventData): Promise<{ posts: Post[], total: number, isEmpty?: boolean, allLoaded?: boolean, message?: string }> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -328,6 +274,121 @@ class PostStore extends BaseStore<Post> {
   }
 
   /**
+   * Конфигурация socket событий
+   */
+  private getSocketEventConfig(feedType: FeedType, targetUserId?: string, page = 1) {
+    const limit = POSTS_PER_PAGE;
+
+    if (targetUserId) {
+      return {
+        eventName: "fetchUserPosts",
+        eventData: { userId: targetUserId, page, limit }
+      };
+    }
+
+    if (feedType === "following") {
+      return {
+        eventName: "fetchFollowingPosts", 
+        eventData: { page, limit }
+      };
+    }
+
+    return {
+      eventName: "fetchPosts",
+      eventData: { page, limit }
+    };
+  }
+
+  /**
+   * Загрузка постов
+   */
+  fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string): Promise<void> => {
+    let feed: FeedState;
+    
+    if (feedType === "user" && targetUserId) {
+      feed = this.getUserFeed(targetUserId);
+    } else {
+      feed = this.getFeed(feedType);
+    }
+
+    // Простые защиты
+    if (feed.loading) {
+      logger.log(`[PostStore] Skipping fetchPosts: already loading ${feedType}`);
+      return;
+    }
+
+    if (feed.allLoaded && page > 1) {
+      logger.log(`[PostStore] Skipping fetchPosts: all ${feedType} posts already loaded`);
+      return;
+    }
+
+    runInAction(() => {
+      feed.loading = true;
+      feed.error = null;
+    });
+
+    if (!socketStore.posts?.connected) {
+      runInAction(() => {
+        feed.loading = false;
+        feed.error = new Error("Socket not connected");
+      });
+      return;
+    }
+
+    const { eventName, eventData } = this.getSocketEventConfig(feedType, targetUserId, page);
+    logger.log(`[PostStore] Fetching posts: type=${feedType}, page=${page}, user=${targetUserId || 'none'}`);
+
+    try {
+      const result = await this.emitSocketRequest(eventName, eventData);
+      
+      logger.log(`[PostStore] Received ${result.posts.length} posts, total: ${result.total}`);
+
+      runInAction(() => {
+        // Обрабатываем данные о пользователях
+        this.processPosts(result.posts);
+        
+        // Обновляем основное состояние
+        if (page === 1) {
+          feed.list.replace(result.posts);
+        } else {
+          const newPosts = result.posts.filter(
+            post => !feed.list.some(p => p.id === post.id)
+          );
+          feed.list.push(...newPosts);
+        }
+        
+        feed.total = result.total;
+        feed.page = page;
+        feed.allLoaded = result.allLoaded || result.posts.length === 0 || feed.list.length >= feed.total;
+        feed.loading = false;
+      });
+    } catch (error) {
+      runInAction(() => {
+        feed.loading = false;
+        feed.error = error as Error;
+        logger.error(`[PostStore] Error fetching ${feedType} posts:`, error);
+      });
+    }
+  });
+
+  /**
+   * Загрузка следующей страницы
+   */
+  loadMore = action((feedType: FeedType, targetUserId?: string) => {
+    const feed = targetUserId ? this.getUserFeed(targetUserId) : this.getFeed(feedType);
+
+    if (feed.loading || feed.allLoaded) {
+      logger.log(`[PostStore] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
+      return;
+    }
+
+    const nextPage = feed.page + 1;
+    logger.log(`[PostStore] Loading more ${feedType} posts, page ${nextPage}`);
+    
+    this.fetchPosts(feedType, nextPage, targetUserId);
+  });
+
+  /**
    * Сброс состояния ленты
    */
   resetFeedState = action((type: FeedType = "feed", userId?: string) => {
@@ -355,6 +416,23 @@ class PostStore extends BaseStore<Post> {
       feed.reset = true;
       if (userId && type === "user") {
         feed.userId = userId;
+      }
+    });
+  });
+
+  clearResetFlag = action((feedType: FeedType, userId?: string) => {
+    let feed: FeedState;
+    
+    if (feedType === "user" && userId) {
+      feed = this.getUserFeed(userId);
+    } else {
+      feed = this.getFeed(feedType);
+    }
+    
+    runInAction(() => {
+      if (feed) {
+        feed.reset = false;
+        logger.log(`[PostStore] Cleared reset flag for ${feedType} feed${userId ? ` (user: ${userId})` : ''}`);
       }
     });
   });
@@ -442,52 +520,149 @@ class PostStore extends BaseStore<Post> {
       }
     });
   }
+// Убираем весь таймер - он не нужен!
+private startBufferInterval(type: FeedType) {
+  // УДАЛЯЕМ ВСЁ - никаких таймеров!
+  // Просто очищаем если был старый
+  if (this.intervals[type]) {
+    clearInterval(this.intervals[type]!);
+    this.intervals[type] = null;
+  }
+}
 
-  clearResetFlag = action((feedType: FeedType, userId?: string) => {
-    let feed: FeedState;
-    
-    if (feedType === "user" && userId) {
-      feed = this.getUserFeed(userId);
-    } else {
-      feed = this.getFeed(feedType);
-    }
-    
-    runInAction(() => {
-      if (feed) {
-        feed.reset = false;
-        logger.log(`[PostStore] Cleared reset flag for ${feedType} feed${userId ? ` (user: ${userId})` : ''}`);
+/**
+ * Загрузка новых постов из буфера
+ */
+handleLoadNewPosts = action((type: FeedType, force = false) => {
+  const feed = this.getFeed(type);
+  
+  if (feed.buffer.length === 0) {
+    return;
+  }
+  
+  // Если manual mode включен и не принудительная загрузка - не загружаем
+  if (feed.manualUpdateMode && !force) {
+    logger.log(`[PostStore] Manual mode active, skipping buffer load for ${type}`);
+    return;
+  }
+  
+  logger.log(`[PostStore] Moving ${feed.buffer.length} posts from buffer to list${force ? ' (forced)' : ''}`);
+  
+  runInAction(() => {
+    // Кэшируем пользователей
+    const uniqueUsers = new Map<string, User>();
+
+    feed.buffer.forEach(post => {
+      if (post.user?.id && post.user.userName && !uniqueUsers.has(post.user.id)) {
+        uniqueUsers.set(post.user.id, post.user as User);
+      } else if (post.userId && !post.user) {
+        const cachedUser = userStore.getCachedUser(post.userId);
+        if (cachedUser && !uniqueUsers.has(cachedUser.id)) {
+          uniqueUsers.set(cachedUser.id, cachedUser);
+          post.user = cachedUser;
+        }
       }
     });
+
+    uniqueUsers.forEach(user => {
+      userStore.addCachedUser(user);
+    });
+    
+    // Добавляем все посты из буфера в начало списка
+    feed.list.unshift(...feed.buffer);
+    
+    // Очищаем буфер
+    feed.buffer = [];
+    feed.newPostsCount = 0;
+    
+    logger.log(`[PostStore] Added posts to ${type} feed, new list size: ${feed.list.length}`);
   });
+});
 
-  /**
-   * Запуск интервала буфера
-   */
-  private startBufferInterval(type: FeedType) {
-    if (this.intervals[type]) clearInterval(this.intervals[type]!);
-
-    this.intervals[type] = setInterval(() => {
-      const feed = this.getFeed(type);
-      
-      runInAction(() => {
-        if (!feed.manualUpdateMode && feed.buffer.length > 0) {
-          this.handleLoadNewPosts(type);
-        }
-      });
-    }, TIME_WINDOW_MS);
+/**
+ * Обработка нового поста
+ */
+handleNewPost = action((post: Post, type: FeedType) => {
+  if (!post.createdAt) {
+    post.createdAt = new Date().toISOString();
   }
 
+  const observablePost = observable(post);
+  this.postsMap.set(post.id, observablePost);
+
+  const feed = this.getFeed(type);
+
+  // Проверяем дубликаты
+  const existsInList = feed.list.some(p => p.id === post.id);
+  const existsInBuffer = feed.buffer.some(p => p.id === post.id);
+
+  if (existsInList || existsInBuffer) {
+    logger.log(`[PostStore] Post ${post.id} already exists in ${type}, skipping`);
+    return;
+  }
+
+  // Простая проверка на спам (только по количеству в буфере)
+  const isSpam = feed.buffer.length >= 5; // Если в буфере уже 5+ постов - это спам
+  const isCurrentUserPost = post.userId === userStore.user?.id;
+  
+  runInAction(() => {
+    // Посты текущего пользователя ВСЕГДА добавляются напрямую
+    if (isCurrentUserPost) {
+      feed.list.unshift(observablePost);
+      logger.log(`[PostStore] Current user post ${post.id} added directly to ${type} feed`);
+    } else if (isSpam || feed.manualUpdateMode) {
+      // Если спам или manual mode - добавляем в буфер
+      if (!feed.manualUpdateMode && isSpam) {
+        feed.manualUpdateMode = true;
+        logger.log(`[PostStore] Manual mode enabled for ${type} due to buffer overflow`);
+      }
+      
+      feed.buffer.unshift(observablePost);
+      feed.newPostsCount = feed.buffer.length;
+      logger.log(`[PostStore] Post ${post.id} added to ${type} buffer, size: ${feed.buffer.length}`);
+    } else {
+      // Обычное добавление напрямую в ленту
+      feed.list.unshift(observablePost);
+      logger.log(`[PostStore] Post ${post.id} added directly to ${type} feed`);
+    }
+
+    feed.latestPost = observablePost;
+  });
+});
+
+/**
+ * Установка мануального режима
+ */
+setManualUpdateMode = action((type: FeedType, value: boolean) => {
+  const feed = this.getFeed(type);
+
+  if (feed.manualUpdateMode !== value) {
+    feed.manualUpdateMode = value;
+    logger.log(`[PostStore] Manual update mode for ${type} set to ${value}`);
+
+    // При выключении manual mode - СРАЗУ загружаем все накопленные посты
+    if (!value && feed.buffer.length > 0) {
+      logger.log(`[PostStore] Loading ${feed.buffer.length} buffered posts for ${type}`);
+      this.handleLoadNewPosts(type, true);
+    }
+  }
+});
+
+/**
+ * Принудительная загрузка буфера (для кнопки)
+ */
+loadBufferedPosts = action((type: FeedType) => {
+  const feed = this.getFeed(type);
+  if (feed.buffer.length > 0) {
+    logger.log(`[PostStore] Manual loading of ${feed.buffer.length} buffered posts for ${type}`);
+    this.handleLoadNewPosts(type, true);
+  }
+});
+
   /**
-   * Получение поста по ID
+   * Получение поста по ID (для внутреннего использования)
    */
   getItemById(postId: string): Post | undefined {
-    return this.getPostById(postId);
-  }
-
-  /**
-   * Получение поста по ID
-   */
-  getPostById(postId: string): Post | undefined {
     // Сначала ищем в postsMap
     const mappedPost = this.postsMap.get(postId);
     if (mappedPost) return mappedPost;
@@ -501,10 +676,28 @@ class PostStore extends BaseStore<Post> {
   }
 
   /**
+   * Получение поста по slug
+   */
+  getPostBySlug(slug: string): Post | null {
+    // Сначала ищем в postsMap
+    for (const post of this.postsMap.values()) {
+      if (post.slug === slug) return post;
+    }
+
+    // Потом в фидах
+    for (const feed of Object.values(this.feeds)) {
+      const post = feed.list.find(p => p.slug === slug);
+      if (post) return post;
+    }
+
+    return null;
+  }
+
+  /**
    * Переключение лайка поста
    */
   toggleLike = action((postId: string, userId: string) => {
-    const post = this.getPostById(postId);
+    const post = this.getItemById(postId);
     if (!post || !socketStore.posts) return;
 
     const isLiked = this.isItemLikedByUser(post, userId);
@@ -540,10 +733,9 @@ class PostStore extends BaseStore<Post> {
     return commentStore.loadComments(postId);
   });
 
-/**
- * Обрабатывает массив постов и кэширует пользователей
- */
-
+  /**
+   * Обрабатывает массив постов и кэширует пользователей
+   */
   processPosts = action((posts: Post[]) => {
     // Собираем уникальных пользователей для кэширования
     const uniqueUsers = new Map<string, User>();
@@ -567,15 +759,15 @@ class PostStore extends BaseStore<Post> {
       logger.log(`[PostStore] Cached ${uniqueUsers.size} unique users for ${posts.length} posts`);
     }
     
-    // добавляем посты БЕЗ повторного кэширования пользователей
+    // добавляем посты 
     posts.forEach(post => {
       this.postsMap.set(post.id, post);
     });
   });
 
-/**
- * Добавление поста
- */
+  /**
+   * Добавление поста
+   */
   addPost = action((post: Post, feedType?: FeedType) => {
     runInAction(() => {
       // Кэшируем пользователя только если его еще нет в кэше
@@ -610,6 +802,15 @@ class PostStore extends BaseStore<Post> {
       }
     });
   });
+
+  
+// метод для перехода к началу ленты
+scrollToTop = action(() => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  logger.log(`[PostStore] Scrolling to top`);
+});
+
+
 
   /**
    * Добавление поста во все ленты
@@ -688,392 +889,158 @@ class PostStore extends BaseStore<Post> {
       window.removeEventListener("scroll", this.scrollHandler);
     }
   });
-  
-  fetchPostById = action(async (postId: string): Promise<Post | null> => {
-    try {
-      // Check if we already have a request in progress for this post
-      if (this.fetchPostPromises.has(postId)) {
-        logger.log(`[PostStore] Reusing existing fetch promise for post ${postId}`);
-        return this.fetchPostPromises.get(postId)!;
-      }
-      
-      logger.log(`[PostStore] Fetching post with ID ${postId}`);
-      
-      // Check if post exists in store first
-      const existingPost = this.getPostById(postId);
-      if (existingPost) {
-        logger.log(`[PostStore] Found post ${postId} in store, returning cached version`);
-        return existingPost;
-      }
-      
-      if (!socketStore.posts) {
-        logger.error('[PostStore] socket not available');
-        return null;
-      }
-      
-      // Create a new promise that will be shared by all concurrent requests
-      const fetchPromise = new Promise<Post | null>((resolve) => {
-        socketStore.posts!.emit("fetchPost", { postId }, (response: FetchPostResponse | Post[] | null) => {
-          logger.log(`Response for post ${postId}:`, response);
-          
-          let post: Post | null = null;
-          
-          if (response && typeof response === 'object') {
-            if ('post' in response && response.post) {
-              post = response.post;
-            } else if ('posts' in response && Array.isArray(response.posts) && response.posts.length > 0) {
-              post = response.posts[0];
-            } else if (Array.isArray(response) && response.length > 0) {
-              post = response[0];
-            }
-          }
-          
-          if (post) {
-            runInAction(() => {
-              // Add to all feeds
-              this.addPostToAllFeeds(post);
-            });
-          }
-          
-          // Clean up the promise from the map
-          this.fetchPostPromises.delete(postId);
-          resolve(post);
-        });
-      });
-      
-      // Store the promise for reuse by concurrent requests
-      this.fetchPostPromises.set(postId, fetchPromise);
-      
-      return fetchPromise;
-    } catch (error) {
-      logger.error("[PostStore] Error fetching post:", error);
-      this.fetchPostPromises.delete(postId);
-      return null;
-    }
-  });
-// УПРОЩЕННЫЙ fetchPosts
-fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string): Promise<void> => {
-  let feed: FeedState;
-  
-  if (feedType === "user" && targetUserId) {
-    feed = this.getUserFeed(targetUserId);
-  } else {
-    feed = this.getFeed(feedType);
-  }
 
-  // Простые защиты
-  if (feed.loading) {
-    logger.log(`[PostStore] ${feedType} already loading, skipping`);
-    return;
-  }
-
-  if (feed.allLoaded) {
-    logger.log(`[PostStore] ${feedType} all loaded, skipping`);
-    return;
-  }
-
-  runInAction(() => {
-    feed.loading = true;
-    feed.error = null;
-  });
-
-  if (!socketStore.posts?.connected) {
-    runInAction(() => {
-      feed.error = new Error("Posts socket not available");
-      feed.loading = false;
-    });
-    return;
-  }
-
-  logger.log(`[PostStore] Fetching posts: type=${feedType}, page=${page}, user=${targetUserId || 'none'}`);
-
-  try {
-    const { eventName, eventData } = this.getSocketEventConfig(feedType, targetUserId, page);
-    const result = await this.emitSocketRequest(eventName, eventData);
-    
-    logger.log(`[PostStore] Received ${result.posts.length} posts, total: ${result.total}`);
-
-    runInAction(() => {
-      const posts = result.posts || [];
-      const total = result.total || 0;
-
-      this.processPosts(posts);
-
-      if (page === 1) {
-        feed.list.replace(posts.map(post => observable(post)));
-        logger.log(`[PostStore] Replaced ${feedType} feed with ${posts.length} posts`);
-        feed.reset = false;
-      } else {
-        const existingIds = new Set(feed.list.map(p => p.id));
-        const newPosts = posts.filter(p => !existingIds.has(p.id));
-
-        if (newPosts.length > 0) {
-          feed.list.push(...newPosts.map(post => observable(post)));
-          logger.log(`[PostStore] Added ${newPosts.length} new posts to ${feedType} feed`);
-        } else {
-          logger.log(`[PostStore] No new posts for page ${page}, marking as allLoaded`);
-          feed.allLoaded = true;
-        }
-      }
-
-      feed.page = page;
-      feed.total = total;
-      feed.allLoaded = feed.allLoaded || posts.length < POSTS_PER_PAGE;
-
-      logger.log(`[PostStore] ${feedType} feed final state: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded}`);
-      feed.loading = false;
-    });
-  } catch (error) {
-    runInAction(() => {
-      feed.loading = false;
-      feed.error = error instanceof Error ? error : new Error("Failed to fetch posts");
-      logger.error(`[PostStore] Error fetching ${feedType} posts:`, error);
-    });
-  }
-});
-
-// УПРОЩЕННЫЙ loadMore
-loadMore = action((feedType: FeedType, targetUserId?: string) => {
-  const feed = targetUserId ? this.getUserFeed(targetUserId) : this.getFeed(feedType);
-
-  if (feed.loading || feed.allLoaded) {
-    logger.log(`[PostStore] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
-    return;
-  }
-
-  const nextPage = feed.page + 1;
-  logger.log(`[PostStore] Loading more ${feedType} posts, page ${nextPage}`);
-  
-  this.fetchPosts(feedType, nextPage, targetUserId);
-});
-
-/**
- * Обработка нового поста
- */
-
-handleNewPost = action((post: Post, type: FeedType) => {
-  const feed = this.getFeed(type);
-  
-  // Проверяем дублирование
-  const existsInList = feed.list.some(p => p.id === post.id);
-  const existsInBuffer = feed.buffer.some(p => p.id === post.id);
-  
-  if (existsInList || existsInBuffer) {
-    logger.log(`[PostStore] Post ${post.id} already exists, skipping`);
-    return;
-  }
-  
-  // Кэшируем пользователя только если его еще нет
-  if (post.user && post.user.id) {
-    const existingUser = userStore.getCachedUser(post.user.id);
-    if (!existingUser) {
-      userStore.addCachedUser(post.user);
-    }
-  } else if (post.userId) {
-    const cachedUser = userStore.getCachedUser(post.userId);
-    if (cachedUser) {
-      post.user = cachedUser;
-      logger.log(`[PostStore] Restored user from cache for post ${post.id}`);
-    } else {
-      logger.warn(`[PostStore] No user data for post ${post.id}, userId: ${post.userId}`);
-    }
-  }
-  
-  const observablePost = observable(post);
-  this.postsMap.set(post.id, observablePost);
-  
-  runInAction(() => {
-    feed.latestPost = observablePost;
-    
-    if (feed.manualUpdateMode) {
-      feed.buffer.unshift(observablePost);
-      feed.newPostsCount = feed.buffer.length;
-      logger.log(`[PostStore] New post ${post.id} added to buffer, size: ${feed.buffer.length}`);
-    } else {
-      feed.list.unshift(observablePost);
-      logger.log(`[PostStore] New post ${post.id} added directly to ${type} feed`);
-    }
-    
-    // Если пост создан текущим пользователем, добавляем его в user ленту
-    const currentUserId = userStore.user?.id;
-    if (post.userId === currentUserId) {
-      // Если есть активная user лента с userId текущего пользователя
-      const userFeed = this.feeds.user;
-      if (userFeed.userId === currentUserId) {
-        // Проверяем, что поста еще нет в ленте
-        const existsInUserList = userFeed.list.some(p => p.id === post.id);
-        const existsInUserBuffer = userFeed.buffer.some(p => p.id === post.id);
-        
-        if (!existsInUserList && !existsInUserBuffer) {
-          // Добавляем в ленту пользователя
-          if (userFeed.manualUpdateMode) {
-            userFeed.buffer.unshift(observablePost);
-            userFeed.newPostsCount = userFeed.buffer.length;
-          } else {
-            userFeed.list.unshift(observablePost);
-          }
-          logger.log(`[PostStore] Added new post to user feed for current user`);
-        }
-      }
-    }
-  });
-});
   /**
-   * Загрузка новых постов из буфера
+   * Хелпер для извлечения поста из разных форматов ответа
    */
-  handleLoadNewPosts = action((type: FeedType) => {
-    const feed = this.getFeed(type);
+  private extractPostFromResponse(response: FetchPostResponse | Post[] | null): Post | null {
+    if (!response) return null;
     
-    runInAction(() => {
-      if (feed.buffer.length === 0) {
-        logger.log(`[PostStore] No new posts in buffer for ${type}`);
-        return;
+    if (Array.isArray(response) && response.length > 0) {
+      return response[0];
+    }
+    
+    if (typeof response === 'object') {
+      if ('post' in response && response.post) {
+        return response.post;
+      } 
+      if ('posts' in response && Array.isArray(response.posts) && response.posts.length > 0) {
+        return response.posts[0];
       }
-      
-      logger.log(`[PostStore] Moving ${feed.buffer.length} posts from buffer to list`);
-      
-      // Кэшируем только уникальных пользователей
-      const uniqueUsers = new Map<string, User>();
-
-      feed.buffer.forEach(post => {
-        if (post.user && 
-            post.user.id && 
-            post.user.userName && 
-            !uniqueUsers.has(post.user.id)) {
-          const existingUser = userStore.getCachedUser(post.user.id);
-          if (!existingUser) {
-            uniqueUsers.set(post.user.id, post.user as User);
-          }
-        } else if (post.userId && !post.user) {
-          const cachedUser = userStore.getCachedUser(post.userId);
-          if (cachedUser) {
-            post.user = cachedUser;
-          }
-        }
-      });
-
-      // Кэшируем уникальных пользователей
-      uniqueUsers.forEach(user => {
-        userStore.addCachedUser(user);
-      });
-  
-      
-      // Добавляем все посты из буфера в начало списка
-      feed.list.unshift(...feed.buffer);
-      
-      // Очищаем буфер
-      feed.buffer = [];
-      feed.newPostsCount = 0;
-      
-      logger.log(`[PostStore] Added posts to ${type} feed, new list size: ${feed.list.length}`);
-    });
-  });
-
-  getPostBySlug(slug: string): Post | null {
-    // Сначала ищем в postsMap
-    for (const post of this.postsMap.values()) {
-      if (post.slug === slug) return post;
     }
-
-    // Потом в фидах
-    for (const feed of Object.values(this.feeds)) {
-      const post = feed.list.find(p => p.slug === slug);
-      if (post) return post;
-    }
-
-
-    return null; // Вместо undefined
+    
+    return null;
   }
 
-fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
-  try {
+  clearPostPromiseCache = (slug: string): void => {
     const cacheKey = `slug:${slug}`;
     if (this.fetchPostPromises.has(cacheKey)) {
+      logger.log(`[PostStore] Clearing cache for post slug: ${slug}`);
+      this.fetchPostPromises.delete(cacheKey);
+    }
+  };
+  /**
+   * Получение поста по slug
+   */
+  fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
+  try {
+    const cacheKey = `slug:${slug}`;
+    
+    // Check if a fetch is already in progress
+    if (this.fetchPostPromises?.has(cacheKey)) {
       logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
       return this.fetchPostPromises.get(cacheKey)!;
     }
     
     logger.log(`[PostStore] Fetching post by slug: ${slug}`);
     
+    // Check if post exists in store
     const existingPost = this.getPostBySlug(slug);
     if (existingPost) {
       logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
+      
+      // Create a resolved promise for consistency
+      const cachedPromise = Promise.resolve(existingPost);
+      this.fetchPostPromises?.set(cacheKey, cachedPromise);
+      
+      // Clean up promise cache after a short delay
+      setTimeout(() => {
+        this.fetchPostPromises?.delete(cacheKey);
+      }, 1000);
+      
       return existingPost;
     }
     
-    if (!socketStore.posts) {
-      logger.error('[PostStore] socket not available');
-      return null;
+    if (!socketStore.posts?.connected) {
+      logger.error('[PostStore] Socket not available');
+      throw new Error('Socket connection not available');
     }
     
-    const fetchPromise = new Promise<Post | null>((resolve) => {
-      socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse | Post[] | null) => {
-        logger.log(`Response for slug ${slug}:`, response);
+    // Create a promise for handling the request
+    const fetchPromise = new Promise<Post | null>((resolve, reject) => {
+      socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse) => {
+        logger.log(`[PostStore] Response for slug ${slug}:`, response);
         
-        let post: Post | null = null;
-        
-        if (response && typeof response === 'object') {
-          if ('post' in response && response.post) {
-            post = response.post;
-          } else if ('posts' in response && Array.isArray(response.posts) && response.posts.length > 0) {
-            post = response.posts[0];
-          } else if (Array.isArray(response) && response.length > 0) {
-            post = response[0];
-          }
+        // Handle server exception responses
+        if (response && response.status === 'error') {
+          logger.error(`[PostStore] Server error: ${response.message}`);
+          reject(new Error(response.message || 'Server error'));
+          return;
         }
+        
+        // Handle other error formats (array with "exception")
+        if (Array.isArray(response) && response[0] === 'exception') {
+          const errorMsg = response[1]?.message || 'Unknown server error';
+          logger.error(`[PostStore] Server exception: ${errorMsg}`);
+          reject(new Error(errorMsg));
+          return;
+        }
+        
+        const post = this.extractPostFromResponse(response);
         
         if (post) {
           runInAction(() => {
             this.processPosts([post]);
             this.addPostToAllFeeds(post);
           });
+          resolve(post);
+        } else {
+          logger.error(`[PostStore] No post data found in response for ${slug}`);
+          resolve(null);
         }
-        
-        this.fetchPostPromises.delete(cacheKey);
-        resolve(post);
       });
+      
+      // Add timeout to prevent hanging requests
+      setTimeout(() => {
+        if (this.fetchPostPromises?.has(cacheKey)) {
+          logger.error(`[PostStore] Request timeout for slug ${slug}`);
+          reject(new Error('Request timed out'));
+        }
+      }, 15000); // 15 second timeout
     });
     
-    this.fetchPostPromises.set(cacheKey, fetchPromise);
+    // Save promise in cache
+    this.fetchPostPromises?.set(cacheKey, fetchPromise);
+    
+    // Clean up promise from cache on completion
+    fetchPromise
+      .finally(() => {
+        setTimeout(() => {
+          this.fetchPostPromises?.delete(cacheKey);
+        }, 1000);
+      });
+    
     return fetchPromise;
-  } catch (error) {
-    logger.error("[PostStore] Error fetching post by slug:", error);
-    this.fetchPostPromises.delete(`slug:${slug}`);
-    return null;
+  } catch (error: Error | unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`[PostStore] Error fetching post by slug: ${errorMessage}`);
+    this.fetchPostPromises?.delete(`slug:${slug}`);
+    throw error; // Re-throw the error to be handled by the component
   }
 });
 
-  updatePostCommentCountBySlug = action((postSlug: string, count: number) => {
-    const post = this.getPostBySlug(postSlug);
-    if (!post) return;
-    
-    this.updatePostCommentCount(post.id, count);
-  });
-  // Помечает ленту для обновления при следующей загрузке
+  /**
+   * Помечает ленту для обновления при следующей загрузке
+   */
   markFeedForRefresh = action((feedType: FeedType) => {
     const feed = this.feeds[feedType];
     if (feed) {
-      runInAction(() => {
-        feed.reset = true;
-      });
+      feed.reset = true;
       logger.log(`[PostStore] Marked ${feedType} feed for refresh`);
     }
   });
+clearCacheForSlug = (slug: string): void => {
+  const cacheKey = `slug:${slug}`;
+  if (this.fetchPostPromises?.has(cacheKey)) {
+    this.fetchPostPromises.delete(cacheKey);
+    logger.log(`[PostStore] Cleared cache for slug: ${slug}`);
+  }
+};
+
 
   /**
-   * Установка мануального режима
+   * Освобождение ресурсов при уничтожении
    */
-  setManualUpdateMode = action((type: FeedType, value: boolean) => {
-    const feed = this.getFeed(type);
-    
-    if (feed.manualUpdateMode !== value) {
-      logger.log(`[PostStore] Setting ${type} manual mode to ${value}`);
-      runInAction(() => {
-        feed.manualUpdateMode = value;
-      });
-    }
-  });
-
   override dispose() {
     super.dispose();
     

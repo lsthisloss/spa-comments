@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { postStore } from '../services/stores/PostStore';
 import { commentStore } from '../services/stores/CommentStore';
-import { Empty, Button, Spin, message } from 'antd';
+import { Empty, Button, Spin } from 'antd';
 import PostItem from '../components/posts/PostItem';
 import CommentsThread from '../components/comments/CommentsThread';
 import SendForm from '../components/common/SendForm';
@@ -18,135 +18,185 @@ const PostPage = observer(() => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Refs для отслеживания состояния
-  const mountedRef = useRef(true);
-  const loadingRef = useRef(false);
+  // Refs for tracking state
+  const mountedRef = useRef(false); // Начинаем с false
   const commentsLoadedRef = useRef(false);
+  const navigationRef = useRef(false);
+  const postFetchedRef = useRef<string | null>(null);
   
-  // Состояние компонента
+  // Component state
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsSort, setCommentsSort] = useState<'date' | 'likes'>('date');
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Управление жизненным циклом компонента
+  // Инициализация компонента - ПРАВИЛЬНАЯ установка mountedRef
   useEffect(() => {
-    mountedRef.current = true;
+    mountedRef.current = true; // Устанавливаем в true при монтировании
+    logger.log(`[PostPage] Component mounted for slug: ${slug}`);
     
     return () => {
-      logger.log(`[PostPage] Unmounting, saving scroll position: ${window.scrollY}`);
-      navigationStore.currentState.scrollPosition = window.scrollY;
+      logger.log(`[PostPage] Component unmounting for slug: ${slug}`);
       mountedRef.current = false;
     };
-  }, []);
-
-  // Сохранение состояния навигации
-  useEffect(() => {
-    if (!slug) return;
-    
-    logger.log(`[PostPage] Mount with slug=${slug}`);
-    
-    // Сохраняем состояние из location или создаем дефолтное
-    const stateToSave = location.state || 
-      navigationStore.getStateForDirectUrl(location.pathname) || 
-      { scrollPosition: 0, fromFeed: true, timestamp: Date.now() };
-    
-    navigationStore.saveStateFromLocation(stateToSave);
-    
-    // Проверяем, является ли это переходом обратно с комментария
-    const isBackFromComment = navigationStore.currentState && navigationStore.currentState.fromComment === true;
-    
-    // Очищаем состояние только если это настоящий прямой доступ (не навигация назад)
-    if (!location.state && !isBackFromComment) {
-      logger.log('[PostPage] Direct URL access detected, clearing saved feed state');
-      postStore.feedSavedPosts.clear();
-      postStore.feedScrollPosition = 0;
-    } else if (isBackFromComment) {
-      logger.log('[PostPage] Back navigation from comment detected, preserving state');
-    }
-  }, [location.pathname, location.state, slug]);
+  }, [slug]);
   
-  // Загрузка поста
-  useEffect(() => {
-    if (!slug || loadingRef.current) return;
+  // Load comments for the current post
+  const loadComments = useCallback((postSlug: string, reset = false) => {
+    if (!mountedRef.current) {
+      logger.log(`[PostPage] Skipping loadComments - component not mounted`);
+      return Promise.resolve();
+    }
     
-    const loadData = async () => {
-      loadingRef.current = true;
+    if (reset) {
+      commentsLoadedRef.current = false;
+    }
+    
+    if (!commentsLoadedRef.current) {
+      setCommentsLoading(true);
       
-      try {
-        if (!mountedRef.current) return;
-        setLoading(true);
-        setError(null);
-
-        logger.log(`[PostPage] Loading post by slug: ${slug}`);
-
-        // 1. Сначала ищем по slug в сторе
-        let fetchedPost: Post | null = postStore.getPostBySlug(slug);
-
-        if (!fetchedPost) {
-          // 2. Если нет в сторе — загружаем с бэкенда по slug
-          logger.log(`[PostPage] Post not found in store, fetching by slug: ${slug}`);
-          fetchedPost = await postStore.fetchPostBySlug(slug);
-        }
-
-        if (!mountedRef.current) return;
-
-        if (!fetchedPost) {
-          setError("Post not found");
-          setLoading(false);
-          return;
-        }
-
-        setPost(fetchedPost);
-        setLoading(false);
-
-        // Загрузка комментариев
-        // Проверяем наличие комментариев в хранилище
-        const comments = commentStore.getCommentsByPostSlug(slug);
-        logger.log(`[PostPage] Checking existing comments for ${slug}: found ${comments.length}`);
-        
-        // Проверяем тип доступа - с навигации или прямой
-        const isDirectNavigation = 
-          location.state && 
-          (location.state.fromFeed === true || 
-           location.state.fromComment === true || 
-           location.state.fromUserProfile === true);
-        
-        logger.log(`[PostPage] Access type: ${isDirectNavigation ? 'navigation' : 'direct URL'}`);
-        
-        // Загружаем комментарии если их нет или это прямой доступ
-        if ((!isDirectNavigation || comments.length === 0) && !commentsLoadedRef.current) {
-          logger.log(`[PostPage] Loading comments for post ${slug}`);
-          setCommentsLoading(true);
-          await commentStore.loadCommentsBySlug(slug, 25, 1, commentsSort, false);
-          
+      logger.log(`[PostPage] Loading comments for post: ${postSlug}`);
+      return commentStore.loadCommentsBySlug(postSlug, 10, 1, commentsSort, false)
+        .then(() => {
           if (mountedRef.current) {
             commentsLoadedRef.current = true;
             setCommentsLoading(false);
+            logger.log(`[PostPage] Comments loaded for post: ${postSlug}`);
+          } else {
+            logger.log(`[PostPage] Component unmounted, skipping comments update`);
+          }
+        })
+        .catch(err => {
+          if (mountedRef.current) {
+            logger.error(`[PostPage] Error loading comments: ${err.message}`);
+            setCommentsLoading(false);
+          }
+        });
+    }
+    
+    return Promise.resolve();
+  }, [commentsSort]);
+  
+  // Load post and comments - исправляем логику
+  useEffect(() => {
+    if (!slug || !mountedRef.current) {
+      logger.log(`[PostPage] No slug provided or component not mounted`);
+      return;
+    }
+    
+    // Предотвращаем повторную загрузку того же поста
+    if (postFetchedRef.current === slug) {
+      logger.log(`[PostPage] Post ${slug} already fetched, skipping`);
+      return;
+    }   
+    // Reset state for new slug
+    setLoading(true);
+    setError(null);
+    commentsLoadedRef.current = false;
+    postFetchedRef.current = null;
+    navigationRef.current = location.state !== null;
+    
+    logger.log(`[PostPage] Loading post with slug: ${slug}, from navigation: ${navigationRef.current}`);
+    
+    // Fetch post by slug
+    postStore.fetchPostBySlug(slug)
+      .then(fetchedPost => {
+        logger.log(`[PostPage] Post fetch complete for ${slug}, post found: ${!!fetchedPost}`);
+        
+        if (!mountedRef.current) {
+          logger.log(`[PostPage] Component unmounted during fetch, aborting updates`);
+          return;
+        }
+        
+        if (fetchedPost) {
+          logger.log(`[PostPage] Setting post state and proceeding to load comments`);
+          setPost(fetchedPost);
+          setLoading(false);
+          postFetchedRef.current = slug;
+          
+          // Загружаем комментарии после установки поста
+          setTimeout(() => {
+            if (mountedRef.current) {
+              loadComments(slug);
+            }
+          }, 100);
+          
+          // Update comment count in post store to keep UI consistent
+          if (fetchedPost.commentCount !== undefined) {
+            postStore.updatePostCommentCountBySlug(slug, fetchedPost.commentCount);
           }
         } else {
-          logger.log(`[PostPage] Comments already loaded for post ${slug}, skipping load`);
+          setError('Post not found');
+          setLoading(false);
+          logger.error(`[PostPage] Post not found with slug: ${slug}`);
         }
-      } catch (error) {
-        if (!mountedRef.current) return;
-        
-        logger.error(`[PostPage] Error loading data:`, error);
-        setError("Error loading data");
-      } finally {
-        loadingRef.current = false;
+      })
+      .catch(err => {
+        logger.error(`[PostPage] Error in promise chain: ${err}`);
         
         if (mountedRef.current) {
+          logger.error(`[PostPage] Error loading post: ${err.message}`);
+          setError(`Failed to load post: ${err.message}`);
           setLoading(false);
+        }
+      });
+  }, [slug, location.state, loadComments]);
+
+  // Handle comment sort change
+  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
+    if (!mountedRef.current) return;
+    
+    setCommentsSort(sort);
+    
+    if (post && post.slug) {
+      setCommentsLoading(true);
+      commentStore.loadCommentsBySlug(post.slug, 10, 1, sort, false)
+        .then(() => {
+          if (mountedRef.current) {
+            setCommentsLoading(false);
+          }
+        })
+        .catch(() => {
+          if (mountedRef.current) {
+            setCommentsLoading(false);
+          }
+        });
+    }
+  }, [post]);
+
+  // Load more comments
+  const handleLoadMoreComments = useCallback(() => {
+    if (!post?.id || commentsLoading || !mountedRef.current) return;
+    
+    setCommentsLoading(true);
+    commentStore.loadMoreComments(post.id, 10)
+      .then(() => {
+        if (mountedRef.current) {
           setCommentsLoading(false);
         }
-      }
-    };
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setCommentsLoading(false);
+        }
+      });
+  }, [post, commentsLoading]);
 
-    loadData();
-  }, [slug, location.state, commentsSort]);
+  // Handle successful comment creation
+  const handleCommentSuccess = useCallback(() => {
+    if (!post?.slug || !mountedRef.current) return;
+    
+    // Force reload comments after adding a new one
+    commentsLoadedRef.current = false;
+    loadComments(post.slug, true);
+    
+    // Update post comment count in all feeds
+    const newCount = (post.commentCount || 0) + 1;
+    postStore.updatePostCommentCountBySlug(post.slug, newCount);
+  }, [post, loadComments]);
 
-  // Обработчик возврата назад
+  // Handle back navigation
   const handleBackClick = useCallback(() => {
     if (!slug) return;
     
@@ -155,7 +205,7 @@ const PostPage = observer(() => {
     const currentState = navigationStore.currentState;
     
     if (currentState && (currentState.fromFeed || currentState.fromFollowing || currentState.fromUserProfile)) {
-      // Сохраняем текущую позицию скролла поста
+      // Save current scroll position of post
       navigationStore.currentState.scrollPosition = window.scrollY;
       
       navigationStore.handleBackNavigation(navigate);
@@ -163,64 +213,51 @@ const PostPage = observer(() => {
       navigate(-1);
     }
   }, [slug, navigate]);
-
-  // Обработчик успешного добавления комментария
-  const handleCommentSuccess = useCallback(() => {
-    if (!post || !mountedRef.current) return;
-    
-    logger.log(`[PostPage] Comment added to post ${post.slug}`);
-    setPost(prev => prev ? {...prev, commentCount: (prev.commentCount || 0) + 1} : null);
-    message.success("Comment added");
-    
-    // Обновление комментариев
-    commentStore.loadCommentsBySlug(post.slug, 25, 1, commentsSort);
-  }, [post, commentsSort]);
   
-  // Обработчик изменения сортировки комментариев
-  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (sort === commentsSort || !post || !mountedRef.current) return;
-    
-    logger.log(`[PostPage] Changing comments sort to: ${sort}`);
-    setCommentsSort(sort);
-    setCommentsLoading(true);
-    commentsLoadedRef.current = false;
-    
-    commentStore.loadCommentsBySlug(post.slug, 25, 1, sort, false)
-      .finally(() => {
-        if (mountedRef.current) {
-          setCommentsLoading(false);
-          commentsLoadedRef.current = true;
-        }
-      });
-  }, [post, commentsSort]);
-  
-  // Обработчик загрузки дополнительных комментариев
-  const handleLoadMoreComments = useCallback(() => {
-    if (!post || commentsLoading || !mountedRef.current) return;
-    
-    const comments = commentStore.getCommentsByPostSlug(post.slug);
-    const page = Math.floor(comments.length / 25) + 1;
-    
-    logger.log(`[PostPage] Loading more comments, page: ${page}`);
-    setCommentsLoading(true);
-    
-    commentStore.loadCommentsBySlug(post.slug, 25, page, commentsSort, true)
-      .finally(() => {
-        if (mountedRef.current) {
-          setCommentsLoading(false);
-        }
-      });
-  }, [post, commentsSort, commentsLoading]);
-
-  // Обработчик повторной попытки загрузки
+  // Retry loading post
   const handleRetry = useCallback(() => {
     if (!slug || !mountedRef.current) return;
     
-    loadingRef.current = false;
-    commentsLoadedRef.current = false;
     setLoading(true);
     setError(null);
-  }, [slug]);
+    commentsLoadedRef.current = false;
+    postFetchedRef.current = null;
+    
+    logger.log(`[PostPage] Retrying to load post with slug: ${slug}`);
+    
+    // Re-fetch без очистки кэша (пусть fetchPostBySlug сам решает)
+    postStore.fetchPostBySlug(slug)
+      .then(fetchedPost => {
+        if (!mountedRef.current) return;
+        
+        if (fetchedPost) {
+          setPost(fetchedPost);
+          setLoading(false);
+          postFetchedRef.current = slug;
+          loadComments(slug, true);
+        } else {
+          setError('Post not found');
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (mountedRef.current) {
+          logger.error(`[PostPage] Error loading post: ${err.message}`);
+          setError(`Failed to load post: ${err.message}`);
+          setLoading(false);
+        }
+      });
+  }, [slug, loadComments]);
+
+  // Не рендерим пока компонент не смонтирован
+  if (!mountedRef.current) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <Spin size="large" />
+        <p>Initializing...</p>
+      </div>
+    );
+  }
 
   return (
     <section className="post-page-container">

@@ -2,7 +2,7 @@ import { makeObservable, observable, action, runInAction } from 'mobx';
 import { message } from 'antd';
 import { socketStore } from './SocketStore';
 import { logger } from "../../utils/Logger";
-import { BaseData } from '../../types/interfaces';
+import { SendData } from '../../types/interfaces';
 import { postStore } from './PostStore';
 import { commentStore } from './CommentStore';
 
@@ -250,90 +250,27 @@ class SendFormStore {
     }
   });
 
-  private sanitizeContent(text: string): string {
+  private sanitizeContent(text: string): { valid: boolean; sanitized: string; error?: string } {
+    // Base checks
     if (!text || typeof text !== 'string') {
-      return '';
-    }
-
-    // Проверяем длину
-    if (text.length > this.MAX_TEXT_LENGTH) {
-      return '';
-    }
-
-    // Заменяем все HTML теги кроме разрешенных
-    const allowedTagsRegex = new RegExp(`</?(?:${this.ALLOWED_TAGS.join('|')})(?:\\s[^>]*)?>`, 'gi');
-    const allTagsRegex = /<[^>]*>/g;
-    
-    // Находим все теги
-    const allTags = text.match(allTagsRegex) || [];
-    const allowedTags = text.match(allowedTagsRegex) || [];
-    
-    // Если есть запрещенные теги - удаляем все HTML
-    if (allTags.length !== allowedTags.length) {
-      return text.replace(allTagsRegex, '');
-    }
-
-    // Проверяем парность тегов (кроме <br>)
-    if (!this.validateTagPairs(text)) {
-      return text.replace(allTagsRegex, '');
-    }
-
-    return text;
-  }
-
-  /**
-   * Проверка парности тегов
-   */
-  private validateTagPairs(text: string): boolean {
-    const tagStack: string[] = [];
-    const tagRegex = /<\/?([a-zA-Z]+)(?:\s[^>]*)?>?/g;
-    
-    let match;
-    while ((match = tagRegex.exec(text)) !== null) {
-      const fullTag = match[0];
-      const tagName = match[1].toLowerCase();
-      
-      // <br> - самозакрывающийся тег
-      if (tagName === 'br') {
-        continue;
-      }
-      
-      if (fullTag.startsWith('</')) {
-        // Закрывающий тег
-        if (tagStack.length === 0 || tagStack.pop() !== tagName) {
-          return false;
-        }
-      } else {
-        // Открывающий тег
-        tagStack.push(tagName);
-      }
-    }
-    
-    return tagStack.length === 0;
-  }
-
-  /**
-   * УПРОЩЕННАЯ валидация контента
-   */
-  private isValidContent(text: string): boolean {
-    if (!text || typeof text !== 'string') {
-      return true;
+      return { valid: true, sanitized: '' };
     }
 
     const trimmedText = text.trim();
     if (trimmedText.length === 0) {
-      return true;
+      return { valid: true, sanitized: '' };
     }
 
-    // Проверяем длину
+    // Length check
     if (trimmedText.length > this.MAX_TEXT_LENGTH) {
-      runInAction(() => {
-        this.setError(`Content exceeds maximum length of ${this.MAX_TEXT_LENGTH} characters`);
-      });
-      return false;
+      return { 
+        valid: false, 
+        sanitized: '', 
+        error: `Content exceeds maximum length of ${this.MAX_TEXT_LENGTH} characters` 
+      };
     }
 
-    // Проверяем на опасные скрипты
+    // Security check for dangerous patterns
     const dangerousPatterns = [
       /<script\b/gi,
       /javascript:/gi,
@@ -345,120 +282,216 @@ class SendFormStore {
     ];
 
     if (dangerousPatterns.some(pattern => pattern.test(trimmedText))) {
-      runInAction(() => {
-        this.setError('Content contains unsafe elements');
-      });
-      return false;
+      return { 
+        valid: false, 
+        sanitized: '', 
+        error: 'Content contains unsafe elements' 
+      };
     }
 
-    // Санитизируем и проверяем изменения
-    const sanitized = this.sanitizeContent(trimmedText);
-    if (sanitized !== trimmedText) {
-      runInAction(() => {
-        this.setError('Content contains disallowed HTML tags. Only <b>, <i>, <u>, <br> are allowed.');
-      });
-      return false;
+    // Process HTML tags
+    const allowedTagsRegex = new RegExp(`</?(?:${this.ALLOWED_TAGS.join('|')})(?:\\s[^>]*)?>`, 'gi');
+    const allTagsRegex = /<[^>]*>/g;
+    
+    // Find all tags
+    const allTags = trimmedText.match(allTagsRegex) || [];
+    const allowedTags = trimmedText.match(allowedTagsRegex) || [];
+    
+    // If there are disallowed tags - sanitize by removing all HTML
+    if (allTags.length !== allowedTags.length) {
+      return { 
+        valid: false, 
+        sanitized: trimmedText.replace(allTagsRegex, ''), 
+        error: 'Content contains disallowed HTML tags. Only <b>, <i>, <u>, <br> are allowed.'
+      };
     }
 
-    return true;
+    // Check tag pairs (except <br>)
+    const tagStack: string[] = [];
+    const tagRegex = /<\/?([a-zA-Z]+)(?:\s[^>]*)?>?/g;
+    let match;
+    let invalidPairs = false;
+    
+    while ((match = tagRegex.exec(trimmedText)) !== null) {
+      const fullTag = match[0];
+      const tagName = match[1].toLowerCase();
+      
+      // <br> is self-closing
+      if (tagName === 'br') continue;
+      
+      if (fullTag.startsWith('</')) {
+        // Closing tag
+        if (tagStack.length === 0 || tagStack.pop() !== tagName) {
+          invalidPairs = true;
+          break;
+        }
+      } else {
+        // Opening tag
+        tagStack.push(tagName);
+      }
+    }
+    
+    if (invalidPairs || tagStack.length > 0) {
+      return { 
+        valid: false, 
+        sanitized: trimmedText.replace(allTagsRegex, ''), 
+        error: 'HTML tags are not properly paired'
+      };
+    }
+
+    return { valid: true, sanitized: trimmedText };
   }
 
- // Обновленный метод отправки
- async send(
-    type: "post" | "comment",
-    parentIdOrPostId?: string,
-    postIdForNestedComment?: string,
-    onSuccess?: () => void,
-    parentSlug?: string,
+  /**
+   * Helper to resolve IDs from slugs
+   */
+  private resolveIds(
+    type: "post" | "comment", 
+    parentIdOrPostId?: string, 
+    postIdForNestedComment?: string, 
+    parentSlug?: string, 
     postSlug?: string
-  ) {
-    if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
-      runInAction(() => {
-        this.setError("Please enter some text, upload an image, or attach a file.");
-      });
-      return;
-    }
-
-    if (!this.isValidContent(this.text)) {
-      return;
-    }
-
-    if (!this.userId || this.userId.trim() === '') {
-      runInAction(() => {
-        this.setError("You must be logged in to post.");
-      });
-      return;
-    }
-
-    const socket = socketStore[type === "post" ? "posts" : "comments"];
-    if (!socket) {
-      runInAction(() => {
-        this.setError("Connection error. Please try again.");
-      });
-      return;
-    }
-
-    runInAction(() => {
-      this.setLoading(true);
-    });
-
-    // Получаем ID ТОЛЬКО из slug если ID не передан
+  ): { parentId?: string; postId?: string; error?: string } {
     let effectiveParentId = parentIdOrPostId;
     let effectivePostId = postIdForNestedComment;
     
+    // Resolve parent comment from slug if needed
     if (type === "comment" && !effectiveParentId && parentSlug) {
       const comment = commentStore.getCommentBySlug(parentSlug);
       if (comment) {
         effectiveParentId = comment.id;
+        
+        // If comment has postId, use it
+        if (!effectivePostId && comment.postId) {
+          logger.log(`[SendFormStore] Using postId from parent comment: ${comment.postId}`);
+          effectivePostId = comment.postId;
+        }
       } else {
-        runInAction(() => {
-          this.setError("Parent comment not found");
-          this.setLoading(false);
-        });
-        return;
+        return { error: "Parent comment not found" };
       }
     }
     
+    // Resolve post from slug if needed
     if (!effectivePostId && postSlug) {
-      const post = postStore.getPostBySlug(postSlug);
-      if (post) {
-        effectivePostId = post.id;
+      // Check if postSlug is actually a UUID
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(postSlug);
+      
+      if (isUUID) {
+        // If UUID, use directly as ID
+        logger.log(`[SendFormStore] Using postSlug as postId directly: ${postSlug}`);
+        effectivePostId = postSlug;
       } else {
-        runInAction(() => {
-          this.setError("Post not found");
-          this.setLoading(false);
-        });
-        return;
+        // If slug, lookup post in store
+        const post = postStore.getPostBySlug(postSlug);
+        if (post) {
+          effectivePostId = post.id;
+          logger.log(`[SendFormStore] Resolved postSlug ${postSlug} to ID ${effectivePostId}`);
+        } else {
+          logger.error(`[SendFormStore] Post not found for slug: ${postSlug}`);
+          return { error: "Post not found" };
+        }
       }
     }
-
-    const baseData: BaseData = {
-      userId: this.userId,
-      content: this.text,
-      userName: this.userName,
-      postId: null,
-      parentId: null,
-      image: {
-        name: '',
-        type: '',
-        base64: ''
-      }
-    };
-
-    if (type === "comment") {
-      if (effectiveParentId && !effectivePostId) {
-        // Ответ на комментарий
-        baseData.parentId = effectiveParentId;
-      } else if (effectiveParentId && effectivePostId) {
-        // Вложенный комментарий
-        baseData.parentId = effectiveParentId;
-        baseData.postId = effectivePostId;
-      } else if (effectivePostId) {
-        // Комментарий к посту
-        baseData.postId = effectivePostId;
-      }
+    
+    // Validation: comments must have a post ID
+    if (type === "comment" && !effectivePostId) {
+      logger.error("[SendFormStore] Failed to determine postId for comment");
+      return { error: "Cannot determine post ID for this comment" };
     }
+    
+    return { parentId: effectiveParentId, postId: effectivePostId };
+  }
 
+  // Simplified send method
+async send(
+  type: "post" | "comment",
+  parentIdOrPostId?: string,
+  postIdForNestedComment?: string,
+  onSuccess?: () => void,
+  parentSlug?: string,
+  postSlug?: string
+) {
+  logger.log(`[SendFormStore] send called with: type=${type}, parentSlug=${parentSlug}, postSlug=${postSlug}`);
+
+  if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
+    runInAction(() => {
+      this.setError("Please enter some text, upload an image, or attach a file.");
+    });
+    return;
+  }
+
+  // Validate content using unified function
+  const { valid, sanitized, error } = this.sanitizeContent(this.text);
+  if (!valid) {
+    runInAction(() => {
+      this.setError(error || "Invalid content");
+    });
+    return;
+  }
+
+  if (!this.userId || this.userId.trim() === '') {
+    runInAction(() => {
+      this.setError("You must be logged in to post.");
+    });
+    return;
+  }
+
+  const socket = socketStore[type === "post" ? "posts" : "comments"];
+  if (!socket) {
+    runInAction(() => {
+      this.setError("Connection error. Please try again.");
+    });
+    return;
+  }
+
+  runInAction(() => {
+    this.setLoading(true);
+  });
+
+  // Resolve IDs from slugs
+  const resolved = this.resolveIds(type, parentIdOrPostId, postIdForNestedComment, parentSlug, postSlug);
+  
+  if (resolved.error) {
+    runInAction(() => {
+        this.setError(resolved.error || "An error occurred");
+        this.setLoading(false);
+      });
+    return;
+  }
+
+  // Form base data with resolved IDs
+  const baseData: SendData = {
+    userId: this.userId,
+    content: sanitized,
+    userName: this.userName,
+    postId: resolved.postId,
+    parentId: resolved.parentId,
+    image: {
+      name: '',
+      type: '',
+      base64: ''
+    }
+  };
+
+  // Логируем полученные данные перед отправкой
+  logger.log(`[SendFormStore] Sending ${type} with data:`, {
+    parentId: baseData.parentId,
+    postId: baseData.postId
+  });
+
+  if (type === "comment") {
+    if (resolved.parentId && !resolved.postId) {
+      // Ответ на комментарий
+      baseData.parentId = resolved.parentId;
+    } else if (resolved.parentId && resolved.postId) {
+      // Вложенный комментарий
+      baseData.parentId = resolved.parentId;
+      baseData.postId = resolved.postId;
+    } else if (resolved.postId) {
+      // Комментарий к посту
+      baseData.postId = resolved.postId;
+    }
+  }
     const emitData = () => {
       socket.emit(
         type === "post" ? "addPost" : "addComment",

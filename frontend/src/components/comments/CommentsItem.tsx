@@ -3,58 +3,38 @@ import { Comment } from '../../types/interfaces';
 import userStore from '../../services/stores/UserStore';
 import { commentStore } from '../../services/stores/CommentStore';
 import { logger } from "../../utils/Logger";
-import { useNavigate } from 'react-router-dom';
 import { useCallback } from 'react';
-import { navigationStore } from '../../services/stores/NavigationStore';
 import { observer } from 'mobx-react-lite';
+import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 
-const CommentItemContent = observer(function CommentItemInner(props: { 
+interface CommentItemProps {
   item: Comment; 
   disableShowMore?: boolean; 
   onNavigate?: (id: string) => void;
   onShowMore?: () => void;
+  disableNestedComments?: boolean;
   hideCommentButton?: boolean;
-}) {
-  const { item, disableShowMore, onNavigate, onShowMore } = props;
-  const navigate = useNavigate();
+}
 
+const CommentItem = observer((props: CommentItemProps) => {
+  const { item, disableShowMore, onNavigate, onShowMore, hideCommentButton = false } = props;
+  const { navigateToEntity } = useNavigationHelper();
+
+  // Handle like click
   const handleLikeClick = useCallback(() => {
-    if (userStore.user?.id) {
-      logger.log(`Comment ${item.id} like clicked by user ${userStore.user.id}`);
-      commentStore.toggleLike(item.id, userStore.user.id);
-    } else {
+    if (!userStore.user?.id) {
       logger.warn("User is not logged in");
-    }
-  }, [item.id]);
-  
-const handleNavigate = useCallback((id: string) => {
-  logger.log(`CommentItem: handling navigation for comment ${id}`);
-  
-  try {
-    // Если есть внешний обработчик, используем его
-    if (onNavigate) {
-      logger.log(`CommentItem: calling provided onNavigate`);
-      onNavigate(id);
       return;
     }
     
-    // Всегда используем slug для навигации
-    const slug = item.slug;
-    if (!slug) {
-      logger.error(`Comment ${id} has no slug, cannot navigate`);
-      return;
-    }
-
-    const navigationState = navigationStore.saveNavigationState("comment", slug);
-    navigate(`/comment/${slug}`, { state: navigationState });
-  } catch (error) {
-    logger.error(`Navigation error for comment ${id}:`, error);
-
-    // Fallback на slug или ID в случае ошибки
-    const slug = item.slug || id;
-    navigate(`/comment/${slug}`);
-  }
-}, [onNavigate, navigate, item.slug]);
+    logger.log(`Comment ${item.id} like clicked by user ${userStore.user.id}`);
+    commentStore.toggleLike(item.id, userStore.user.id);
+  }, [item.id]);
+  
+  // Handle navigation
+  const handleNavigate = useCallback((slug: string) => {
+    navigateToEntity('comment', slug, onNavigate);
+  }, [onNavigate, navigateToEntity]);
 
   return (
     <FeedItem
@@ -64,21 +44,9 @@ const handleNavigate = useCallback((id: string) => {
       onNavigate={handleNavigate}
       onLikeClick={handleLikeClick}
       onShowMore={onShowMore}
-      hideCommentButton={props.hideCommentButton}
+      hideCommentButton={hideCommentButton || props.disableNestedComments}
     />
   );
 });
 
-function CommentItem(props: { 
-  item: Comment; 
-  disableShowMore?: boolean; 
-  onNavigate?: (id: string) => void;
-  disableNestedComments?: boolean;
-  onShowMore?: () => void;
-  hideCommentButton?: boolean;
-}) {
-  return <CommentItemContent {...props} />;
-}
-
-const ObservedCommentItem = observer(CommentItem);
-export default ObservedCommentItem;
+export default CommentItem;

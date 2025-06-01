@@ -19,6 +19,8 @@ interface CommentsThreadProps {
   loading?: boolean;
   onLoadMore?: () => void;
   onSortChange?: (sort: 'date' | 'likes') => void;
+  autoLoad?: boolean;
+  enableNestedReplies?: boolean;
 }
 
 const CommentsThread = observer(({ 
@@ -28,36 +30,42 @@ const CommentsThread = observer(({
   parentSlug,
   loading = false,
   onSortChange,
-  onLoadMore
+  onLoadMore,
+  autoLoad = true,
+  enableNestedReplies = false,
 }: CommentsThreadProps) => {
-  // Получаем ID из slug если предоставлены
-  const effectivePostId = useMemo(() => {
-    if (postId) return postId;
-    if (postSlug) {
+  // Helper to resolve entity IDs from slugs
+  const resolveEntityIds = useMemo(() => {
+    // First try direct IDs
+    let effectivePostId = postId;
+    let effectiveParentId = parentId;
+    
+    // Then try to resolve from slugs
+    if (!effectivePostId && postSlug) {
       const post = postStore.getPostBySlug(postSlug);
-      return post?.id;
+      effectivePostId = post?.id;
     }
-    return undefined;
-  }, [postId, postSlug]);
-  
-  const effectiveParentId = useMemo(() => {
-    if (parentId) return parentId;
-    if (parentSlug) {
+    
+    if (!effectiveParentId && parentSlug) {
       const comment = commentStore.getCommentBySlug(parentSlug);
-      return comment?.id;
+      effectiveParentId = comment?.id;
     }
-    return undefined;
-  }, [parentId, parentSlug]);
+    
+    // Determine if we're showing post comments or comment replies
+    const targetId = effectivePostId || effectiveParentId;
+    const isPost = !!effectivePostId;
+    
+    return { targetId, isPost, effectivePostId, effectiveParentId };
+  }, [postId, postSlug, parentId, parentSlug]);
   
-  // Определяем целевой ID для получения комментариев
-  const targetId = effectivePostId || effectiveParentId;
-  const isPost = !!effectivePostId;
+  const { targetId, isPost } = resolveEntityIds;
   
+  // Handle missing target
   if (!targetId) {
     return <Empty description="No post or comment ID specified" />;
   }
   
-  // Получаем комментарии или ответы в зависимости от типа
+  // Get comments or replies based on entity type
   const comments = isPost 
     ? commentStore.getComments(targetId)
     : commentStore.getReplies(targetId);
@@ -66,6 +74,7 @@ const CommentsThread = observer(({
     ? commentStore.getTotalComments(targetId)
     : comments.length;
 
+  // Setup virtualization
   const { estimateItemHeight, getItemKey } = useCommentsFeed();
   const {
     virtualItems,
@@ -74,6 +83,7 @@ const CommentsThread = observer(({
     handleImageLoad,
   } = useVirtualItems(comments, getItemKey, estimateItemHeight);
 
+  // Sort handler
   const handleSortChange = useCallback((key: string) => {
     if (onSortChange && (key === 'date' || key === 'likes')) {
       logger.log(`CommentsThread: Requesting sort change to ${key}`);
@@ -81,26 +91,28 @@ const CommentsThread = observer(({
     }
   }, [onSortChange]);
     
+  // Load comments/replies if needed
   useEffect(() => {
-    if (!targetId) return;
+    if (autoLoad !== false && !targetId) return;
     
-    // Если это страница с комментарием (есть parentId), всегда показываем ответы
-    if (effectiveParentId && !effectivePostId) {
-      // Принудительно показываем ответы
-      commentStore.setRepliesShown(effectiveParentId, true);
+    // Special handling for viewing a single comment's replies
+    if (resolveEntityIds.effectiveParentId && !resolveEntityIds.effectivePostId) {
+      // Always show replies for parent comment
+      commentStore.setRepliesShown(resolveEntityIds.effectiveParentId, true);
       
-      // Загружаем ответы при необходимости
-      const replies = commentStore.getReplies(effectiveParentId);
+      // Load replies if none exist
+      const replies = commentStore.getReplies(resolveEntityIds.effectiveParentId);
       if (!replies || replies.length === 0) {
         if (onLoadMore) {
           onLoadMore();
         } else {
-          commentStore.loadComments(effectiveParentId, 10, 1);
+          commentStore.loadComments(resolveEntityIds.effectiveParentId, 10, 1, undefined, true);
         }
       }
     }
-  }, [targetId, effectiveParentId, effectivePostId, onLoadMore]);
+  }, [autoLoad, targetId, resolveEntityIds.effectiveParentId, resolveEntityIds.effectivePostId, onLoadMore]);
 
+  // Comment rendering
   const renderComment = useCallback((virtualItem: { item: Comment; index: number }, measureRef: (el: HTMLElement | null) => void) => {
     const comment = virtualItem.item as Comment;
     
@@ -113,12 +125,13 @@ const CommentsThread = observer(({
       >
         <CommentItem
           item={comment}
-          disableNestedComments={isPost ? false : true}
+          disableNestedComments={enableNestedReplies ? false : !isPost}
         />
       </div>
     );
-  }, [handleImageLoad, getItemKey, isPost]);
+  }, [handleImageLoad, getItemKey, isPost, enableNestedReplies]);
 
+  // UI Components
   const loadingIndicator = (
     <div style={{ textAlign: 'center', padding: '20px' }}>
       {loading ? (
@@ -137,28 +150,11 @@ const CommentsThread = observer(({
   );
 
   const headerComponent = (
-    <div style={{ 
-      padding: '16px',
-      borderBottom: '1px solid #f0f0f0',
-    }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center'
-      }}>
-        <div style={{ 
-          fontSize: '14px',
-          fontWeight: 500,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
+    <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>{isPost ? 'Comments' : 'Replies'}</span>
-          <Badge 
-            count={totalComments} 
-            size="small" 
-            style={{ marginLeft: '4px' }}
-          />
+          <Badge count={totalComments} size="small" style={{ marginLeft: '4px' }} />
         </div>
 
         <Dropdown 
@@ -177,13 +173,7 @@ const CommentsThread = observer(({
             type="text"
             icon={<FilterOutlined />}
             size="small"
-            style={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: '#666',
-              fontSize: '12px'
-            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#666', fontSize: '12px' }}
           >
             Sort
           </Button>
@@ -192,6 +182,7 @@ const CommentsThread = observer(({
     </div>
   );
 
+  // Main render
   return (
     <div className="comments-thread">
       {headerComponent}

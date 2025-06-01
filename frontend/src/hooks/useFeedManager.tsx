@@ -22,121 +22,81 @@ export function useFeedManager<T>({
   newItemsCount = 0,
   handleLoadNewItems,
 }: FeedManagerOptions<T>) {
-  // Состояние менеджера
   const [internalLoading, setInternalLoading] = useState(false);
-  const [loadingLock, setLoadingLock] = useState(false);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastItemCountRef = useRef(items.length);
-  const recentlyLoadedRef = useRef(false);
-  const loadAttemptsRef = useRef(new Map<string, number>());
-  // Простое отслеживание изменений количества элементов
+  const lastLoadTimeRef = useRef<number>(0);
+  const consecutiveLoadsRef = useRef<number>(0);
+  const lastItemCountRef = useRef<number>(0);
+
+  // Сбрасываем internal loading при изменении external loading
+  useEffect(() => {
+    if (!externalLoading && internalLoading) {
+      logger.log("[useFeedManager] External loading finished, resetting internal loading");
+      setInternalLoading(false);
+    }
+  }, [externalLoading, internalLoading]);
+
+  // Сбрасываем счетчик последовательных загрузок когда элементы увеличиваются
   useEffect(() => {
     if (items.length > lastItemCountRef.current) {
-      logger.log(`Items increased from ${lastItemCountRef.current} to ${items.length}, clearing loading lock`);
-      setLoadingLock(false);
-      setInternalLoading(false);
-      
-      // Устанавливаем флаг недавней загрузки
-      recentlyLoadedRef.current = true;
-      
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
-
-      // Сбрасываем флаг через 500ms
-      setTimeout(() => {
-        recentlyLoadedRef.current = false;
-        logger.log("Recently loaded flag cleared");
-      }, 500);
+      consecutiveLoadsRef.current = 0;
+      lastItemCountRef.current = items.length;
     }
-    lastItemCountRef.current = items.length;
   }, [items.length]);
 
-useEffect(() => {
-  // Сбрасываем internalLoading  когда items увеличиваются,
-  // и когда завершается внешняя загрузка
-  if (!externalLoading && (internalLoading || loadingLock)) {
-    logger.log("External loading finished, resetting all loading flags");
-    setLoadingLock(false);
-    setInternalLoading(false);
+  const handleLoadMore = useCallback(async () => {
+    const now = Date.now();
     
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-      loadingTimeoutRef.current = null;
+    logger.log("[useFeedManager] handleLoadMore called", { 
+      internalLoading, 
+      externalLoading, 
+      allLoaded, 
+      itemsCount: items.length,
+      consecutiveLoads: consecutiveLoadsRef.current,
+      timeSinceLastLoad: now - lastLoadTimeRef.current
+    });
+
+    // Защита от loading состояний
+    if (internalLoading || externalLoading) {
+      logger.log("[useFeedManager] Skipping load more - loading in progress");
+      return;
     }
-  }
-}, [externalLoading, internalLoading, loadingLock]);
+
+    if (allLoaded) {
+      logger.log("[useFeedManager] Skipping load more - all items loaded");
+      return;
+    }
+
+    // ЗАЩИТА ОТ МАССОВОЙ ЗАГРУЗКИ: максимум 3 загрузки подряд
+    if (consecutiveLoadsRef.current >= 3) {
+      logger.log("[useFeedManager] Skipping load more - too many consecutive loads");
+      return;
+    }
+
+    // ЗАЩИТА ПО ВРЕМЕНИ: минимум 500ms между загрузками
+    if (now - lastLoadTimeRef.current < 500) {
+      logger.log("[useFeedManager] Skipping load more - too soon after last load");
+      return;
+    }
+
+    logger.log("[useFeedManager] Triggering load more items");
+    setInternalLoading(true);
+    lastLoadTimeRef.current = now;
+    consecutiveLoadsRef.current += 1;
+
+    try {
+      loadMoreItems();
+    } catch (error) {
+      logger.error("[useFeedManager] Error loading more items:", error);
+      setInternalLoading(false);
+      consecutiveLoadsRef.current -= 1;
+    }
+  }, [internalLoading, externalLoading, allLoaded, loadMoreItems, items.length]);
 
   const handleItemClick = useCallback((itemId: string) => {
     if (onItemClick) {
       onItemClick(itemId);
     }
   }, [onItemClick]);
-
-
-const handleLoadMore = useCallback(async () => {
-  logger.log("[useFeedManager] handleLoadMore called", { 
-    loadingLock, 
-    internalLoading, 
-    externalLoading, 
-    allLoaded, 
-    itemsCount: items.length 
-  });
-
-  // ЗАЩИТА 1: Проверка флагов состояния
-  if (recentlyLoadedRef.current) {
-    logger.log("[useFeedManager] Skipping load more - recently loaded new items");
-    return;
-  }
-
-  if (loadingLock || internalLoading || externalLoading) {
-    logger.log("[useFeedManager] Skipping load more - loading in progress:", { 
-      loadingLock, internalLoading, externalLoading 
-    });
-    return;
-  }
-
-  // ЗАЩИТА 2: Проверка что все уже загружено
-  if (allLoaded) {
-    logger.log("[useFeedManager] Skipping load more - all items loaded");
-    return;
-  }
-
-  // ЗАЩИТА 3: Проверка лимита попыток для пустых результатов
-  const loadAttempts = loadAttemptsRef.current.get('loadMore') || 0;
-  if (loadAttempts > 3 && items.length === 0) {
-    logger.log("[useFeedManager] Too many empty load attempts, stopping");
-    return;
-  }
-
-  logger.log("[useFeedManager] Triggering load more items");
-  setLoadingLock(true);
-  setInternalLoading(true);
-
-  // Увеличиваем счетчик попыток
-  loadAttemptsRef.current.set('loadMore', loadAttempts + 1);
-
-  try {
-    await loadMoreItems();
-
-    recentlyLoadedRef.current = true;
-    
-    // Сбрасываем счетчик при успешной загрузке
-    loadAttemptsRef.current.set('loadMore', 0);
-
-    setTimeout(() => {
-      recentlyLoadedRef.current = false;
-      logger.log("[useFeedManager] Recently loaded flag cleared");
-    }, 500); // Уменьшаем с 1000ms до 500ms
-  } catch (error) {
-    logger.error("[useFeedManager] Error loading more items:", error);
-  } finally {
-    setLoadingLock(false);
-    setInternalLoading(false);
-  }
-}, [loadingLock, internalLoading, externalLoading, allLoaded, loadMoreItems, items.length]);
-
 
   const handleFocusItem = useCallback((itemId: string) => {
     if (handleLoadNewItems) {
@@ -154,19 +114,11 @@ const handleLoadMore = useCallback(async () => {
     }, 500);
   }, [handleLoadNewItems, items, getItemId]);
 
-  useEffect(() => {
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-    };
-  }, []);
-
   return {
     handleLoadMore,
     handleItemClick,
     handleFocusItem,
-    isLoading: internalLoading || externalLoading || loadingLock,
+    isLoading: internalLoading || externalLoading,
     hasNewItems: newItemsCount > 0,
   };
 }

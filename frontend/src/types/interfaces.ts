@@ -135,14 +135,76 @@ export interface SendFormProps {
   onSuccess?: () => void;
 }
 
+  export interface SendData {
+  userId: string;
+  content: string;
+  userName: string;
+  postId?: string;
+  parentId?: string;
+  image: {
+    name: string;
+    type: string;
+    base64: string;
+  };
+  file?: {
+    name: string;
+    type: string;
+    base64: string;
+  };
+}
+
+//postStore
 export interface FetchCommentsResponse {
   comments?: Comment[];
   total?: number;
   error?: string;
+  targetId?: string;
+  isEmpty?: boolean;
+  allLoaded?: boolean;
+  message?: string;
 }
-export  interface FetchCommentBySlugResponse {
-    comment?: Comment;
-    comments?: Comment[];
-    error?: string;
-  }
-  
+
+export interface FetchCommentBySlugResponse {
+  comment?: Comment;
+  comments?: Comment[];
+  error?: string;
+  targetId?: string;
+  isEmpty?: boolean;
+  allLoaded?: boolean;
+  message?: string;
+}
+
+export interface BaseSocketResponse {
+  error?: string;
+  isEmpty?: boolean;
+  allLoaded?: boolean;
+  message?: string;
+  targetId?: string;
+}
+export interface PostsSocketResponse extends BaseSocketResponse {
+  posts?: Post[];
+  total?: number;
+}
+
+export interface FetchPostResponse extends BaseSocketResponse {
+  status?: string;
+  post?: Post;
+  posts?: Post[];
+}
+
+export interface NestedPostsSocketResponse extends BaseSocketResponse {
+  posts?: {
+    posts: Post[];
+    total: number;
+  };
+  total?: number;
+}
+
+export type SocketResponseVariant = PostsSocketResponse | NestedPostsSocketResponse | Post[] | BaseSocketResponse;
+
+export interface SocketEventData {
+  userId?: string;
+  page?: number;
+  limit?: number;
+  slug?: string;
+}
