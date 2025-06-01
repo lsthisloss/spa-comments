@@ -13,7 +13,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,8 +26,6 @@ services:
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
-      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
       - bootstrap.memory_lock=false
     ports:
       - "9200:9200"
@@ -82,12 +80,34 @@ services:
       elasticsearch:
         condition: service_healthy
     environment:
+      # Database
       DATABASE_URL: ${DB_URL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      
+      # Elasticsearch
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD}
+      
+      # RabbitMQ
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_HOST: rabbitmq
       RABBITMQ_DEFAULT_PORT: 5672
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      
+      # Environment
+      NODE_ENV: production
     command: npm run dev
     restart: unless-stopped
 
