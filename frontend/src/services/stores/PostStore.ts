@@ -753,50 +753,26 @@ class PostStore extends BaseStore<Post> {
       return null;
     }
   });
-
+// УПРОЩЕННЫЙ fetchPosts
 fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string): Promise<void> => {
   let feed: FeedState;
   
   if (feedType === "user" && targetUserId) {
     feed = this.getUserFeed(targetUserId);
-    feedType = "user";
   } else {
     feed = this.getFeed(feedType);
   }
 
-  // ЗАЩИТА 1: Уже загружается
+  // Простые защиты
   if (feed.loading) {
-    logger.log(`[PostStore] ${feedType} already loading, skipping fetchPosts`);
+    logger.log(`[PostStore] ${feedType} already loading, skipping`);
     return;
   }
 
-  // ЗАЩИТА 2: Пустая лента уже полностью загружена
-  if (page === 1 && feed.list.length === 0 && feed.allLoaded && feed.total === 0) {
-    logger.log(`[PostStore] ${feedType} is empty and all loaded, skipping fetchPosts`);
+  if (feed.allLoaded) {
+    logger.log(`[PostStore] ${feedType} all loaded, skipping`);
     return;
   }
-
-  // ЗАЩИТА 3: Превышен лимит страниц для пустых результатов
-  if (page > 3 && feed.total === 0) {
-    logger.log(`[PostStore] ${feedType} reached max empty pages (${page}), stopping`);
-    runInAction(() => {
-      feed.allLoaded = true;
-      feed.loading = false;
-    });
-    return;
-  }
-
-  // ЗАЩИТА 4: Cooldown между запросами (ИСПРАВЛЕНИЕ: уменьшаем с 1000ms до 300ms)
-  const now = Date.now();
-  const lastRequestKey = `${feedType}_${targetUserId || 'default'}`;
-  const lastRequestTime = this.lastRequestTimes.get(lastRequestKey) || 0;
-  
-  if (now - lastRequestTime < 300) { // Уменьшаем с 1000 до 300ms
-    logger.log(`[PostStore] ${feedType} cooldown active (${300 - (now - lastRequestTime)}ms remaining), skipping fetchPosts`);
-    return;
-  }
-  
-  this.lastRequestTimes.set(lastRequestKey, now);
 
   runInAction(() => {
     feed.loading = true;
@@ -819,17 +795,16 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
     
     logger.log(`[PostStore] Received ${result.posts.length} posts, total: ${result.total}`);
 
-  runInAction(() => {
-    const posts = result.posts || [];
-    const total = result.total || 0;
+    runInAction(() => {
+      const posts = result.posts || [];
+      const total = result.total || 0;
 
-    // Сначала ВСЕГДА добавляем посты, если они есть
-    if (posts.length > 0) {
       this.processPosts(posts);
 
       if (page === 1) {
         feed.list.replace(posts.map(post => observable(post)));
         logger.log(`[PostStore] Replaced ${feedType} feed with ${posts.length} posts`);
+        feed.reset = false;
       } else {
         const existingIds = new Set(feed.list.map(p => p.id));
         const newPosts = posts.filter(p => !existingIds.has(p.id));
@@ -837,40 +812,19 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
         if (newPosts.length > 0) {
           feed.list.push(...newPosts.map(post => observable(post)));
           logger.log(`[PostStore] Added ${newPosts.length} new posts to ${feedType} feed`);
+        } else {
+          logger.log(`[PostStore] No new posts for page ${page}, marking as allLoaded`);
+          feed.allLoaded = true;
         }
       }
-    }
 
-    // Обработка флагов завершения
-    const isEmptyResult = result.isEmpty === true;
-    const isAllLoaded = result.allLoaded === true;
-    const isEmptyResponse = total === 0 && posts.length === 0;
-    
-    // allLoaded от сервера означает "это последняя порция"
-    if (isEmptyResult || isAllLoaded || isEmptyResponse) {
-      logger.log(`[PostStore] ${feedType} feed completed loading`, {
-        isEmpty: isEmptyResult,
-        allLoaded: isAllLoaded,
-        emptyResponse: isEmptyResponse,
-        postsLength: posts.length,
-        finalListLength: feed.list.length
-      });
-      
-      feed.allLoaded = true;
-    } else {
-      // Проверяем окончание данных по другим критериям
-      const hasReachedEnd = posts.length < POSTS_PER_PAGE;
-      const hasLoadedAll = feed.list.length >= total;
-      
-      feed.allLoaded = hasReachedEnd || hasLoadedAll;
-    }
+      feed.page = page;
+      feed.total = total;
+      feed.allLoaded = feed.allLoaded || posts.length < POSTS_PER_PAGE;
 
-    feed.page = page;
-    feed.total = total;
-    feed.loading = false;
-
-    logger.log(`[PostStore] ${feedType} feed final state: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded}`);
-  });
+      logger.log(`[PostStore] ${feedType} feed final state: ${feed.list.length}/${total} posts, page: ${page}, allLoaded: ${feed.allLoaded}`);
+      feed.loading = false;
+    });
   } catch (error) {
     runInAction(() => {
       feed.loading = false;
@@ -880,21 +834,20 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
   }
 });
 
-  /**
-   * Загрузка следующей страницы 
-   */
-  loadMore = action((feedType: FeedType, targetUserId?: string) => {
-    const feed = targetUserId ? this.getUserFeed(targetUserId) : this.getFeed(feedType);
+// УПРОЩЕННЫЙ loadMore
+loadMore = action((feedType: FeedType, targetUserId?: string) => {
+  const feed = targetUserId ? this.getUserFeed(targetUserId) : this.getFeed(feedType);
 
-    if (feed.loading || feed.allLoaded) {
-      logger.log(`[PostStore] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
-      return;
-    }
+  if (feed.loading || feed.allLoaded) {
+    logger.log(`[PostStore] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
+    return;
+  }
 
-    const nextPage = feed.page + 1;
-    logger.log(`[PostStore] Loading more ${feedType} posts, page ${nextPage}`);
-    this.fetchPosts(feedType, nextPage, targetUserId);
-  });
+  const nextPage = feed.page + 1;
+  logger.log(`[PostStore] Loading more ${feedType} posts, page ${nextPage}`);
+  
+  this.fetchPosts(feedType, nextPage, targetUserId);
+});
 
 /**
  * Обработка нового поста

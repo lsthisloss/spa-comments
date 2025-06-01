@@ -77,13 +77,12 @@ useEffect(() => {
 
   const findStartIndex = useCallback(() => {
     // Если scrollTop = 0, всегда начинаем с первого элемента
-    if (scrollTop <= 10) return 0;
+    if (scrollTop <= 50) return 0;
 
     let currentPosition = 0;
     for (let i = 0; i < items.length; i++) {
       const itemHeight = getItemHeight(i);
-      if (currentPosition + itemHeight > scrollTop - (BUFFER_SIZE * 100)) {
-        // Увеличиваем буферную зону выше текущей позиции
+      if (currentPosition + itemHeight > scrollTop - (BUFFER_SIZE * 150)) {
         return Math.max(0, i - BUFFER_SIZE);
       }
       currentPosition += itemHeight;
@@ -91,7 +90,6 @@ useEffect(() => {
     return Math.max(0, items.length - TOTAL_POOL_SIZE);
   }, [scrollTop, items.length, getItemHeight]);
 
-  // И улучшим getVirtualItems
   const getVirtualItems = useCallback(() => {
     const startIndex = findStartIndex();
     const result: VirtualListItem<T>[] = [];

@@ -28,7 +28,6 @@ const PostsThread = observer(({ activeTab, userId }: PostsFeedProps) => {
   const initialLoadRef = useRef(false);
   const lastUserIdRef = useRef(userId);
   const lastLoadAttemptRef = useRef<number>(0);
-  const lastLoadMoreRef = useRef<number>(0);
   // Вычисляем тип фида и получаем данные
   const { feedType, feed } = useMemo(() => {
     // Проверяем activeTab === "user" ИЛИ наличие userId
@@ -75,7 +74,7 @@ const PostsThread = observer(({ activeTab, userId }: PostsFeedProps) => {
         return; // Не загружаем новые посты, используем сохраненные
       }
       
-      // ИСПРАВЛЕНИЕ: Проверяем переключение табов vs прямой переход
+      // Проверяем переключение табов vs прямой переход
       if (savedScrollPosition > 0 && !hasSavedPosts) {
         // Если есть позиция скролла но нет сохраненных постов
         // Проверяем, это переключение табов или прямой переход
@@ -144,32 +143,15 @@ const PostsThread = observer(({ activeTab, userId }: PostsFeedProps) => {
     postStore.setManualUpdateMode(feedType, true);
   }, [feedType]);
 
-  // Загрузка следующей страницы
+// Загрузка следующей страницы
 const handleLoadMore = useCallback(() => {
   if (feed.loading || feed.allLoaded) {
-    logger.log(`[PostsThread] Skipping loadMore: loading=${feed.loading}, allLoaded=${feed.allLoaded}`);
-    return;
-  }
-  if (!initialLoadRef.current && feed.list.length === 0) {
-    logger.log(`[PostsThread] Skipping loadMore: initialLoad=false and no items`);
-    return;
-  }
-
-  // ИСПРАВЛЕНИЕ: Добавляем дебаунс для предотвращения частых вызовов
-  const now = Date.now();
-  const lastLoadMore = lastLoadMoreRef.current || 0;
-  
-  if (now - lastLoadMore < 300) { // 300ms между вызовами loadMore
-    logger.log(`[PostsThread] LoadMore debounced (${300 - (now - lastLoadMore)}ms remaining)`);
     return;
   }
   
-  lastLoadMoreRef.current = now;
-
-  logger.log(`[PostsThread] Loading more ${feedType} posts, page ${feed.page + 1}, userId: ${userId}`);
+  logger.log(`[PostsThread] Loading more ${feedType} posts`);
   postStore.loadMore(feedType, userId);
-}, [feedType, feed.loading, feed.allLoaded, feed.page, userId, initialLoadRef, feed.list.length]);
-
+}, [feedType, feed.loading, feed.allLoaded, userId]);
 
   // Обработчик загрузки новых постов из буфера
   const handleLoadNewPosts = useCallback(() => {
@@ -211,7 +193,7 @@ const handleLoadMore = useCallback(() => {
 
   // === ВОССТАНОВЛЕНИЕ СКРОЛЛА ПРИ ВОЗВРАТЕ ===
     
-
+/*
   // === ОСНОВНАЯ ЛОГИКА ЗАГРУЗКИ ПОСТОВ ===
     useEffect(() => {
     console.log(`[PostsThread DEBUG] Feed state:`, {
@@ -225,58 +207,59 @@ const handleLoadMore = useCallback(() => {
       items: feed.list.slice(0, 3).map(p => ({ id: p.id, userName: p.userName })) // Первые 3 поста для проверки
     });
   }, [feedType, userId, feed.list.length, feed.loading, feed.allLoaded, virtualItems.length, totalHeight, feed.list]);
-
-useEffect(() => {
-  // Отслеживаем смену типа фида или пользователя
-  const feedChanged = feedType !== lastActiveTabRef.current || userId !== lastUserIdRef.current;
-  
-  if (feedChanged) {
-    logger.log(`[PostsThread] Feed changed from ${lastActiveTabRef.current} to ${feedType}, userId: ${lastUserIdRef.current} -> ${userId}`);
-    lastActiveTabRef.current = feedType;
-    lastUserIdRef.current = userId;
+**/
+  useEffect(() => {
+    // Отслеживаем смену типа фида или пользователя
+    const feedChanged = feedType !== lastActiveTabRef.current || userId !== lastUserIdRef.current;
     
-    // ИСПРАВЛЕНИЕ: Сбрасываем флаг восстановления скролла при смене фида
-    hasRestoredScrollRef.current = false;
-    
-    // Остальная логика остается без изменений...
-    if (feed.list.length === 0 && !feed.loading && !feed.allLoaded) {
-      logger.log(`[PostsThread] Starting initial load for ${feedType}${userId ? ` (user: ${userId})` : ''}...`);
+    if (feedChanged) {
+      logger.log(`[PostsThread] Feed changed from ${lastActiveTabRef.current} to ${feedType}, userId: ${lastUserIdRef.current} -> ${userId}`);
+      lastActiveTabRef.current = feedType;
+      lastUserIdRef.current = userId;
       
-      if (feed.reset) {
-        postStore.clearResetFlag(feedType, userId);
+      // Сбрасываем флаг восстановления скролла при смене фида
+      hasRestoredScrollRef.current = false;
+      
+      // Проверяем только отсутствие данных и флагов загрузки
+      if (feed.list.length === 0 && !feed.loading && !feed.allLoaded) {
+        logger.log(`[PostsThread] Starting initial load for ${feedType}${userId ? ` (user: ${userId})` : ''}...`);
+        
+        if (feed.reset) {
+          postStore.clearResetFlag(feedType, userId);
+        }
+        
+        postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
+        initialLoadRef.current = true;
+      } else if (feed.allLoaded && feed.total === 0) {
+        logger.log(`[PostsThread] ${feedType} feed is empty and fully loaded, skipping initial load`);
       }
-      
-      postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
-      initialLoadRef.current = true;
-    } else if (feed.allLoaded && feed.total === 0) {
-      logger.log(`[PostsThread] ${feedType} feed is empty and fully loaded, skipping initial load`);
-    }
-    return;
-  }
-
-  // ЗАЩИТА: НЕ загружаем если лента пустая но уже все загружено
-  if (feed.list.length === 0 && !feed.loading && !feed.reset && !feed.allLoaded && !initialLoadRef.current) {
-    // ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: Проверяем что это не повторный вызов
-    if (Date.now() - (lastLoadAttemptRef.current || 0) < 2000) {
-      logger.log(`[PostsThread] Skipping load - too soon after last attempt`);
       return;
     }
+
+    // Упрощаем логику для избежания двойных вызовов
+    if (feed.list.length === 0 && !feed.loading && !feed.reset && !feed.allLoaded && !initialLoadRef.current) {
+      // ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: Проверяем что это не повторный вызов
+      const now = Date.now();
+      if (now - (lastLoadAttemptRef.current || 0) < 3000) {
+        logger.log(`[PostsThread] Skipping load - too soon after last attempt (${3000 - (now - (lastLoadAttemptRef.current || 0))}ms remaining)`);
+        return;
+      }
+      
+      logger.log(`[PostsThread] Starting initial load for ${feedType}...`);
+      lastLoadAttemptRef.current = now;
+      postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
+      initialLoadRef.current = true;
+    }
     
-    logger.log(`[PostsThread] Starting initial load for ${feedType}...`);
-    lastLoadAttemptRef.current = Date.now();
-    postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
-    initialLoadRef.current = true;
-  }
-  
-  // Проверяем reset флаг и загружаем свежие данные
-  if (feed.reset && !feed.loading) {
-    logger.log(`[PostsThread] Reset flag detected, loading fresh data for ${feedType}${userId ? ` (user: ${userId})` : ''}`);
-    
-    postStore.clearResetFlag(feedType, userId);
-    postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
-    initialLoadRef.current = true;
-  }
-}, [feedType, userId, feed.list.length, feed.loading, feed.reset, feed.allLoaded, feed.total]);
+    // Проверяем reset флаг и загружаем свежие данные
+    if (feed.reset && !feed.loading) {
+      logger.log(`[PostsThread] Reset flag detected, loading fresh data for ${feedType}${userId ? ` (user: ${userId})` : ''}`);
+      
+      postStore.clearResetFlag(feedType, userId);
+      postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
+      initialLoadRef.current = true;
+    }
+  }, [feedType, userId, feed.list.length, feed.loading, feed.reset, feed.allLoaded, feed.total]);
 
   const renderPostItem = useCallback((
     virtualItem: VirtualListItem<Post>, 

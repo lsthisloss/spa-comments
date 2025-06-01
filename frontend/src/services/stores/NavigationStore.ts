@@ -248,7 +248,7 @@ restoreTabScrollPosition = action((tab: 'all' | 'my') => {
   if (position > 0) {
     logger.log(`[NAV] Restoring ${tab} scroll position: ${position}`);
     
-    // ИСПРАВЛЕНИЕ: Более надежное восстановление с повторными попытками
+    // Более надежное восстановление с повторными попытками
     let attempts = 0;
     const maxAttempts = 3;
     
@@ -279,7 +279,7 @@ restoreTabScrollPosition = action((tab: 'all' | 'my') => {
 private restoreScrollPosition(position: number) {
   if (position <= 0) return;
   
-  // ИСПРАВЛЕНИЕ: Более надежное восстановление
+  // Более надежное восстановление
   const restore = () => {
     window.scrollTo({ top: position, behavior: 'auto' });
     logger.log(`[NAV] Restored scroll position: ${position}`);
