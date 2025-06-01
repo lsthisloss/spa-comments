@@ -1,6 +1,6 @@
 import { makeObservable, observable, action, runInAction, IObservableArray, reaction } from "mobx";
 import { BaseStore } from "./BaseStore";
-import { Post } from "../../types/interfaces";
+import { Post, User } from "../../types/interfaces";
 import { socketStore } from "./SocketStore";
 import { commentStore } from "./CommentStore";
 import userStore from "./UserStore";
@@ -541,17 +541,36 @@ class PostStore extends BaseStore<Post> {
     return commentStore.loadComments(postId);
   });
 
-  /**
-   * Обрабатывает массив постов и кэширует пользователей
-   */
-  processPosts = action((posts: Post[], feedType: FeedType) => {
+/**
+ * Обрабатывает массив постов и кэширует пользователей
+ */
+
+  processPosts = action((posts: Post[]) => {
+    // Собираем уникальных пользователей для кэширования
+    const uniqueUsers = new Map<string, User>();
+    
     posts.forEach(post => {
-      // Кэшируем каждого пользователя
-      if (post.user) {
-        userStore.addCachedUser(post.user);
+      //  Проверяем что user не undefined и имеет нужные поля
+      if (post.user && 
+          post.user.id && 
+          post.user.userName && 
+          !uniqueUsers.has(post.user.id)) {
+        uniqueUsers.set(post.user.id, post.user as User);
       }
-      
-      this.addPost(post, feedType);
+    });
+    
+    // Кэшируем уникальных пользователей одним махом
+    uniqueUsers.forEach(user => {
+      userStore.addCachedUser(user);
+    });
+    
+    if (uniqueUsers.size > 0) {
+      logger.log(`[PostStore] Cached ${uniqueUsers.size} unique users for ${posts.length} posts`);
+    }
+    
+    // добавляем посты БЕЗ повторного кэширования пользователей
+    posts.forEach(post => {
+      this.postsMap.set(post.id, post);
     });
   });
 
@@ -560,10 +579,13 @@ class PostStore extends BaseStore<Post> {
  */
   addPost = action((post: Post, feedType?: FeedType) => {
     runInAction(() => {
-      // кэширование пользователя
+      // Кэшируем пользователя только если его еще нет в кэше
       if (post.user && post.user.id) {
-        userStore.addCachedUser(post.user);
-        logger.log(`[PostStore] Cached user ${post.user.userName} (${post.user.id}) for post ${post.id}`);
+        const existingUser = userStore.getCachedUser(post.user.id);
+        if (!existingUser) {
+          userStore.addCachedUser(post.user);
+          logger.log(`[PostStore] Cached new user ${post.user.userName} (${post.user.id}) for post ${post.id}`);
+        }
       } else if (!post.user && post.userId) {
         // Если нет user объекта, но есть userId, пробуем восстановить из кэша
         const cachedUser = userStore.getCachedUser(post.userId);
@@ -803,7 +825,7 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
 
     // Сначала ВСЕГДА добавляем посты, если они есть
     if (posts.length > 0) {
-      this.processPosts(posts, feedType);
+      this.processPosts(posts);
 
       if (page === 1) {
         feed.list.replace(posts.map(post => observable(post)));
@@ -877,6 +899,7 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
 /**
  * Обработка нового поста
  */
+
   handleNewPost = action((post: Post, type: FeedType) => {
     const feed = this.getFeed(type);
     
@@ -884,48 +907,41 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
     const existsInList = feed.list.some(p => p.id === post.id);
     const existsInBuffer = feed.buffer.some(p => p.id === post.id);
     
-    if (existsInList) {
-      logger.log(`[PostStore] Post ${post.id} already exists in ${type} feed list, skipping`);
+    if (existsInList || existsInBuffer) {
+      logger.log(`[PostStore] Post ${post.id} already exists, skipping`);
       return;
     }
     
-    if (existsInBuffer) {
-      logger.log(`[PostStore] Post ${post.id} already exists in buffer, skipping`);
-      return;
-    }
-    
-    // Обрабатываем пользователя перед добавлением поста
-    if (post.user) {
-      userStore.addCachedUser(post.user);
-      logger.log(`[PostStore] Cached user ${post.user.userName} (${post.user.id}) for new post ${post.id}`);
+    // Кэшируем пользователя только если его еще нет
+    if (post.user && post.user.id) {
+      const existingUser = userStore.getCachedUser(post.user.id);
+      if (!existingUser) {
+        userStore.addCachedUser(post.user);
+        logger.log(`[PostStore] Cached new user ${post.user.userName} for new post ${post.id}`);
+      }
     } else if (post.userId) {
-      // Если нет объекта user, но есть userId, пытаемся восстановить из кэша
       const cachedUser = userStore.getCachedUser(post.userId);
       if (cachedUser) {
         post.user = cachedUser;
-        logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
+        logger.log(`[PostStore] Restored user from cache for post ${post.id}`);
       } else {
-        logger.warn(`[PostStore] No user data found for post ${post.id}, userId: ${post.userId}`);
+        logger.warn(`[PostStore] No user data for post ${post.id}, userId: ${post.userId}`);
       }
     }
     
     const observablePost = observable(post);
-    
-    // Добавляем в postsMap для глобального доступа
     this.postsMap.set(post.id, observablePost);
     
     runInAction(() => {
       feed.latestPost = observablePost;
       
       if (feed.manualUpdateMode) {
-        // В мануальном режиме добавляем в буфер
         feed.buffer.unshift(observablePost);
         feed.newPostsCount = feed.buffer.length;
-        logger.log(`[PostStore] New post ${post.id} added to buffer (manual mode is on), buffer size: ${feed.buffer.length}`);
+        logger.log(`[PostStore] New post ${post.id} added to buffer, size: ${feed.buffer.length}`);
       } else {
-        // В обычном режиме добавляем сразу в список
         feed.list.unshift(observablePost);
-        logger.log(`[PostStore] New post ${post.id} added directly to ${type} feed (manual mode is off)`);
+        logger.log(`[PostStore] New post ${post.id} added directly to ${type} feed`);
       }
     });
   });
@@ -943,17 +959,34 @@ fetchPosts = action(async (feedType: FeedType, page = 1, targetUserId?: string):
       
       logger.log(`[PostStore] Moving ${feed.buffer.length} posts from buffer to list`);
       
-      // Обрабатываем каждый пост перед добавлением
+      // Кэшируем только уникальных пользователей
+      const uniqueUsers = new Map<string, User>();
+
       feed.buffer.forEach(post => {
-        if (post.user) {
-          userStore.addCachedUser(post.user);
-        } else if (post.userId) {
+        if (post.user && 
+            post.user.id && 
+            post.user.userName && 
+            !uniqueUsers.has(post.user.id)) {
+          const existingUser = userStore.getCachedUser(post.user.id);
+          if (!existingUser) {
+            uniqueUsers.set(post.user.id, post.user as User);
+          }
+        } else if (post.userId && !post.user) {
           const cachedUser = userStore.getCachedUser(post.userId);
           if (cachedUser) {
             post.user = cachedUser;
           }
         }
       });
+
+      // Кэшируем уникальных пользователей
+      uniqueUsers.forEach(user => {
+        userStore.addCachedUser(user);
+      });
+      
+      if (uniqueUsers.size > 0) {
+        logger.log(`[PostStore] Cached ${uniqueUsers.size} unique users from buffer`);
+      }
       
       // Добавляем все посты из буфера в начало списка
       feed.list.unshift(...feed.buffer);
