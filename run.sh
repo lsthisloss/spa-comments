@@ -82,8 +82,27 @@ function app_build_frontend_dev() {
     
     cd frontend
     
-    echo -e "${CYAN}Installing dependencies...${NORMAL}"
-    npm install
+    # ИСПРАВЛЕНИЕ: Увеличиваем лимит памяти и очищаем кэш
+    export NODE_OPTIONS="--max-old-space-size=384"
+    
+    echo -e "${CYAN}Clearing npm cache...${NORMAL}"
+    npm cache clean --force
+    
+    echo -e "${CYAN}Installing dependencies with memory limits...${NORMAL}"
+    npm install --no-optional --prefer-offline --progress=false --loglevel=error --maxsockets=5
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to install dependencies. Trying alternative approach...${NORMAL}"
+        # Устанавливаем TypeScript и Vite через npx для разового использования
+        echo -e "${CYAN}Installing build tools...${NORMAL}"
+        npm install typescript vite @vitejs/plugin-react --no-save --no-optional
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Installation failed. Server memory too low. Try building locally.${NORMAL}"
+            cd ..
+            exit 1
+        fi
+    fi
     
     echo -e "${CYAN}Creating development environment...${NORMAL}"
     cat > .env << EOF
@@ -94,7 +113,20 @@ NODE_ENV=development
 EOF
     
     echo -e "${CYAN}Building frontend...${NORMAL}"
-    npm run build
+    # ИСПРАВЛЕНИЕ: Используем npx и добавляем timeout
+    NODE_ENV=development timeout 600 npx tsc -b
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}TypeScript compilation failed!${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    NODE_ENV=development timeout 600 npx vite build
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Vite build failed!${NORMAL}"
+        cd ..
+        exit 1
+    fi
     
     if [ ! -d "dist" ]; then
         echo -e "${RED}dist directory not found!${NORMAL}"
@@ -120,8 +152,29 @@ function app_build_frontend_prod() {
     
     cd frontend
     
-    echo -e "${CYAN}Installing dependencies...${NORMAL}"
-    npm install
+    # ИСПРАВЛЕНИЕ: Увеличиваем лимит памяти для Node.js и очищаем кэш
+    export NODE_OPTIONS="--max-old-space-size=384"
+    
+    echo -e "${CYAN}Clearing npm cache...${NORMAL}"
+    npm cache clean --force
+    
+    echo -e "${CYAN}Installing dependencies with memory limits...${NORMAL}"
+    # Устанавливаем с ограничениями по памяти
+    npm install --no-optional --prefer-offline --progress=false --loglevel=error --maxsockets=5
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to install dependencies. Trying alternative approach...${NORMAL}"
+        
+        # Устанавливаем только самое необходимое
+        npm install typescript vite @vitejs/plugin-react --no-save --no-optional
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Installation failed. Server memory too low.${NORMAL}"
+            echo -e "${YELLOW}Try building locally and uploading dist folder.${NORMAL}"
+            cd ..
+            exit 1
+        fi
+    fi
     
     echo -e "${CYAN}Creating production environment...${NORMAL}"
     cat > .env.production << EOF
@@ -132,7 +185,22 @@ NODE_ENV=production
 EOF
     
     echo -e "${CYAN}Building frontend for production...${NORMAL}"
-    NODE_ENV=production npm run build
+    # ИСПРАВЛЕНИЕ: Используем npx и увеличиваем timeout
+    NODE_ENV=production timeout 900 npx tsc -b
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}TypeScript compilation failed or timed out!${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    NODE_ENV=production timeout 900 npx vite build
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Vite build failed or timed out!${NORMAL}"
+        cd ..
+        exit 1
+    fi
     
     if [ ! -d "dist" ]; then
         echo -e "${RED}dist directory not found!${NORMAL}"
