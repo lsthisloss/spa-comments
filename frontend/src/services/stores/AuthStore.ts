@@ -10,6 +10,7 @@ class AuthStore {
   isAuthenticated = false;
   initialLoadComplete = false;
   socketsInitializing = false;
+  tokenValidated = false; // Добавляем флаг валидации токена
 
   constructor() {
     makeAutoObservable(this);
@@ -18,22 +19,86 @@ class AuthStore {
     }, 0);
   }
 
-  initFromLocalStorage() {
+  async initFromLocalStorage() {
     try {
       const token = localStorage.getItem('token');
       const userId = localStorage.getItem('userId');
       const userName = localStorage.getItem('userName');
       
       if (token && userId) {
-        logger.log('[AuthStore] Initializing auth from localStorage');
-        this.setAuth(token, userId, userName || 'Anonymous');
+        logger.log('[AuthStore] Found auth data in localStorage, validating...');
+        
+        // Сначала устанавливаем данные
+        await this.setAuth(token, userId, userName || 'Anonymous');
+        
+        // Затем валидируем токен с бэкендом
+        await this.validateTokenWithBackend();
       } else {
         logger.log('[AuthStore] No auth data found in localStorage');
       }
     } catch (error) {
       logger.error('[AuthStore] Failed to init auth from localStorage', error);
+      this.clearAuthData();
     } finally {
       this.initialLoadComplete = true;
+    }
+  }
+
+  async validateTokenWithBackend(): Promise<boolean> {
+    if (!this.token || !this.userId) {
+      return false;
+    }
+
+    try {
+      logger.log('[AuthStore] Validating token with backend...');
+      
+      // Ждем подключения сокета пользователей
+      let attempts = 0;
+      while (!socketStore.users?.connected && attempts < 20) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        attempts++;
+      }
+
+      if (!socketStore.users?.connected) {
+        throw new Error('Users socket not connected');
+      }
+
+      // Пытаемся получить данные пользователя для валидации токена
+      const user = await userStore.getUserById(this.userId);
+      
+      if (user && user.id === this.userId) {
+        logger.log('[AuthStore] Token validation successful');
+        this.tokenValidated = true;
+        return true;
+      } else {
+        throw new Error('User validation failed');
+      }
+    } catch (error) {
+      logger.error('[AuthStore] Token validation failed:', error);
+      this.clearAuthData();
+      return false;
+    }
+  }
+
+  clearAuthData() {
+    logger.log('[AuthStore] Clearing invalid auth data');
+    
+    runInAction(() => {
+      this.token = null;
+      this.userId = null;
+      this.userName = null;
+      this.isAuthenticated = false;
+      this.tokenValidated = false;
+    });
+
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userSlug');
+    } catch (e) {
+      logger.error('[AuthStore] Failed to clear localStorage', e);
     }
   }
 
@@ -45,6 +110,7 @@ class AuthStore {
       this.userId = userId;
       this.userName = userName;
       this.isAuthenticated = true;
+      this.tokenValidated = false; // Сбрасываем флаг валидации
     });
     
     try {
@@ -66,6 +132,7 @@ class AuthStore {
       this.userId = null;
       this.userName = null;
       this.isAuthenticated = false;
+      this.tokenValidated = false;
     });
     
     try {
@@ -74,6 +141,7 @@ class AuthStore {
       localStorage.removeItem('userId');
       localStorage.removeItem('userName');
       localStorage.removeItem('user');
+      localStorage.removeItem('userSlug');
       
       userStore.clearUser();
       
@@ -90,7 +158,7 @@ class AuthStore {
   }
   
   get isAuthReady(): boolean {
-    return this.initialLoadComplete && !this.socketsInitializing;
+    return this.initialLoadComplete && !this.socketsInitializing && this.tokenValidated;
   }
 
 syncWithUserStore(user: { id: string; token: string; userName: string; slug?: string }) {
@@ -106,6 +174,12 @@ syncWithUserStore(user: { id: string; token: string; userName: string; slug?: st
     }
   }
   
+  // Prevent multiple socket initializations
+  if (this.socketsInitializing) {
+    logger.log('[AuthStore] Socket initialization already in progress, skipping');
+    return;
+  }
+  
   // Ensure sockets are properly initialized with new auth
   this.socketsInitializing = true;
   
@@ -114,19 +188,26 @@ syncWithUserStore(user: { id: string; token: string; userName: string; slug?: st
     socketStore.initializeAuthenticatedSockets(this.token);
   }
   
-  // Шаг 2: Слушаем событие подключения всех сокетов
+  // Шаг 2: Слушаем событие подключения всех сокетов - ТОЛЬКО ОДИН РАЗ
   const socketReadyHandler = () => {
     if (socketStore.posts?.connected && 
         socketStore.comments?.connected && 
         socketStore.users?.connected) {
       
-      // Все сокеты подключены, загружаем посты
-      logger.log('[AuthStore] All sockets connected, loading posts');
+      logger.log('[AuthStore] All sockets connected, loading posts ONCE');
+      
+      // Отписываемся СРАЗУ чтобы избежать повторных вызовов
+      document.removeEventListener('sockets-ready', socketReadyHandler);
       
       // Используем setTimeout, чтобы дать сокетам закончить инициализацию
       setTimeout(() => {
         import('./PostStore').then(({ postStore }) => {
-          // Инициализируем обе ленты - основную и ленту подписок
+          // Проверяем что мы все еще в процессе инициализации
+          if (!this.socketsInitializing) {
+            logger.log('[AuthStore] Socket initialization was cancelled, skipping post load');
+            return;
+          }
+          
           logger.log('[AuthStore] Initializing both feeds after authentication');
           
           // Сначала основную ленту
@@ -135,13 +216,13 @@ syncWithUserStore(user: { id: string; token: string; userName: string; slug?: st
           
           // Затем ленту подписок (с небольшой задержкой)
           setTimeout(() => {
-            postStore.resetFeedState("following");
-            postStore.fetchPosts("following", 1);
+            if (this.socketsInitializing) { // Еще одна проверка
+              postStore.resetFeedState("following");
+              postStore.fetchPosts("following", 1);
+            }
           }, 500);
         });
         
-        // Отписываемся от события после загрузки
-        document.removeEventListener('sockets-ready', socketReadyHandler);
         this.socketsInitializing = false;
       }, 300);
     }
@@ -155,6 +236,9 @@ syncWithUserStore(user: { id: string; token: string; userName: string; slug?: st
     if (this.socketsInitializing) {
       logger.log('[AuthStore] Timeout reached, loading posts anyway');
       
+      // Отписываемся от события
+      document.removeEventListener('sockets-ready', socketReadyHandler);
+      
       import('./PostStore').then(({ postStore }) => {
         // Инициализируем обе ленты при таймауте
         postStore.resetFeedState("feed");
@@ -166,7 +250,6 @@ syncWithUserStore(user: { id: string; token: string; userName: string; slug?: st
         }, 500);
       });
       
-      document.removeEventListener('sockets-ready', socketReadyHandler);
       this.socketsInitializing = false;
     }
   }, 5000);

@@ -25,6 +25,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
   
   const hasRestoredScrollRef = useRef(false);
   const stableUserId = useMemo(() => actualUserId, [actualUserId]);
+  const isLoadingRef = useRef(false);
 
   // Определяем тип ленты и получаем состояние
   const { feedType, feed } = useMemo(() => {
@@ -58,8 +59,14 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
     }
   }, [feedType, stableUserId]);
 
-  // Загрузка данных
+  // Загрузка данных - с защитой от дублирования
   useEffect(() => {
+    // Защита от дублирования
+    if (isLoadingRef.current) {
+      logger.log(`[PostsThread] Load already in progress, skipping`);
+      return;
+    }
+
     // Проверки
     if (feed.loading) {
       logger.log(`[PostsThread] Skipping load - another load in progress`);
@@ -90,10 +97,18 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
       postStore.clearResetFlag(feedType, feedType === "user" ? stableUserId : undefined);
     }
     
+    // Устанавливаем флаг загрузки
+    isLoadingRef.current = true;
+    
     // Загружаем
     logger.log(`[PostsThread] Loading posts for ${feedType}${stableUserId ? ` ${stableUserId}` : ''}`);
     const userId = feedType === "user" ? stableUserId : undefined;
-    postStore.fetchPosts(feedType, 1, userId).catch(setSocketError);
+    
+    postStore.fetchPosts(feedType, 1, userId)
+      .catch(setSocketError)
+      .finally(() => {
+        isLoadingRef.current = false;
+      });
     
   }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length]);
 
@@ -272,6 +287,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
           newPostsCount: feed.newPostsCount,
           feedListLength: feed.list.length,
           resetFlag: feed.reset,
+          isLoadingLocal: isLoadingRef.current,
         }}
       />
     </div>

@@ -266,54 +266,38 @@ async waitForSockets(timeoutMs: number = 5000): Promise<boolean> {
    * Инициализирует данные пользователя
    */
   private async initializeUserData(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      // Уже инициализированы?
-      if (userStore.user && authStore.isAuthenticated) {
-        logger.debug("[AppInit] User data already initialized");
-        resolve();
-        return;
-      }
-      
-      // Если authStore загружен, но userStore нет - синхронизируем
-      if (authStore.isAuthenticated && authStore.userId) {
-        if (!userStore.user || userStore.user.id !== authStore.userId) {
-          logger.info("[AppInit] Fetching full user data for authenticated user");
-          
-          // Attempt to get complete user data
-          userStore.getUserById(authStore.userId)
-            .then(user => {
-              if (user) {
-                logger.info("[AppInit] Full user data retrieved successfully");
-                
-                // Ensure all stores have the latest user data
-                setTimeout(() => {
-                  if (socketStore.users && socketStore.users.connected) {
-                    // Force a refresh of socket connections with the new user data
-                    socketStore.checkConnections();
-                  }
-                }, 500);
-              }
-            })
-            .catch(err => {
-              logger.error("[AppInit] Failed to fetch full user data:", err);
-            });
-        }
-      }
-      
-      // Если userStore загружен, но authStore нет - синхронизируем
-      if (userStore.user?.id && !authStore.isAuthenticated) {
-        logger.info("[AppInit] Synchronizing authStore from userStore");
-        authStore.syncWithUserStore({
-          id: userStore.user.id,
-          token: userStore.user.token || "",
-          userName: userStore.user.userName || "Anonymous"
-        });
-      }
-      
-      logger.debug("[AppInit] User data initialization completed");
-      resolve();
-    });
+  logger.log("[AppInit] Starting user data initialization");
+  
+  // Ждем завершения инициализации authStore
+  let attempts = 0;
+  while (!authStore.initialLoadComplete && attempts < 40) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    attempts++;
   }
+  
+  if (!authStore.initialLoadComplete) {
+    logger.warn("[AppInit] AuthStore initialization timeout");
+    return;
+  }
+  
+  // Если пользователь аутентифицирован, ждем валидации токена
+  if (authStore.isAuthenticated) {
+    logger.log("[AppInit] User authenticated, waiting for token validation...");
+    
+    attempts = 0;
+    while (!authStore.tokenValidated && authStore.isAuthenticated && attempts < 20) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      attempts++;
+    }
+    
+    if (!authStore.tokenValidated && authStore.isAuthenticated) {
+      logger.warn("[AppInit] Token validation timeout or failed");
+      authStore.clearAuthData();
+    }
+  }
+  
+  logger.log("[AppInit] User data initialization completed");
+}
 
   /**
    * Инициализирует сокеты с аутентификацией
