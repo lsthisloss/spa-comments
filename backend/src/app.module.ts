@@ -13,6 +13,7 @@ import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
 import { Comment } from './comments/entities/comment.entity';
 import { SearchModule } from './search/search.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SearchModule } from './search/search.module';
     CommentsModule,
     AuthModule,
     SearchModule,
+    CommonModule,
   ],
   providers: [AppGateway],
 })

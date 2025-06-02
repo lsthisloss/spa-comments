@@ -1,111 +1,119 @@
 import { useState, useEffect } from 'react';
 import { Modal, Form, Input, Button, message, Progress } from 'antd';
 import { observer } from "mobx-react";
-import  userStore  from '../services/stores/UserStore';
+import userStore from '../services/stores/UserStore';
 import { socketStore } from '../services/stores/SocketStore';
-import authStore from '../services/stores/AuthStore';
-import { LoginFormValues, LoginResponse, RegisterFormValues, RegisterResponse } from '../types/interfaces';
+import { LoginFormValues, RegisterFormValues } from '../types/interfaces';
 import { useNavigate } from 'react-router-dom';
-import { logger } from "../utils/Logger";
-
-/* 
-  AuthPage — компонент для отображения страницы аутентификации
-  - Содержит формы для регистрации и входа в систему
-  - Использует MobX для управления состоянием пользователя
-  - При успешной аутентификации перенаправляет на главную страницу
-  - Отображает сообщения об ошибках и загрузке
-*/
 
 const AuthPage = observer(() => {
-  const socket = socketStore.users;
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [isSocketReady, setIsSocketReady] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
   const navigate = useNavigate();
 
-  const handleAuthSuccess = async (user: LoginResponse['user'] & { token: string }) => {
-    userStore.setUser(user);
-    authStore.setAuth(user.token, user.id, user.userName);
-    await socketStore.initializeAuthenticatedSockets(user.token);
+  const handleAuthSuccess = async () => {
+  try {
+    // Небольшая задержка для завершения инициализации сокетов
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Переходим на главную
     navigate('/');
     setShowRegister(false);
     setShowLogin(false);
-  };
-    const [passwordStrength, setPasswordStrength] = useState(0);
-    
-    // Функция для оценки надежности пароля
-    const evaluatePasswordStrength = (password: string) => {
-      if (!password) return 0;
-      
-      let strength = 0;
-      
-      // Базовые проверки
-      if (password.length >= 6) strength += 20;
-      if (password.length >= 10) strength += 10;
-      if (/[a-z]/.test(password)) strength += 15;
-      if (/[A-Z]/.test(password)) strength += 15;
-      if (/[0-9]/.test(password)) strength += 15;
-      if (/[@$!%*?&#^(){}[\]<>,.;:+=\-_|\\/"'`~]/.test(password)) strength += 25;
-      
-      return Math.min(100, strength);
-    };
-  const onLogin = (values: LoginFormValues) => {
-    if (!socket || !isSocketReady) {
-      setLoading(false);
+  } catch (error) {
+    console.error('Error during auth success handling:', error);
+  }
+};
+
+  // Упрощенный метод логина - теперь вся логика в UserStore
+  const onLogin = async (values: LoginFormValues) => {
+    if (!socketStore.users || !isSocketReady) {
       message.error('No connection to server. Please try again later.');
       return;
     }
-    setLoading(true);
-    socket.emit('login', values, (res: LoginResponse) => {
-      setLoading(false);
-      logger.log("Login response:", res);
-      if (res?.success && res.user && res.token) {
+
+    try {
+      const result = await userStore.login(values.email, values.password);
+      
+      if (result.success && result.user) {
         message.success('Login successful!');
-        handleAuthSuccess({ ...res.user, token: res.token });
+        await handleAuthSuccess();
       } else {
-        message.error(res?.message || 'Error during login');
+        message.error(result.message || 'Login failed');
       }
-    });
+    } catch (error) {
+      console.error('Login error:', error);
+      message.error('Failed to login. Please try again.');
+    }
   };
 
-  const onRegister = (values: RegisterFormValues) => {
-    if (!socket || !isSocketReady) {
-      setLoading(false);
+  // Упрощенный метод регистрации
+  const onRegister = async (values: RegisterFormValues) => {
+    if (!socketStore.users || !isSocketReady) {
       message.error('No connection to server. Please try again later.');
       return;
     }
-    setLoading(true);
-    socket.emit('register', values, (res: RegisterResponse) => {
-      setLoading(false);
-      logger.log("Register response:", res);
-      if (!res || typeof res !== 'object') {
-        message.error('Invalid server response');
-        return;
-      }
-      const response = Array.isArray(res) ? res[0] : res;
-      if (response.success && response.user && response.token) {
+
+    try {
+      const result = await userStore.register(values.email, values.userName, values.password);
+      
+      if (result.success && result.user) {
         message.success('Registration successful!');
-        handleAuthSuccess({ ...response.user, token: response.token });
+        await handleAuthSuccess();
       } else {
-        message.error(response.message || 'Error during registration');
+        message.error(result.message || 'Registration failed');
       }
-    });
+    } catch (error) {
+      console.error('Registration error:', error);
+      message.error('Failed to register. Please try again.');
+    }
+  };
+
+  // Функция для оценки надежности пароля
+  const evaluatePasswordStrength = (password: string) => {
+    if (!password) return 0;
+    
+    let strength = 0;
+    
+    if (password.length >= 6) strength += 20;
+    if (password.length >= 10) strength += 10;
+    if (/[a-z]/.test(password)) strength += 15;
+    if (/[A-Z]/.test(password)) strength += 15;
+    if (/[0-9]/.test(password)) strength += 15;
+    if (/[@$!%*?&#^(){}[\]<>,.;:+=\-_|\\/"'`~]/.test(password)) strength += 25;
+    
+    return Math.min(100, strength);
+  };
+
+  const getPasswordStrengthColor = (strength: number) => {
+    if (strength < 30) return '#ff4d4f';
+    if (strength < 60) return '#faad14';
+    if (strength < 80) return '#1890ff';
+    return '#52c41a';
+  };
+
+  const getPasswordStrengthText = (strength: number) => {
+    if (strength < 30) return 'Weak';
+    if (strength < 60) return 'Fair';
+    if (strength < 80) return 'Good';
+    return 'Strong';
   };
 
   useEffect(() => {
-    if (socket) {
+    if (socketStore.users) {
       const onConnect = () => setIsSocketReady(true);
       const onDisconnect = () => setIsSocketReady(false);
-      socket.on('connect', onConnect);
-      socket.on('disconnect', onDisconnect);
-      if (socket.connected) setIsSocketReady(true);
+      socketStore.users.on('connect', onConnect);
+      socketStore.users.on('disconnect', onDisconnect);
+      if (socketStore.users.connected) setIsSocketReady(true);
       return () => {
-        socket.off('connect', onConnect);
-        socket.off('disconnect', onDisconnect);
+        socketStore.users?.off('connect', onConnect);
+        socketStore.users?.off('disconnect', onDisconnect);
       };
     }
-  }, [socket]);
+  }, []);
 
   return (
     <div className="auth-page">
@@ -136,6 +144,7 @@ const AuthPage = observer(() => {
         </Button>
       </div>
 
+      {/* Modal for Registration */}
       <Modal
         className="modal"
         open={showRegister}
@@ -145,173 +154,160 @@ const AuthPage = observer(() => {
         centered
         destroyOnHidden
       >
-      <Form layout="vertical" onFinish={onRegister}>
+        <Form layout="vertical" onFinish={onRegister}>
           <Form.Item
+            label="Email"
             name="email"
-            label="E-mail"
             rules={[
-              { required: true, message: 'Enter email address' },
-              { 
-                type: 'email', 
-                message: 'Enter a valid email address' 
-              },
-              {
-                pattern: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-                message: 'Email can only contain letters, numbers and symbols: . _ % + -'
-              }
+              { required: true, message: 'Please input your email!' },
+              { type: 'email', message: 'Please enter a valid email!' }
             ]}
           >
             <Input 
-              autoComplete="username" 
-              aria-label="Email address"
-              placeholder="example@domain.com"
+              placeholder="your@email.com"
+              autoComplete="email"
             />
           </Form.Item>
-
+          
           <Form.Item
-            name="userName"
             label="Username"
+            name="userName"
             rules={[
-              { required: true, message: 'Enter username' },
+              { required: true, message: 'Please input your username!' },
+              { min: 3, message: 'Username must be at least 3 characters!' },
+              { max: 20, message: 'Username must be less than 20 characters!' },
               { 
-                min: 4, 
-                message: 'Username must be at least 4 characters long' 
-              },
-              {
-                pattern: /^[a-zA-Z][a-zA-Z0-9]*$/,
-                message: 'Username must start with a letter and contain only letters and numbers'
+                pattern: /^[a-zA-Z0-9_-]+$/, 
+                message: 'Username can only contain letters, numbers, _ and -' 
               }
             ]}
           >
             <Input 
-              autoComplete="username" 
-              aria-label="Username"
-              placeholder="john123"
-              maxLength={20}
-              onInput={(e) => {
-                const target = e.target as HTMLInputElement;
-                target.value = target.value.replace(/[^a-zA-Z0-9]/g, '');
-              }}
+              placeholder="Username"
+              autoComplete="username"
             />
           </Form.Item>
-            <Form.Item
-            name="password"
+          
+          <Form.Item
             label="Password"
+            name="password"
             rules={[
-              { required: true, message: 'Please enter a password' },
-              { min: 6, message: 'Password must be at least 6 characters long' },
-              {
-                pattern: /^(?=.*[a-zA-Z])(?=.*\d)[\w@$!%*?&#^(){}[\]<>,.;:+=\-_|\\/"'`~]{6,}$/,
-                message: 'Password must contain at least one letter and one number'
-              }
+              { required: true, message: 'Please input your password!' },
+              { min: 6, message: 'Password must be at least 6 characters!' }
             ]}
-            tooltip="Password must be at least 6 characters long and include letters, numbers, and optionally special characters"
           >
-            <Input.Password
-              autoComplete="new-password" 
-              aria-label="Password"
-              placeholder="At least 6 characters with letters and numbers"
-              className="password-input"
+            <Input.Password 
+              placeholder="Password"
+              autoComplete="new-password"
               onChange={(e) => setPasswordStrength(evaluatePasswordStrength(e.target.value))}
             />
-    </Form.Item>
-        {/* Индикатор надежности пароля */}
-        <div style={{ marginTop: '-12px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-            <span>Password strength:</span>
-            <span>
-              {passwordStrength < 30 && 'Weak'}
-              {passwordStrength >= 30 && passwordStrength < 70 && 'Medium'}
-              {passwordStrength >= 70 && 'Strong'}
-            </span>
-          </div>
-          <Progress 
-            percent={passwordStrength} 
-            showInfo={false} 
-            strokeColor={
-              passwordStrength < 30 ? '#ff4d4f' :
-              passwordStrength < 70 ? '#faad14' : '#52c41a'
-            } 
-            size="small" 
-          />
-        </div>
-        {/* Add a password requirements helper */}
-        <div className="password-requirements">
-          <p style={{ fontSize: '12px', color: '#888', marginBottom: '12px' }}>
-            Password requirements:
-          </p>
-          <ul style={{ fontSize: '12px', color: '#888', paddingLeft: '20px' }}>
-            <li>At least 6 characters</li>
-            <li>At least 1 letter (a-z, A-Z)</li>
-            <li>At least 1 number (0-9)</li>
-            <li>Can include special characters (@$!%*?&#, etc.)</li>
-          </ul>
-        </div>
-
+          </Form.Item>
+          
+          {passwordStrength > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                marginBottom: 4,
+                fontSize: '12px',
+                color: '#666'
+              }}>
+                <span>Password Strength</span>
+                <span style={{ color: getPasswordStrengthColor(passwordStrength) }}>
+                  {getPasswordStrengthText(passwordStrength)}
+                </span>
+              </div>
+              <Progress 
+                percent={passwordStrength} 
+                strokeColor={getPasswordStrengthColor(passwordStrength)}
+                showInfo={false}
+                size="small"
+              />
+            </div>
+          )}
+          
+          <Form.Item
+            label="Confirm Password"
+            name="confirmPassword"
+            dependencies={['password']}
+            rules={[
+              { required: true, message: 'Please confirm your password!' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('Passwords do not match!'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password 
+              placeholder="Confirm Password"
+              autoComplete="new-password"
+            />
+          </Form.Item>
+          
           <Button
             className="scale-in"
             type="primary"
             htmlType="submit"
             block
-            loading={loading}
+            loading={userStore.loginLoading}
           >
             Register
           </Button>
         </Form>
       </Modal>
 
+      {/* Modal for Login */}
       <Modal
         className="modal"
         open={showLogin}
         onCancel={() => setShowLogin(false)}
         footer={null}
-        title="Вход"
+        title="Login"
         centered
         destroyOnHidden
       >
-      <Form layout="vertical" onFinish={onLogin}>
-        <Form.Item
-          name="email"
-          label="E-mail"
-          rules={[
-            { required: true, message: 'Enter email address' },
-            { 
-              type: 'email', 
-              message: 'Enter a valid email address' 
-            }
-          ]}
-        >
-          <Input 
-            autoComplete="username" 
-            aria-label="Email address"
-            placeholder="example@domain.com"
-          />
-        </Form.Item>
-
-        <Form.Item
-        name="password"
-        label="Password"
-        rules={[
-          { required: true, message: 'Please enter your password' },
-          { min: 6, message: 'Password must be at least 6 characters long' }
-        ]}
-      >
-        <Input.Password 
-          autoComplete="current-password" 
-          aria-label="Password"
-          placeholder="Your password"
-        />
-      </Form.Item>
-        <Button
-          className="scale-in"
-          type="primary"
-          htmlType="submit"
-          block
-          loading={loading}
-        >
-          Login
-        </Button>
-      </Form>
+        <Form layout="vertical" onFinish={onLogin}>
+          <Form.Item
+            label="Email"
+            name="email"
+            rules={[
+              { required: true, message: 'Please input your email!' },
+              { type: 'email', message: 'Please enter a valid email!' }
+            ]}
+          >
+            <Input 
+              placeholder="your@email.com"
+              autoComplete="email"
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="Password"
+            name="password"
+            rules={[
+              { required: true, message: 'Please input your password!' }
+            ]}
+          >
+            <Input.Password 
+              placeholder="Password"
+              autoComplete="current-password"
+            />
+          </Form.Item>
+          
+          <Button
+            className="scale-in"
+            type="primary"
+            htmlType="submit"
+            block
+            loading={userStore.loginLoading}
+          >
+            Login
+          </Button>
+        </Form>
       </Modal>
     </div>
   );

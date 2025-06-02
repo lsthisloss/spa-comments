@@ -35,11 +35,31 @@ export interface ISocketStore {
 export interface IUserStore {
   user: User | null;
   isAuthenticated: boolean;
+  loginLoading: boolean;
+  
+  login(email: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }>;
+  
+  register(email: string, userName: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }>;
+  
+  setUser(user: User | null): void;
+  logout(): void;
+  getUserById(userIdOrSlug: string): Promise<User | null>;
+  
+  // Геттеры для ролей
+  readonly isAdmin: boolean;
+  readonly isSuperAdmin: boolean;
+  readonly canManageAdmins: boolean;
+  readonly canExecuteDebugTests: boolean;
   usersCache: Map<string, User>;
   loadingUsers: Set<string>;
-  setUser: (user: User | null) => void;
-  logout: () => void;
-  getUserById: (userId: string) => Promise<User | null>;
   isUserLoading: (userId: string) => boolean;
   getCachedUser: (userId: string) => User | null;
   followUser: (userId: string) => Promise<void>;

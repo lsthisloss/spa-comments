@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { ElasticsearchService } from '@nestjs/elasticsearch';
 import { slugify } from '../utils/slugify';
 import { isUUID } from 'class-validator';
+import { UserRole } from './entities/user.entity';
 
 @Injectable()
 export class UsersService {
@@ -23,14 +24,14 @@ export class UsersService {
     try {
       this.logger.log(`Getting user by ID: ${userId}`);
 
-      // Сначала проверим что есть в junction table
       const followingCheck = await this.checkFollowingRelations(userId);
       this.logger.log(
         `User ${userId} has ${followingCheck.following.length} following relations and ${followingCheck.followers.length} followers in DB`,
       );
-      // Затем загружаем пользователя с отношениями
+
       const user = await this.userRepository
         .createQueryBuilder('user')
+        .addSelect('user.role')
         .where('user.id = :userId', { userId })
         .leftJoinAndSelect('user.following', 'following')
         .leftJoinAndSelect('user.followers', 'followers')
@@ -42,15 +43,8 @@ export class UsersService {
       }
 
       this.logger.log(
-        `User ${userId} loaded with ${user.following?.length || 0} following and ${user.followers?.length || 0} followers. DB shows ${followingCheck.following.length} following relations.`,
+        `User ${userId} loaded with role ${user.role}, ${user.following?.length || 0} following and ${user.followers?.length || 0} followers.`,
       );
-
-      // Если есть несоответствие между DB и загруженными данными
-      if (followingCheck.following.length !== (user.following?.length || 0)) {
-        this.logger.warn(
-          `Mismatch detected! DB has ${followingCheck.following.length} following relations but loaded ${user.following?.length || 0}`,
-        );
-      }
 
       return user;
     } catch (error) {
@@ -99,7 +93,7 @@ export class UsersService {
     password: string,
   ): Promise<{
     token: string;
-    user: Pick<User, 'id' | 'email' | 'userName' | 'slug'>;
+    user: Pick<User, 'id' | 'email' | 'userName' | 'slug' | 'role'>;
   }> {
     try {
       const passwordHash: string = await bcrypt.hash(password, 10);
@@ -108,10 +102,11 @@ export class UsersService {
         userName,
         passwordHash,
         slug: slugify(userName),
+        role: UserRole.USER, // По умолчанию обычный пользователь
       });
       const savedUser = await this.userRepository.save(user);
 
-      // --- Индексация в Elasticsearch ---
+      // Индексация в Elasticsearch
       await this.elasticsearchService.index({
         index: 'users',
         id: savedUser.id,
@@ -120,6 +115,7 @@ export class UsersService {
           email: savedUser.email,
           avatarUrl: savedUser.avatarUrl || '',
           avatarShape: savedUser.avatarShape || 'circle',
+          role: savedUser.role,
           slug: savedUser.slug,
         },
       });
@@ -128,6 +124,7 @@ export class UsersService {
         sub: savedUser.id,
         email: savedUser.email,
         userName: savedUser.userName,
+        role: savedUser.role,
       };
       const token = this.jwtService.sign(payload);
 
@@ -138,6 +135,7 @@ export class UsersService {
           email: savedUser.email,
           userName: savedUser.userName,
           slug: savedUser.slug,
+          role: savedUser.role,
         },
       };
     } catch (error) {
@@ -230,10 +228,17 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<User | undefined> {
     try {
-      const user = await this.userRepository.findOne({ where: { email } });
+      // passwordHash для проверки пароля И role для авторизации
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect('user.passwordHash') // Явно добавляем скрытое поле
+        .where('user.email = :email', { email })
+        .getOne();
+
       return user === null ? undefined : user;
     } catch (error) {
       this.logger.error(`Error finding user by email ${email}:`, error);
+      return undefined;
     }
   }
 
@@ -254,32 +259,51 @@ export class UsersService {
     email: string,
     password: string,
   ): Promise<{
-    token: string;
-    user: Pick<User, 'id' | 'email' | 'userName' | 'slug'>;
-  } | null> {
+    success: boolean;
+    message?: string;
+    token?: string;
+    user?: User;
+  }> {
     try {
-      const user = await this.validateUser(email, password);
-      if (!user) return null;
+      console.log(`Login attempt for email: ${email}`);
+
+      const user = await this.findByEmail(email);
+
+      if (!user) {
+        console.log(`Login failed for email: ${email} - User not found`);
+        return { success: false, message: 'Invalid credentials' };
+      }
+
+      const isValidUser = await this.validateUser(email, password);
+
+      if (!isValidUser) {
+        console.log(`Login failed for email: ${email} - Invalid password`);
+        return { success: false, message: 'Invalid credentials' };
+      }
 
       const payload = {
         sub: user.id,
         email: user.email,
         userName: user.userName,
       };
+
       const token = this.jwtService.sign(payload);
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { passwordHash, ...userWithoutPassword } = user;
+
+      console.log(
+        `User logged in successfully: ${user.id} (${user.userName}) with role: ${user.role}`,
+      );
+
       return {
+        success: true,
         token,
-        user: {
-          id: user.id,
-          email: user.email,
-          userName: user.userName,
-          slug: user.slug,
-        },
+        user: userWithoutPassword as User,
       };
     } catch (error) {
-      this.logger.error(`Error during login for ${email}:`, error);
-      return null;
+      console.error(`Login error for ${email}:`, error);
+      return { success: false, message: 'Internal server error' };
     }
   }
 
@@ -421,7 +445,7 @@ export class UsersService {
         `DELETE FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
         [currentUserId, targetUser.id],
-      ) as { affectedRows?: number }[];
+      );
 
       const deletedCount = Array.isArray(result) ? result.length : 0;
 
@@ -500,7 +524,6 @@ export class UsersService {
       throw new Error('Failed to search users');
     }
   }
-  // Добавьте этот метод для диагностики:
 
   async checkFollowingRelations(userId: string): Promise<{
     following: Array<{ userId: string; followingId: string }>;
@@ -513,6 +536,7 @@ export class UsersService {
     ) as Array<{ userId: string; followingId: string }>;
 
     // Прямой SQL-запрос для проверки followers
+
     const followerRelations = await this.userRepository.query(
       `SELECT * FROM user_following WHERE "followingId" = $1`,
       [userId],
@@ -557,6 +581,164 @@ export class UsersService {
     } catch (error) {
       this.logger.error(`Error updating user avatar ${userId}:`, error);
       return null;
+    }
+  }
+  async createSuperAdmin(
+    email: string,
+    userName: string,
+    password: string,
+  ): Promise<User> {
+    try {
+      const passwordHash: string = await bcrypt.hash(password, 10);
+      const user = this.userRepository.create({
+        email,
+        userName,
+        passwordHash,
+        slug: slugify(userName),
+        role: UserRole.SUPERADMIN,
+      });
+      const savedUser = await this.userRepository.save(user);
+
+      // Индексация в Elasticsearch
+      await this.elasticsearchService.index({
+        index: 'users',
+        id: savedUser.id,
+        document: {
+          userName: savedUser.userName,
+          email: savedUser.email,
+          avatarUrl: savedUser.avatarUrl || '',
+          avatarShape: savedUser.avatarShape || 'circle',
+          role: savedUser.role,
+          slug: savedUser.slug,
+        },
+      });
+
+      this.logger.log(
+        `SuperAdmin created: ${savedUser.id} (${savedUser.userName})`,
+      );
+      return savedUser;
+    } catch (error) {
+      this.logger.error(`Error creating SuperAdmin:`, error);
+      throw new Error(
+        `Failed to create SuperAdmin: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async findSuperAdmin(): Promise<User | null> {
+    try {
+      return await this.userRepository.findOne({
+        where: { role: UserRole.SUPERADMIN },
+      });
+    } catch (error) {
+      this.logger.error(`Error finding SuperAdmin:`, error);
+      return null;
+    }
+  }
+
+  async promoteToAdmin(
+    userId: string,
+    promoterId: string,
+  ): Promise<User | null> {
+    try {
+      // Проверяем что промоутер - суперадмин
+      const promoter = await this.userRepository.findOne({
+        where: { id: promoterId },
+      });
+
+      if (!promoter || promoter.role !== UserRole.SUPERADMIN) {
+        throw new Error('Only SuperAdmin can promote users to Admin');
+      }
+
+      // Находим пользователя для повышения
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.role === UserRole.SUPERADMIN) {
+        throw new Error('Cannot modify SuperAdmin role');
+      }
+
+      // Повышаем до админа
+      user.role = UserRole.ADMIN;
+      const updatedUser = await this.userRepository.save(user);
+
+      // Обновляем в Elasticsearch
+      await this.elasticsearchService.update({
+        index: 'users',
+        id: updatedUser.id,
+        doc: {
+          role: updatedUser.role,
+        },
+        doc_as_upsert: true,
+      });
+
+      this.logger.log(`User ${userId} promoted to Admin by ${promoterId}`);
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(`Error promoting user to Admin:`, error);
+      throw new Error(
+        `Failed to promote user: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async demoteFromAdmin(
+    userId: string,
+    demoterId: string,
+  ): Promise<User | null> {
+    try {
+      // Проверяем что демоутер - суперадмин
+      const demoter = await this.userRepository.findOne({
+        where: { id: demoterId },
+      });
+
+      if (!demoter || demoter.role !== UserRole.SUPERADMIN) {
+        throw new Error('Only SuperAdmin can demote Admins');
+      }
+
+      // Находим админа для понижения
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.role === UserRole.SUPERADMIN) {
+        throw new Error('Cannot demote SuperAdmin');
+      }
+
+      if (user.role !== UserRole.ADMIN) {
+        throw new Error('User is not an Admin');
+      }
+
+      // Понижаем до обычного пользователя
+      user.role = UserRole.USER;
+      const updatedUser = await this.userRepository.save(user);
+
+      // Обновляем в Elasticsearch
+      await this.elasticsearchService.update({
+        index: 'users',
+        id: updatedUser.id,
+        doc: {
+          role: updatedUser.role,
+        },
+        doc_as_upsert: true,
+      });
+
+      this.logger.log(`Admin ${userId} demoted to User by ${demoterId}`);
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(`Error demoting Admin:`, error);
+      throw new Error(
+        `Failed to demote Admin: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

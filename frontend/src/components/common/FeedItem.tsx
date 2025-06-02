@@ -2,6 +2,7 @@ import { Image, Tooltip, Card, Typography, Spin } from "antd";
 import { getAvatarColor } from "../ui/particles/avatarColor";
 import ItemFooter from "./ItemFooter";
 import OptimizedText from "../ui/optimization/OptimizedText";
+import AdminBadge from "../ui/particles/AdminBadge"; // Добавляем импорт
 import { useState, useMemo, useCallback } from "react";
 import React from "react";
 import { observer } from "mobx-react-lite";
@@ -49,6 +50,10 @@ const FeedItemComponent = ({
     if (item.userName) return item.userName;
     return "Anonymous";
   }, [item.user, item.userName]);
+
+  const userRole = useMemo(() => {
+    return item.user?.role || 'user';
+  }, [item.user?.role]);
 
   const avatarLetter = useMemo(
     () => (userName.charAt(0) || "?").toUpperCase(),
@@ -107,13 +112,11 @@ const FeedItemComponent = ({
     return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
   }, [item.createdAt]);
 
-  // Обработчик клика по аватару пользователя
- // Обработчик клика по имени пользователя
+  // Обработчик клика по имени пользователя
   const handleUsernameClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (item.user?.id) {
       logger.log(`Username clicked for user ${item.user.id}`);
-      // Используем slug вместо ID если он доступен
       const profilePath = item.user.slug 
         ? `/profile/${item.user.slug}` 
         : `/profile/${item.user.id}`;
@@ -121,12 +124,10 @@ const FeedItemComponent = ({
     }
   }, [item.user, navigate]);
 
-  // То же для handleAvatarClick
   const handleAvatarClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (item.user?.id) {
       logger.log(`Avatar clicked for user ${item.user.id}`);
-      // Используем slug вместо ID если он доступен
       const profilePath = item.user.slug 
         ? `/profile/${item.user.slug}` 
         : `/profile/${item.user.id}`;
@@ -139,14 +140,14 @@ const FeedItemComponent = ({
       className={`${type}-item fade-in`}
       variant="borderless"
       style={{ cursor: "default" }}
-      onClick={onClick} // Оставляем undefined для отключения клика по карточке
+      onClick={onClick}
     >
       <div className="item-layout" data-id={item.id}>
         {item.user?.avatarUrl ? (
           <div
             className="item-avatar"
             style={{ cursor: "pointer" }}
-            onClick={handleAvatarClick} // Добавляем обработчик для аватарки
+            onClick={handleAvatarClick}
           >
             <img
               src={item.user.avatarUrl}
@@ -170,24 +171,27 @@ const FeedItemComponent = ({
               justifyContent: "center",
               cursor: "pointer",
             }}
-            onClick={handleAvatarClick} // Добавляем обработчик для аватарки
+            onClick={handleAvatarClick}
           >
             {avatarLetter}
           </div>
         )}
         <div className="item-content">
           <div className="item-user-info">
-            <Typography.Text
-              strong
-              className="clickable-username"
-              style={{
-                cursor: "pointer",
-                transition: "color 0.2s ease",
-              }}
-              onClick={handleUsernameClick} // Добавляем обработчик для имени пользователя
-            >
-              {userName}
-            </Typography.Text>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Typography.Text
+                strong
+                className="clickable-username"
+                style={{
+                  cursor: "pointer",
+                  transition: "color 0.2s ease",
+                }}
+                onClick={handleUsernameClick}
+              >
+                {userName}
+              </Typography.Text>
+              <AdminBadge role={userRole} />
+            </div>
             <span className="item-separator">·</span>
             <Tooltip title={new Date(item.createdAt).toLocaleString()}>
               <span className="item-date">{formattedDate}</span>

@@ -32,10 +32,10 @@ function app_run_local() {
         mv .env.example .env
     fi
 
-    docker-compose -f docker-compose.prod.yml down
+    docker-compose -f docker-compose.dev.yml down
 
     echo -e "\n${YELLOW}Building images ...${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml build --no-cache
+    docker-compose -f docker-compose.dev.yml build --no-cache
     if [ $? -ne 0 ]; then
         echo -e "\n${RED}Error building images. Please check the Dockerfile and try again.${NORMAL}\n"
         exit 1
@@ -46,7 +46,7 @@ function app_run_local() {
     if lsof -t -i:3000 >/dev/null 2>&1; then
         kill -9 $(lsof -t -i:3000)
     fi
-    docker-compose -f docker-compose.prod.yml up
+    docker-compose -f docker-compose.dev.yml up
 }
 
 function app_run_production() {
@@ -64,12 +64,63 @@ function app_run_production() {
 
 function app_clean_all() {
     echo -e "\n${RED}Останавливаю и удаляю все контейнеры, образы и volume'ы...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml down -v --rmi all --remove-orphans 2>/dev/null
-    docker-compose -f docker-compose.prod.yml down -v --rmi all --remove-orphans 2>/dev/null
-    docker system prune -af --volumes
+    
+    # Принудительно останавливаем все контейнеры
+    echo -e "${YELLOW}Stopping all containers...${NORMAL}"
+    docker stop $(docker ps -aq) 2>/dev/null || true
+    
+    # Удаляем контейнеры с таймаутом
+    echo -e "${YELLOW}Removing containers...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    docker-compose down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    
+    # Принудительно удаляем все контейнеры
+    echo -e "${YELLOW}Force removing all containers...${NORMAL}"
+    docker rm -f $(docker ps -aq) 2>/dev/null || true
+    
+    # Удаляем образы по частям
+    echo -e "${YELLOW}Removing images...${NORMAL}"
+    docker rmi -f $(docker images -q) 2>/dev/null || true
+    
+    # Удаляем volume'ы
+    echo -e "${YELLOW}Removing volumes...${NORMAL}"
+    docker volume rm $(docker volume ls -q) 2>/dev/null || true
+    
+    # Удаляем сети
+    echo -e "${YELLOW}Removing networks...${NORMAL}"
+    docker network prune -f 2>/dev/null || true
+    
+    # Финальная очистка системы
+    echo -e "${YELLOW}Final system cleanup...${NORMAL}"
+    docker system prune -af --volumes 2>/dev/null || true
+    
     echo -e "\n${GREEN}Всё очищено!${NORMAL}\n"
+    
+    # Показываем статус
+    echo -e "${CYAN}Remaining containers:${NORMAL}"
+    docker ps -a || echo "No containers"
+    
+    echo -e "${CYAN}Remaining images:${NORMAL}"
+    docker images || echo "No images"
+    
+    echo -e "${CYAN}Remaining volumes:${NORMAL}"
+    docker volume ls || echo "No volumes"
 }
-
+function app_stop_all() {
+    echo -e "\n${YELLOW}Stopping all containers...${NORMAL}\n"
+    
+    # Быстрая остановка всех контейнеров
+    docker stop $(docker ps -aq) 2>/dev/null || true
+    
+    # Остановка через docker-compose
+    docker-compose -f docker-compose.dev.yml down --timeout 5 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --timeout 5 2>/dev/null || true
+    docker-compose down --timeout 5 2>/dev/null || true
+    
+    echo -e "${GREEN}All containers stopped!${NORMAL}"
+    docker ps
+}
 function app_run_backend() {
     echo -e "\n${YELLOW}Starting backend with docker-compose...${NORMAL}\n"
     docker-compose -f docker-compose.prod.yml up -d
@@ -346,10 +397,11 @@ if [ -z $choice ]; then
     echo "         2 - Run Local (backend only in Docker)"
     echo "         3 - Run Production" 
     echo "         4 - Clean ALL (containers, images, volumes, DB)"
-    echo "         5 - Run Backend (docker-compose up)"
-    echo "         6 - Build Frontend (Development)"
-    echo "         7 - Build Frontend (Production)"
-    echo "         8 - Setup Swap Space (for low memory servers)"
+    echo "         5 - Stop ALL (quick stop)"
+    echo "         6 - Run Backend (docker-compose up)"
+    echo "         7 - Build Frontend (Development)"
+    echo "         8 - Build Frontend (Production)"
+    echo "         9 - Setup Swap Space (for low memory servers)"
     echo "  ----------------------------------------------------------------------  "
     echo -e "${NORMAL}"
     echo -e "${CYAN}Input action number > ${NORMAL} "
@@ -365,19 +417,22 @@ if [ -z $choice ]; then
     3)
         app_run_production
         ;;
-    4)
+        4)
         app_clean_all
         ;;
     5)
-        app_run_backend
+        app_stop_all
         ;;
     6)
-        app_build_frontend_dev
+        app_run_backend
         ;;
     7)
-        app_build_frontend_prod
+        app_build_frontend_dev
         ;;
     8)
+        app_build_frontend_prod
+        ;;
+    9)
         app_setup_swap
         ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;

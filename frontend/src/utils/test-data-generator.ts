@@ -3,46 +3,21 @@ import io from 'socket.io-client';
 // Получаем базовый URL для WebSocket
 const getSocketURL = () => {
   if (typeof window !== 'undefined') {
-    // В браузере - используем текущий хост
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     return `${protocol}//${host}`;
   }
-  // Fallback для разработки
   return 'ws://localhost:3001';
 };
 
 const SOCKET_URL = getSocketURL();
 
-// Генерация случайного текста до 600 символов
+// Генерация случайного текста
 function randomText(length = 30) {
   const words = [
-    'Lorem',
-    'ipsum',
-    'dolor',
-    'sit',
-    'amet',
-    'consectetur',
-    'adipiscing',
-    'elit',
-    'sed',
-    'do',
-    'eiusmod',
-    'tempor',
-    'incididunt',
-    'ut',
-    'labore',
-    'et',
-    'dolore',
-    'magna',
-    'aliqua',
-    'ut',
-    'enim',
-    'ad',
-    'minim',
-    'veniam',
-    'quis',
-    'nostrud',
+    'Lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur',
+    'adipiscing', 'elit', 'sed', 'do', 'eiusmod', 'tempor',
+    'incididunt', 'ut', 'labore', 'et', 'dolore', 'magna'
   ];
   const randomWords: string[] = [];
   for (let i = 0; i < length / 5; i++) {
@@ -58,9 +33,10 @@ function randomUserName() {
   return `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 1000)}`;
 }
 
-// Основная функция
-function main(usersCount: number, postsPerUser: number) {
-  console.log(
+export function generateTestData(usersCount: number, postsPerUser: number) {
+  console.log(`Starting test with ${usersCount} users, ${postsPerUser} posts each`);
+  
+ console.log(
     `Starting test with ${usersCount} users, ${postsPerUser} posts each. Socket URL: ${SOCKET_URL}`,
   );
 
@@ -197,6 +173,3 @@ function main(usersCount: number, postsPerUser: number) {
     }
   }
 }
-
-// Экспортируем функцию для вызова из DebugInfo
-export { main as generateTestData };

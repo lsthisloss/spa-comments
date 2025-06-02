@@ -7,6 +7,7 @@ export interface User {
   followers?: User[];
   avatarUrl?: string | null;
   avatarShape?: 'circle' | 'square';
+  role?: 'user' | 'admin' | 'superadmin'; 
   settings?: {
     debugMode?: boolean;
     notifications?: boolean;

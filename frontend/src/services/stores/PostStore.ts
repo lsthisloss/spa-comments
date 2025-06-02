@@ -739,31 +739,37 @@ loadBufferedPosts = action((type: FeedType) => {
    * Обрабатывает массив постов и кэширует пользователей
    */
   processPosts = action((posts: Post[]) => {
-    // Собираем уникальных пользователей для кэширования
     const uniqueUsers = new Map<string, User>();
     
     posts.forEach(post => {
-      //  Проверяем что user не undefined и имеет нужные поля
-      if (post.user && 
-          post.user.id && 
-          post.user.userName && 
-          !uniqueUsers.has(post.user.id)) {
-        uniqueUsers.set(post.user.id, post.user as User);
+      if (post.user && post.user.id && post.user.userName) {
+        const existingUser = uniqueUsers.get(post.user.id);
+        if (!existingUser) {
+          uniqueUsers.set(post.user.id, {
+            id: post.user.id,
+            userName: post.user.userName,
+            email: post.user.email || '',
+            avatarUrl: post.user.avatarUrl || null,
+            avatarShape: post.user.avatarShape || 'circle',
+            role: post.user.role || 'user', // Добавляем роль
+            slug: post.user.slug || post.user.userName.toLowerCase(),
+          } as User);
+        }
       }
     });
     
-    // Кэшируем уникальных пользователей одним махом
+    // Кэшируем уникальных пользователей
     uniqueUsers.forEach(user => {
       userStore.addCachedUser(user);
     });
     
     if (uniqueUsers.size > 0) {
-      logger.log(`[PostStore] Cached ${uniqueUsers.size} unique users for ${posts.length} posts`);
+      logger.log(`[PostStore] Cached ${uniqueUsers.size} users with roles`);
     }
     
-    // добавляем посты 
+    // Добавляем посты
     posts.forEach(post => {
-      this.postsMap.set(post.id, post);
+      this.postsMap.set(post.id, observable(post));
     });
   });
 

@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '../rabbitmq.service';
 import { CommentsService } from '../../comments/comments.service';
 import type { CreateCommentDto } from '../../comments/dto/create-comment.dto';
-import { CommentsGateway } from 'src/comments/comments.gateway';
+import { CommentsGateway } from '../../comments/comments.gateway';
 
 @Injectable()
 export class CommentsConsumer implements OnModuleInit {

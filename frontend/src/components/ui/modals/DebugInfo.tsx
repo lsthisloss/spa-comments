@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { VirtualListItem } from '../../common/VirtualList';
 import userStore from '../../../services/stores/UserStore';
-import { generateTestData } from '../../../tests/test-post';
+import { generateTestData } from "../../../utils/test-data-generator";
 
 interface DebugInfoProps {
   itemsCount: number;
@@ -41,6 +41,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   const [testGenExpanded, setTestGenExpanded] = useState(false);
   const [usersCount, setUsersCount] = useState(5);
   const [postsPerUser, setPostsPerUser] = useState(20);
+  const canExecuteTests = userStore.canExecuteDebugTests;
 
   const handleGenerateTestData = () => {
     generateTestData(usersCount, postsPerUser);
@@ -410,34 +411,48 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
             </button>
             {testGenExpanded && (
               <div style={{ marginTop: 8 }}>
-                <div>
-                  <label htmlFor="usersCount">Users:</label>
-                  <input
-                    id="usersCount"
-                    type="number"
-                    value={usersCount}
-                    onChange={(e) => setUsersCount(Number(e.target.value))}
-                    min={1}
-                    max={100}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="postsPerUser">Posts per User:</label>
-                  <input
-                    id="postsPerUser"
-                    type="number"
-                    value={postsPerUser}
-                    onChange={(e) => setPostsPerUser(Number(e.target.value))}
-                    min={1}
-                    max={50}
-                  />
-                </div>
-                <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
-                  Generate
-                </button>
+                {canExecuteTests ? (
+                  <>
+                    <div>
+                      <label htmlFor="usersCount">Users:</label>
+                      <input
+                        id="usersCount"
+                        type="number"
+                        value={usersCount}
+                        onChange={(e) => setUsersCount(Number(e.target.value))}
+                        min={1}
+                        max={100}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="postsPerUser">Posts per User:</label>
+                      <input
+                        id="postsPerUser"
+                        type="number"
+                        value={postsPerUser}
+                        onChange={(e) => setPostsPerUser(Number(e.target.value))}
+                        min={1}
+                        max={50}
+                      />
+                    </div>
+                    <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
+                      Generate
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ 
+                    padding: '8px', 
+                    background: '#f5f5f5', 
+                    borderRadius: '4px',
+                    color: '#666',
+                    fontSize: '12px'
+                  }}>
+                    <span>🔒 Test data generation is restricted to administrators only</span>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+</div>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { Card, Switch, Divider, Typography, Space, Tooltip } from 'antd';
 import { BugOutlined, EyeOutlined, AlertOutlined } from '@ant-design/icons';
 import userStore from '../../services/stores/UserStore';
+import AdminPanel from '../admin/AdminPanel';
 
 const { Title, Text } = Typography;
 
@@ -68,7 +69,11 @@ const UserSettings = observer(({ onDebugModeChange }: UserSettingsProps) => {
             />
           </Tooltip>
         </div>
-
+        {userStore.isSuperAdmin && (
+          <div className="user-settings__admin-section">
+            <AdminPanel />
+          </div>
+        )}
         {debugMode && (
           <>
             <Divider style={{ margin: '8px 0' }} />

@@ -5,7 +5,7 @@ import { PostsGateway } from './posts.gateway';
 import { CommentsModule } from '../comments/comments.module';
 import { Post } from './entities/post.entity';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
-import { CommonWsService } from 'src/common/common-ws.service';
+import { CommonWsService } from '../common/common-ws.service';
 import { UsersModule } from '../users/users.module';
 import { User } from '../users/entities/user.entity';
 import { AuthModule } from '../auth/auth.module';

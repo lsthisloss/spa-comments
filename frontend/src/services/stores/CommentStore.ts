@@ -140,60 +140,119 @@ class CommentStore extends BaseStore<CommentType> {
    * Добавляет комментарий в хранилище
    */
   addComment = action((comment: CommentType, parentId?: string): void => {
-    // Проверяем наличие обязательных полей перед кэшированием
-    if (comment.user && comment.user.id && comment.user.userName) {
-      userStore.addCachedUser(comment.user);
+  // Проверяем наличие обязательных полей перед кэшированием
+  if (comment.user && comment.user.id && comment.user.userName) {
+    // Создаем полный объект пользователя с ролью для кэширования
+    const userForCache: User = {
+      id: comment.user.id,
+      userName: comment.user.userName,
+      email: comment.user.email || '',
+      avatarUrl: comment.user.avatarUrl || null,
+      avatarShape: (comment.user.avatarShape as 'circle' | 'square') || 'circle',
+      role: comment.user.role || 'user',
+      slug: comment.user.slug || comment.user.userName.toLowerCase(),
+    };
+    
+    userStore.addCachedUser(userForCache);
+  }
+  
+  // Если нет user объекта, но есть userId, пробуем восстановить из кэша
+  if (!comment.user && comment.userId) {
+    const cachedUser = userStore.getCachedUser(comment.userId);
+    if (cachedUser) {
+      comment.user = cachedUser;
+    }
+  }
+
+  if (parentId) {
+    // Для ответов используем repliesMap
+    if (!this.repliesMap.has(parentId)) {
+      this.repliesMap.set(parentId, []);
     }
     
-    // Если нет user объекта, но есть userId, пробуем восстановить из кэша
-    if (!comment.user && comment.userId) {
-      const cachedUser = userStore.getCachedUser(comment.userId);
-      if (cachedUser) {
-        comment.user = cachedUser;
-      }
+    const replies = this.repliesMap.get(parentId)!;
+    const existingIndex = replies.findIndex(c => c.id === comment.id);
+    
+    if (existingIndex >= 0) {
+      replies[existingIndex] = comment;
+    } else {
+      replies.push(comment);
     }
+  } else if (comment.postId) {
+    // Для комментариев к посту используем commentsMap
+    if (!this.commentsMap.has(comment.postId)) {
+      this.commentsMap.set(comment.postId, []);
+    }
+    
+    const comments = this.commentsMap.get(comment.postId)!;
+    const existingIndex = comments.findIndex(c => c.id === comment.id);
+    
+    if (existingIndex >= 0) {
+      comments[existingIndex] = comment;
+    } else {
+      comments.push(comment);
+    }
+  }
+});
 
-    if (parentId) {
-      // Для ответов используем repliesMap
-      if (!this.repliesMap.has(parentId)) {
-        this.repliesMap.set(parentId, []);
+  /**
+   * Обрабатывает массив комментариев и кэширует пользователей
+   */
+  private cacheUsersFromComments(comments: CommentType[]) {
+    const uniqueUsers = new Map<string, User>();
+    
+    comments.forEach(comment => {
+      // Кэшируем пользователя из comment.user (новый источник с ролью)
+      if (comment.user && comment.user.id && comment.user.userName) {
+        const existingUser = uniqueUsers.get(comment.user.id);
+        if (!existingUser) {
+          uniqueUsers.set(comment.user.id, {
+            id: comment.user.id,
+            userName: comment.user.userName,
+            email: comment.user.email || '',
+            avatarUrl: comment.user.avatarUrl || null,
+            avatarShape: (comment.user.avatarShape as 'circle' | 'square') || 'circle',
+            role: comment.user.role || 'user', // Берем роль из comment.user
+            slug: comment.user.slug || comment.user.userName.toLowerCase(),
+          } as User);
+        }
       }
-      
-      const replies = this.repliesMap.get(parentId)!;
-      const existingIndex = replies.findIndex(c => c.id === comment.id);
-      
-      if (existingIndex >= 0) {
-        replies[existingIndex] = comment;
-      } else {
-        replies.push(comment);
+      // Fallback к старым полям если user не заполнен
+      else if (comment.userId && comment.userName) {
+        const existingUser = uniqueUsers.get(comment.userId);
+        if (!existingUser) {
+          uniqueUsers.set(comment.userId, {
+            id: comment.userId,
+            userName: comment.userName,
+            email: '',
+            avatarUrl: comment.avatarUrl || null,
+            avatarShape: (comment.avatarShape as 'circle' | 'square') || 'circle',
+            role: 'user', // Для старых данных ставим user по умолчанию
+            slug: comment.userName.toLowerCase(),
+          } as User);
+        }
       }
-    } else if (comment.postId) {
-      // Для комментариев к посту используем commentsMap
-      if (!this.commentsMap.has(comment.postId)) {
-        this.commentsMap.set(comment.postId, []);
-      }
-      
-      const comments = this.commentsMap.get(comment.postId)!;
-      const existingIndex = comments.findIndex(c => c.id === comment.id);
-      
-      if (existingIndex >= 0) {
-        comments[existingIndex] = comment;
-      } else {
-        comments.push(comment);
-      }
+    });
+    
+    // Кэшируем пользователей в UserStore
+    uniqueUsers.forEach(user => {
+      userStore.addCachedUser(user);
+    });
+    
+    if (uniqueUsers.size > 0) {
+      logger.log(`[CommentStore] Cached ${uniqueUsers.size} users with roles from comments`);
     }
-  });
+  }
 
   /**
    * Обрабатывает массив комментариев и кэширует пользователей
    */
   private processComments(comments: CommentType[], parentId?: string) {
+    // Сначала кэшируем пользователей с их ролями
+    this.cacheUsersFromComments(comments);
+    
+    // Затем добавляем комментарии
     comments.forEach(comment => {
-      // Проверяем наличие обязательных полей перед кэшированием
-      if (comment.user && comment.user.id && comment.user.userName) {
-        userStore.addCachedUser(comment.user);
-      }
-      
       this.addComment(comment, parentId);
     });
   }

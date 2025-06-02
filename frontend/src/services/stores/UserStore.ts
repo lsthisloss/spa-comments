@@ -1,52 +1,159 @@
-import { makeObservable, observable, action, runInAction } from "mobx";
+import { makeObservable, observable, action, runInAction, computed } from "mobx";
 import { socketStore } from "./SocketStore";
 import { User } from "../../types/interfaces";
 import { IUserStore } from "../../types/stores";
 import authStore from "./AuthStore";
-import { postStore } from "./PostStore";
 import { logger } from "../../utils/Logger";
+import { postStore } from "./PostStore";
 
 class UserStore implements IUserStore {
   user: User | null = null;
-  isAuthenticated = false;
   usersCache = observable.map<string, User>();
   loadingUsers = observable.set<string>();
-  followingUserIds = observable.set<string>(); 
+  followingUserIds = observable.set<string>();
+  loginLoading = false;
 
   constructor() {
     makeObservable(this, {
       user: observable,
-      isAuthenticated: observable,
       usersCache: observable,
       loadingUsers: observable,
+      loginLoading: observable,
       setUser: action,
       logout: action,
+      login: action,
       getUserById: action,
       followUser: action,
       unfollowUser: action,
       updateUserSettings: action,
       updateUser: action,
       deleteUser: action,
+      register: action,
+      // Computed свойства для ролей
+      isAuthenticated: computed,
+      isAdmin: computed,
+      isSuperAdmin: computed,
+      canManageAdmins: computed,
+      canExecuteDebugTests: computed,
     });
 
     this.loadUserFromStorage();
   }
 
+  async login(email: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      runInAction(() => {
+        this.loginLoading = true;
+      });
+
+      // Удаляем старый обработчик если есть
+      if (socketStore.users) {
+        socketStore.users.off('loginResponse');
+      }
+
+      // Устанавливаем обработчик ответа
+      socketStore.users.on('loginResponse', async (response: {
+        success: boolean;
+        token?: string;
+        user?: User;
+        message?: string;
+      }) => {
+        runInAction(() => {
+          this.loginLoading = false;
+        });
+
+        logger.log('[UserStore] Login response received:', response);
+
+        if (response.success && response.token && response.user) {
+          // Устанавливаем пользователя
+          this.setUser(response.user);
+          
+          // Устанавливаем токен в AuthStore
+          authStore.setAuth(response.token);
+          
+          // Инициализируем аутентифицированные сокеты
+          try {
+            logger.log('[UserStore] Initializing authenticated sockets...');
+            await socketStore.initializeAuthenticatedSockets(response.token);
+            logger.log('[UserStore] Authenticated sockets initialized successfully');
+          } catch (error) {
+            logger.error('[UserStore] Failed to initialize authenticated sockets:', error);
+          }
+          
+          // Убираем обработчик после использования
+          if (socketStore.users) {
+            socketStore.users.off('loginResponse');
+          }
+          
+          resolve({
+            success: true,
+            user: response.user
+          });
+        } else {
+          // Убираем обработчик после ошибки
+          if (socketStore.users) {
+           socketStore.users.off('loginResponse');
+          }
+          
+          resolve({
+            success: false,
+            message: response.message || 'Login failed'
+          });
+        }
+      });
+
+      // Отправляем запрос авторизации
+      socketStore.users.emit('login', { email, password });
+    });
+  }
 
   logout() {
     this.setUser(null);
-    
-    // Call authStore.logout() to ensure all auth data is cleared
     authStore.logout();
     
-    // Clear all user-related localStorage items explicitly
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userName");
+    // Отключаем аутентифицированные сокеты
+    socketStore.disconnectAuthenticatedSockets();
     
-    // Clear users cache
+    // Очищаем localStorage
+    localStorage.removeItem("user");
+    
+    // Очищаем кэш пользователей
     this.clearUsersCache();
+  }
+
+  // Computed свойства основаны на this.user, а не на authStore
+  get isAuthenticated(): boolean {
+    return !!this.user && !!authStore.token;
+  }
+
+
+
+  setUser(userData: User | null) {
+    runInAction(() => {
+      this.user = userData;
+      
+      if (userData) {
+        console.log(`[UserStore] Setting user with role: ${userData.role}`);
+        console.log(`[UserStore] Is superadmin: ${this.isSuperAdmin}`);
+        console.log(`[UserStore] Can manage admins: ${this.canManageAdmins}`);
+        
+        this.addCachedUser(userData);
+        localStorage.setItem('user', JSON.stringify(userData));
+      } else {
+        localStorage.removeItem('user');
+      }
+      
+      logger.log(`[UserStore] User set: ${userData ? userData.userName : 'null'}`);
+    });
   }
 
   private loadUserFromStorage() {
@@ -54,15 +161,21 @@ class UserStore implements IUserStore {
     if (storedUser) {
       try {
         const user = JSON.parse(storedUser) as User;
+        
         // Инициализируем настройки по умолчанию если их нет
         if (!user.settings) {
-          user.settings = {
-            debugMode: false,
-          };
+          user.settings = { debugMode: false };
         }
+        
+        // Устанавливаем роль по умолчанию если её нет
+        if (!user.role) {
+          user.role = 'user';
+        }
+        
         this.user = user;
-        this.isAuthenticated = true;
         this.usersCache.set(user.id, user);
+        
+        console.log(`[UserStore] Loaded user from storage with role: ${user.role}`);
       } catch (error) {
         console.error("Failed to parse stored user:", error);
         localStorage.removeItem("user");
@@ -144,6 +257,11 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
               };
             }
             
+            // Устанавливаем роль по умолчанию если её нет
+            if (!res.user.role) {
+              res.user.role = 'user';
+            }
+            
             // Кэшируем под всеми возможными ключами
             this.usersCache.set(res.user.id, res.user);
             if (res.user.slug) {
@@ -161,25 +279,6 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
   });
 }
 
-  setUser(userData: User | null) {
-    runInAction(() => {
-      this.user = userData;
-      this.isAuthenticated = !!userData;
-      
-      // Проверяем наличие обязательных полей перед кэшированием
-      if (userData && userData.id && userData.userName) {
-        this.addCachedUser(userData);
-      }
-      
-      if (userData) {
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        localStorage.removeItem('user');
-      }
-      
-      logger.log(`[UserStore] User set: ${userData ? userData.userName : 'null'}`);
-    });
-  }
 
   /**
    * Очищает текущего пользователя
@@ -187,7 +286,6 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
   clearUser() {
     runInAction(() => {
       this.user = null;
-      this.isAuthenticated = false;
       // Не очищаем usersCache, чтобы сохранить кэшированных пользователей
       
       localStorage.removeItem('user');
@@ -199,35 +297,37 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
    * Добавляет пользователя в кэш
    */
   addCachedUser(user: Partial<User>) {
-    // Проверяем что у пользователя есть обязательные поля
-    if (user && user.id && user.userName) {
-      // Создаем полный объект User с дефолтными значениями
-      const fullUser: User = {
-        id: user.id,
-        userName: user.userName,
-        email: user.email || '',
-        slug: user.slug || user.userName.toLowerCase(),
-        avatarUrl: user.avatarUrl || null,
-        avatarShape: user.avatarShape || 'circle',
-        createdAt: user.createdAt || new Date().toISOString(),
-        updatedAt: user.updatedAt || new Date().toISOString(),
-        followers: user.followers || [],
-        following: user.following || [],
-        ...user // Копируем все остальные поля
-      };
-      
-      this.usersCache.set(user.id, fullUser);
-      
-      // Также кэшируем по slug если есть
-      if (fullUser.slug) {
-        this.usersCache.set(fullUser.slug, fullUser);
-      }
-      
-      logger.log(`[UserStore] Cached user ${fullUser.userName}`);
-    } else {
-      logger.warn(`[UserStore] Cannot cache user - missing required fields:`, user);
+  // Проверяем что у пользователя есть обязательные поля
+  if (user && user.id && user.userName) {
+    // Создаем полный объект User с дефолтными значениями
+    const fullUser: User = {
+      id: user.id,
+      userName: user.userName,
+      email: user.email || '',
+      slug: user.slug || user.userName.toLowerCase(),
+      avatarUrl: user.avatarUrl || null,
+      avatarShape: user.avatarShape || 'circle',
+      role: user.role || 'user', // Добавляем значение по умолчанию
+      createdAt: user.createdAt || new Date().toISOString(),
+      updatedAt: user.updatedAt || new Date().toISOString(),
+      followers: user.followers || [],
+      following: user.following || [],
+      settings: user.settings || { debugMode: false }, // Добавляем настройки по умолчанию
+      ...user // Копируем все остальные поля (перезаписывает дефолты если они есть)
+    };
+    
+    this.usersCache.set(user.id, fullUser);
+    
+    // Также кэшируем по slug если есть
+    if (fullUser.slug) {
+      this.usersCache.set(fullUser.slug, fullUser);
     }
+    
+    logger.log(`[UserStore] Cached user ${fullUser.userName} with role: ${fullUser.role}`);
+  } else {
+    logger.warn(`[UserStore] Cannot cache user - missing required fields:`, user);
   }
+}
 
   /**
    * Получает пользователя из кэша по ID или slug
@@ -360,7 +460,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
               
               // Синхронизируем AuthStore
               if (updateData.userName && authStore.token) {
-                authStore.setAuth(authStore.token, updatedUser.id, updatedUser.userName);
+                authStore.setAuth(authStore.token);
               }
             });
             
@@ -609,6 +709,146 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
       };
       reader.onerror = error => reject(error);
     });
+  }
+  async promoteToAdmin(userId: string): Promise<User | null> {
+  return new Promise<User | null>((resolve, reject) => {
+    if (!this.user?.id || !socketStore.users) {
+      reject(new Error("User not authenticated or socket not available"));
+      return;
+    }
+
+    if (this.user.role !== 'superadmin') {
+      reject(new Error("Only SuperAdmin can promote users to Admin"));
+      return;
+    }
+
+    socketStore.users.emit(
+      "promoteToAdmin", 
+      { userId }, 
+      (res: { success: boolean; user?: User; message?: string }) => {
+        if (res.success && res.user) {
+          runInAction(() => {
+            // Обновляем кэш пользователя
+            const cachedUser = this.usersCache.get(userId);
+            if (cachedUser) {
+              this.usersCache.set(userId, { ...cachedUser, role: 'admin' });
+            }
+          });
+          resolve(res.user);
+        } else {
+          reject(new Error(res.message || "Failed to promote user"));
+        }
+      }
+    );
+  });
+}
+
+  async demoteFromAdmin(userId: string): Promise<User | null> {
+    return new Promise<User | null>((resolve, reject) => {
+      if (!this.user?.id || !socketStore.users) {
+        reject(new Error("User not authenticated or socket not available"));
+        return;
+      }
+
+      if (this.user.role !== 'superadmin') {
+        reject(new Error("Only SuperAdmin can demote Admins"));
+        return;
+      }
+
+      socketStore.users.emit(
+        "demoteFromAdmin", 
+        { userId }, 
+        (res: { success: boolean; user?: User; message?: string }) => {
+          if (res.success && res.user) {
+            runInAction(() => {
+              // Обновляем кэш пользователя
+              const cachedUser = this.usersCache.get(userId);
+              if (cachedUser) {
+                this.usersCache.set(userId, { ...cachedUser, role: 'user' });
+              }
+            });
+            resolve(res.user);
+          } else {
+            reject(new Error(res.message || "Failed to demote admin"));
+          }
+        }
+      );
+    });
+  }
+  
+  async register(email: string, userName: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      runInAction(() => {
+        this.loginLoading = true;
+      });
+
+      socketStore.users.emit('register', 
+        { email, userName, password }, 
+        async (response: {
+          success: boolean;
+          token?: string;
+          user?: User;
+          message?: string;
+        }) => {
+          runInAction(() => {
+            this.loginLoading = false;
+          });
+
+          logger.log('[UserStore] Register response:', response);
+
+          if (response.success && response.token && response.user) {
+            // Устанавливаем пользователя
+            this.setUser(response.user);
+            
+            // Устанавливаем токен в AuthStore
+            authStore.setAuth(response.token);
+            
+            // Инициализируем аутентифицированные сокеты
+            try {
+              logger.log('[UserStore] Initializing authenticated sockets after registration...');
+              await socketStore.initializeAuthenticatedSockets(response.token);
+              logger.log('[UserStore] Authenticated sockets initialized successfully after registration');
+            } catch (error) {
+              logger.error('[UserStore] Failed to initialize authenticated sockets after registration:', error);
+            }
+            
+            resolve({
+              success: true,
+              user: response.user
+            });
+          } else {
+            resolve({
+              success: false,
+              message: response.message || 'Registration failed'
+            });
+          }
+        }
+      );
+    });
+  }
+  get isAdmin(): boolean {
+    return this.user?.role === 'admin' || this.user?.role === 'superadmin';
+  }
+
+  get isSuperAdmin(): boolean {
+    return this.user?.role === 'superadmin';
+  }
+
+  get canManageAdmins(): boolean {
+    return this.user?.role === 'superadmin';
+  }
+
+  get canExecuteDebugTests(): boolean {
+    return this.user?.role === 'admin' || this.user?.role === 'superadmin';
   }
 }
 

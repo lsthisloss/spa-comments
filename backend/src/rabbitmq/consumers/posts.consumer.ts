@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RabbitMQService } from '../rabbitmq.service';
 import { PostsService } from '../../posts/posts.service';
 import type { CreatePostDto } from '../../posts/dto/create-post.dto';
-import { PostsGateway } from 'src/posts/posts.gateway';
+import { PostsGateway } from '../../posts/posts.gateway';
 import { UsersService } from '../../users/users.service';
 
 @Injectable()

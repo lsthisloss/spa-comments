@@ -11,11 +11,10 @@ import { UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
-import { LoginUserDto } from './dto/login-user.dto';
 import { Socket, Server } from 'socket.io';
 import { AuthenticatedSocketData } from '../auth/jwt-payload.interface';
 import { isUUID } from 'class-validator';
-import { CommonWsService } from 'src/common/common-ws.service';
+import { CommonWsService } from '../common/common-ws.service';
 
 interface AvatarUploadData {
   file: {
@@ -345,6 +344,7 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
           slug,
           avatarUrl,
           avatarShape,
+          role,
           following,
           followers,
         } = user as {
@@ -354,19 +354,21 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
           slug: string;
           avatarUrl: string;
           avatarShape: string;
+          role: string;
           following: Array<{ id: string; userName: string }>;
           followers: Array<{ id: string; userName: string }>;
         };
-        console.log(`User data retrieved: ${id} (${userName})`);
+        console.log(`User data retrieved: ${id} (${userName}) - Role: ${role}`);
         return {
           success: true,
           user: {
             id,
             email,
             userName,
-            slug, // обязательно возвращай slug!
+            slug,
             avatarUrl,
             avatarShape,
+            role, // Включаем роль в ответ
             following: following || [],
             followers: followers || [],
           },
@@ -383,25 +385,48 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('login')
-  async handleLogin(@MessageBody() dto: LoginUserDto) {
+  async handleLogin(
+    @MessageBody() data: { email: string; password: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
     try {
-      console.log(`Login attempt for email: ${dto.email}`);
+      const result = await this.usersService.login(data.email, data.password);
 
-      const result = await this.usersService.login(dto.email, dto.password);
+      if (result.success && result.user && result.token) {
+        // Безопасно извлекаем данные пользователя
+        const userResponse = {
+          id: result.user.id,
+          userName: result.user.userName,
+          email: result.user.email,
+          avatarUrl: result.user.avatarUrl || null,
+          avatarShape: result.user.avatarShape || 'circle',
+          slug: result.user.slug,
+          role: result.user.role,
+          createdAt: result.user.createdAt,
+          updatedAt: result.user.updatedAt,
+        };
 
-      if (result) {
         console.log(
-          `User logged in successfully: ${result.user.id} (${result.user.userName})`,
+          `[LOGIN SUCCESS] User: ${userResponse.userName}, Role: ${userResponse.role}`,
         );
-        return { success: true, token: result.token, user: result.user };
+
+        client.emit('loginResponse', {
+          success: true,
+          token: result.token,
+          user: userResponse,
+        });
       } else {
-        console.log(`Login failed for email: ${dto.email}`);
-        return { success: false, message: 'Invalid credentials' };
+        client.emit('loginResponse', {
+          success: false,
+          message: result.message || 'Login failed',
+        });
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed';
-      console.error('Login error:', message);
-      return { success: false, message };
+    } catch (error) {
+      console.error('Login error:', error);
+      client.emit('loginResponse', {
+        success: false,
+        message: 'Internal server error',
+      });
     }
   }
 
@@ -516,6 +541,98 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Update failed';
       console.error('updateAvatarShape: Error =', message);
+      return { success: false, message };
+    }
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('promoteToAdmin')
+  async handlePromoteToAdmin(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userData = client.data as AuthenticatedSocketData;
+      const promoterId = userData.user.id;
+
+      console.log(
+        `Promote to Admin request - Promoter: ${promoterId}, Target: ${data.userId}`,
+      );
+
+      if (!promoterId) {
+        console.error('Promote failed: Not authenticated');
+        return { success: false, message: 'Not authenticated' };
+      }
+
+      const updatedUser = await this.usersService.promoteToAdmin(
+        data.userId,
+        promoterId,
+      );
+
+      if (updatedUser) {
+        console.log(`User ${data.userId} promoted to Admin successfully`);
+        return {
+          success: true,
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            userName: updatedUser.userName,
+            role: updatedUser.role,
+          },
+        };
+      }
+
+      return { success: false, message: 'Failed to promote user' };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Promotion failed';
+      console.error('promoteToAdmin: Error =', message);
+      return { success: false, message };
+    }
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('demoteFromAdmin')
+  async handleDemoteFromAdmin(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      const userData = client.data as AuthenticatedSocketData;
+      const demoterId = userData.user.id;
+
+      console.log(
+        `Demote from Admin request - Demoter: ${demoterId}, Target: ${data.userId}`,
+      );
+
+      if (!demoterId) {
+        console.error('Demote failed: Not authenticated');
+        return { success: false, message: 'Not authenticated' };
+      }
+
+      const updatedUser = await this.usersService.demoteFromAdmin(
+        data.userId,
+        demoterId,
+      );
+
+      if (updatedUser) {
+        console.log(`Admin ${data.userId} demoted to User successfully`);
+        return {
+          success: true,
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            userName: updatedUser.userName,
+            role: updatedUser.role,
+          },
+        };
+      }
+
+      return { success: false, message: 'Failed to demote admin' };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Demotion failed';
+      console.error('demoteFromAdmin: Error =', message);
       return { success: false, message };
     }
   }

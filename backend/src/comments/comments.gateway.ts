@@ -13,7 +13,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { PostsGateway } from '../posts/posts.gateway';
 import { CommonWsService } from '../common/common-ws.service';
 import { UseGuards } from '@nestjs/common';
-import { WsJwtGuard } from 'src/auth/ws-jwt.guard';
+import { WsJwtGuard } from '../auth/ws-jwt.guard';
 
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/comments' })
 export class CommentsGateway

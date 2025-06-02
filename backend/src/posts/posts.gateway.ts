@@ -15,7 +15,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CommonWsService } from '../common/common-ws.service';
 import { UsersService } from '../users/users.service';
 import { UseGuards } from '@nestjs/common';
-import { WsJwtGuard } from 'src/auth/ws-jwt.guard';
+import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { isUUID } from 'class-validator';
 import { PostResponseDto } from './dto/post-response.dto';
 

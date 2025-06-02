@@ -7,7 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { CommonWsService } from '../common/common-ws.service';
 import { CommonModule } from '../common/common.module';
-import { SearchModule } from 'src/search/search.module';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
