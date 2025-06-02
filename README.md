@@ -266,6 +266,12 @@ npm run create-superadmin:local
 Актуальные ссылки для доступа к приложению будут показаны в консоли после запуска.
 
 ---
+<details>
+<summary><strong>⚡DEMO</strong></summary>
+  
+![image](https://github.com/user-attachments/assets/01f40e30-c1a7-4ed9-9448-a6a77b914ba2)
+
+</details>
 
 <div align="center">
 
