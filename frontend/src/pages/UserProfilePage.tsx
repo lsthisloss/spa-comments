@@ -39,15 +39,69 @@ const UserProfilePage = observer(() => {
   const currentUser = userStore.user;
   
   // Определяем эффективный userId
-  const effectiveUserId = userIdParam || currentUser?.id || currentUser?.slug;
-  
-  // Получаем пользователя по UUID или slug
-  const user = effectiveUserId ? userStore.getCachedUser(effectiveUserId) : currentUser;
-  const isLoading = effectiveUserId ? userStore.isUserLoading(effectiveUserId) : false;
-  
-  const isOwnProfile = currentUser && user && currentUser.id === user.id;
-  const isFollowing = user?.id && !isOwnProfile ? userStore.isFollowing(user.id) : false;
+  const user = useMemo(() => {
+    // Для собственного профиля - без побочных эффектов
+    if (!userIdParam) {
+      logger.log('[UserProfilePage] Own profile, using current user');
+      return currentUser;
+    }
+    
+    // Для чужого - только возвращаем кэшированное значение, без запросов
+    return userStore.getCachedUser(userIdParam);
+  }, [userIdParam, currentUser]);
 
+  const isOwnProfile = useMemo(() => {
+    // Если нет параметра userId, то это собственный профиль
+    if (!userIdParam) return true;
+    
+    // Если есть пользователь и его ID совпадает с текущим - собственный профиль
+    if (user?.id && currentUser?.id) {
+      return user.id === currentUser.id;
+    }
+    
+    return false;
+  }, [userIdParam, user?.id, currentUser?.id]);
+
+  const isFollowing = useMemo(() => {
+    if (isOwnProfile || !user?.id || !currentUser?.following) return false;
+    
+    // Проверяем наличие ID пользователя в списке подписок
+    return currentUser.following.some(followedUser => followedUser.id === user.id);
+  }, [isOwnProfile, user?.id, currentUser?.following]);
+
+  useEffect(() => {
+    if (userIdParam && !userStore.getCachedUser(userIdParam) && !userStore.isUserLoading(userIdParam)) {
+      logger.log(`[UserProfilePage] Loading user: ${userIdParam}`);
+      userStore.getUserById(userIdParam);
+    }
+  }, [userIdParam]);
+
+  //  Определяем, загружаем ли мы пользователя
+  const isLoading = useMemo(() => {
+    if (!userIdParam) return false;
+    return userStore.isUserLoading(userIdParam);
+  }, [userIdParam]);
+
+  //Стабильный ID для PostsThread
+  const stableUserId = useMemo(() => user?.id, [user?.id]);
+
+  // Ленивая инициализация PostsThread 
+  const PostsThreadComponent = useMemo(() => {
+  if (activeTab !== "posts" || !stableUserId || isLoading) {
+    return null;
+  }
+  
+  return (
+    <PostsThread 
+      activeTab="user"
+      userId={stableUserId}
+      key={`user-${stableUserId}`}
+    />
+  );
+}, [activeTab, stableUserId, isLoading]);
+
+
+  
   // Проверяем preserveFeeds для сохранения лент
   useEffect(() => {
     interface LocationState {
@@ -122,19 +176,6 @@ const UserProfilePage = observer(() => {
       console.error(error);
     }
   }, []);
-
-  // Загружаем данные пользователя через UserStore
-  useEffect(() => {
-    if (!userIdParam) {
-      logger.log('[UserProfilePage] Own profile, using current user');
-      return;
-    }
-    
-    if (!user && !isLoading && effectiveUserId) {
-      logger.log(`[UserProfilePage] Loading user: ${effectiveUserId}`);
-      userStore.getUserById(effectiveUserId);
-    }
-  }, [userIdParam, effectiveUserId, user, isLoading]);
 
   const handleGoBack = useCallback(() => {
     if (navigationStore.currentState.fromFeed || navigationStore.currentState.fromFollowing) {
@@ -353,16 +394,7 @@ const UserProfilePage = observer(() => {
         ))}
       </div>
 
-        {activeTab === "posts" && user?.id && (
-          <PostsThread 
-            activeTab="user"
-            userId={user.id}
-            key={`user-posts-${user.id}`}
-          />
-        )}
-        {activeTab === "comments" && (
-          <span>In development</span>
-        )}
+        {PostsThreadComponent}
 
       {/* Модалки */}
       {isEditModalVisible && isOwnProfile && currentUser && (

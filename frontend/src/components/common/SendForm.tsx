@@ -21,9 +21,16 @@ const SendForm = observer(({
   const dragCounterRef = useRef(0);
   const isFormDisabled = sendFormStore.loading;
 
-  // Initialize user info on mount
   useEffect(() => {
     if (userStore.user?.id && userStore.user?.userName) {
+      console.log("[SendForm] Initializing user from userStore:", {
+        id: userStore.user.id,
+        userName: userStore.user.userName,
+        avatarUrl: userStore.user.avatarUrl,
+        avatarShape: userStore.user.avatarShape,
+        slug: userStore.user.slug
+      });
+      
       sendFormStore.initializeUser(
         userStore.user.id, 
         userStore.user.userName,
@@ -31,8 +38,8 @@ const SendForm = observer(({
         userStore.user.avatarShape as 'circle' | 'square'
       );
     }
-  }, []);
-
+  }, []); 
+  
   // Unified drag-and-drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();

@@ -1,191 +1,325 @@
-## A TypeScript-based fullstack SPA Comments application with real-time updates, RabbitMQ, and nested replies, follows SOLID principles
-Web-application on the NestJS, PostgreSQL, RabbitMQ stack, React frontend and WebSocket for exchanging comments in real time with the ability to use tags, add a txt file, image, captcha on adding posts, processing scripts on the back and front.
+# 🚀 Jeez! - TypeScript Fullstack SPA-приложение
 
-## Features
-- Uses TypeScript (NestJS backend, React frontend)    
-- Websocket as a communication protocol    
-- Modular, scalable architecture    
-- PostgreSQL + TypeORM for data storage    
-- RabbitMQ for async comment queueing      
-- WebSocket (Socket.IO) for real-time updates    
-- Nested comments, likes, captcha, file/image upload    
-- Memoized React components for performance    
+<div align="center">
 
-## Backend Classes & Modules
+**Современная система комментариев в реальном времени с умным управлением лентами, вложенными ответами и реактивным состоянием**
 
-`CommentsGateway` — WebSocket gateway for comment events: fetchComments, fetchNestedComments, addComment, likeComment, unlikeComment, generateCaptcha, validateCaptcha, uploadImage.    
-`CommentsService` — Business logic, DB operations, RabbitMQ publishing, event emitting.    
-`CommentsController` — REST API (getComments, getCommentById, uploadImage, createComment).    
-`CommentsConsumer` — RabbitMQ consumer, saves comments from the queue.    
-`AppGateway` — Global WebSocket emitter (broadcastEvent, heartbeat).    
-`RabbitMQService` — Handles RabbitMQ connection, message sending/receiving.    
-`Comment` — TypeORM entity for the comments table.    
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
+![WebSocket](https://img.shields.io/badge/Socket.io-black?style=for-the-badge&logo=socket.io&badgeColor=010101)
 
-## Backend WebSocket Events
+</div>
 
-`fetchComments` — Get paginated comments list.    
-`fetchNestedComments` — Get parent and child comments.    
-`addComment` — Add a comment (with file/image support).    
-`likeComment` / `unlikeComment` — Like/unlike a comment.    
-`generateCaptcha` / `validateCaptcha` — Captcha for spam protection.    
-`uploadImage` — Image upload.    
+---
 
-## RabbitMQ
+## 🌟 Основные возможности
 
-Queue `add_comment_queue` for async comment creation.    
-`CommentsService.sendCommentToQueue` — Sends DTO to the queue.    
-`CommentsConsumer` — Processes messages, saves to DB, emits WebSocket events.    
+- **Обновления в реальном времени**: WebSocket-связь с разделением на неймспейсы
+- **Продвинутая система очередей**: RabbitMQ для гарантированной доставки и обработки сообщений
+- **Реактивное управление состоянием**: MobX в строгом режиме с атомарными транзакциями
+- **Умное управление лентами**: Трёхуровневая система лент (Все/Подписки/Пользователь) с сохранением состояния
+- **Виртуальная прокрутка**: Кастомная интеграция с TanStack для оптимизации производительности
+- **Вложенные комментарии**: Неограниченная глубина вложенности с ленивой загрузкой
+- **Поиск Elasticsearch**: Полнотекстовый поиск по постам, комментариям и пользователям
+- **Оптимистичный UI**: Мгновенные лайки без ожидания сервера
 
+---
 
-## Frontend (React + Vite)
+## 🏗️ Архитектура
 
-`WebSocketProvider`— Context for Socket.IO client.    
-`CommentForm` — Add comment form, file upload, captcha.    
-`CommentList` — Comment list (React.memo).    
-`CommentItem` — Single comment (memoized).    
-`CommentFooter` — Likes, reply, WebSocket event handling.    
-`MainPage` — Pagination, auto-update, new comment buffering.    
-`NestedCommentsPage` — Thread view, real-time replies.    
-
-## WebSocket client (frontend)
-
-- Connection via `createWebSocket`    
-- Listening events : `newComment`, `commentLiked`, `commentUnliked`, `heartbeat`    
-- Emit : `addComment`, `likeComment`, `unlikeComment`, `fetchComments`, `fetchNestedComments`, `generateCaptcha`, `validateCaptcha`, `uploadImage`    
-
-## Project structure
+### Backend: Gateway → Queue → Consumer
 
 <details>
-<summary>Click to expand the project structure</summary>
+<summary><strong>🔧 Трёхуровневая архитектура</strong></summary>
 
-```plaintext
-spa-comments/
-├── backend/                                   # Backend (NestJS)
-│   ├── Dockerfile                             # Docker image for backend
-│   ├── package.json                           # Backend dependencies and scripts
-│   ├── tsconfig.json                          # TypeScript config for backend
-│   ├── .gitignore                             # Git ignore file
-│   ├── src/
-│   │   ├── app.module.ts                      # Main NestJS application module
-│   │   ├── app.gateway.ts                     # Global WebSocket gateway (event emitter)
-│   │   ├── app.controller.ts                  # Example REST controller (root endpoint)
-│   │   ├── comments/
-│   │   │   ├── comments.controller.ts         # REST API for comments (CRUD, upload)
-│   │   │   ├── comments.gateway.ts            # WebSocket gateway: handles events (fetch, add, like, captcha, upload)
-│   │   │   ├── comments.module.ts             # NestJS module for comments
-│   │   │   ├── comments.service.ts            # Business logic, DB and RabbitMQ interaction
-│   │   │   ├── entities/comment.entity.ts     # TypeORM entity for "Comment" table
-│   │   │   ├── dto/create-comment.dto.ts      # DTO for creating a comment
-│   │   ├── rabbitmq/
-│   │   │   ├── rabbitmq.module.ts             # NestJS module for RabbitMQ
-│   │   │   ├── rabbitmq.service.ts            # Service for RabbitMQ queue operations
-│   │   │   └── consumers/comments.consumer.ts # Consumer: processes queue messages, saves comments to DB
-│   │   ├── uploads/                           # Folder for uploaded files/images
-│   └── ...
-├── frontend/                                  # Frontend (React + Vite)
-│   ├── Dockerfile                             # Docker image for frontend
-│   ├── package.json                           # Frontend dependencies and scripts
-│   ├── tsconfig.json                          # TypeScript config for frontend
-│   ├── index.html                             # Main HTML template
-│   ├── index.scss                             # Global styles
-│   ├── public/                                # Public assets (icons, favicons)
-│   ├── src/
-│   │   ├── App.tsx                            # Main React application component
-│   │   ├── main.tsx                           # React entry point
-│   │   ├── components/
-│   │   │   ├── WebSocketProvider.tsx          # WebSocket context provider for the app
-│   │   │   ├── Layout.tsx                     # Main layout component
-│   │   │   ├── SideBar.tsx                    # Sidebar navigation
-│   │   │   ├── comments/
-│   │   │   │   ├── CommentForm.tsx            # Comment form (file upload, captcha)
-│   │   │   │   ├── CommentList.tsx            # List of comments (memoized)
-│   │   │   │   ├── CommentItem.tsx            # Single comment (memoized)
-│   │   │   │   ├── CommentFooter.tsx          # Comment footer (likes, actions, date)
-│   │   │   │   ├── FormFooter.tsx             # Form footer (buttons, char counter, upload)
-│   │   ├── pages/
-│   │   │   ├── MainPage.tsx                   # Main page: comment feed, pagination
-│   │   │   ├── NestedCommentsPage.tsx         # Threaded/nested comments page
-│   │   │   ├── WhoAmIPage.tsx                 # User profile/settings page
-│   │   ├── styles/
-│   │   │   ├── main.scss                      # Main SCSS file, imports all styles
-│   │   │   ├── base/                          # Base variables, resets, mixins
-│   │   │   ├── components/                    # Component-specific styles
-│   └── ...
-├── docker-compose.yml                         # Docker Compose for full stack (frontend, backend, db, rabbitmq)
-└── ...
-```
+backend следует надёжной трёхуровневой архитектуре, обеспечивающей консистентность данных:
+
+**Gateway** - принимает запросы от клиентов и отправляет их в очередь  
+**Queue** - гарантирует доставку сообщений и горизонтальное масштабирование  
+**Consumer** - обрабатывает сообщения и уведомляет всех клиентов через `server.emit()`
+
+**Преимущества:**
+- ✅ Гарантированная доставка сообщений
+- ✅ Горизонтальное масштабирование
+- ✅ Консистентность данных у всех клиентов
+- ✅ Отказоустойчивость с механизмами повтора
+
 </details>
 
-## Database (PostgreSQL, TypeORM)
+<details>
+<summary><strong>🛡️ WebSocket неймспейсы и защита</strong></summary>
 
-```ts
-@Entity('comments')
-export class Comment {
-  id: string;
-  userName: string;
-  email: string;
-  homePage?: string;
-  text: string;
-  createdAt: Date;
-  imageUrl?: string;
-  fileUrl?: string;
-  fileName?: string;
-  fileType?: string;
-  parentId?: string | null;
-  likes: number;
-}
-```
+**Разделение неймспейсов:**
+- `/users` - Управление пользователями, аутентификация
+- `/posts` - Операции с постами, управление лентами
+- `/comments` - Система комментариев, вложенные ответы
+- `/search` - Функциональность полнотекстового поиска
 
+**JWT Guard для WebSocket:** Проверка токенов при подключении с записью данных пользователя в `client.data`
+
+</details>
+
+<details>
+<summary><strong>🔍 Интеграция с Elasticsearch</strong></summary>
+
+- **Автоматическая индексация** при создании контента
+- **Поиск через WebSocket** с обработкой запросов в реальном времени
+- **Мультиентити поиск** по постам, комментариям и пользователям
+
+</details>
+
+---
+
+### Frontend: Реактивность и производительность
+
+<details>
+<summary><strong>⚡ Реактивное управление состоянием (MobX)</strong></summary>
+
+**Ключевые особенности:**
+- **MobX Strict Mode** с атомарными транзакциями через `runInAction`
+- **Observer компоненты** для автоматического ре-рендеринга
+- **Минимальные перерисовки** благодаря точным подпискам MobX
+- **Предсказуемые обновления состояния**
+
+Весь блок изменения свойств обёрнут в `runInAction` - это говорит MobX, что мы выполняем атомарную транзакцию.
+
+</details>
+
+<details>
+<summary><strong>🗺️ Умное управление лентами</strong></summary>
+
+**Карта для фида с тремя состояниями (all/following/user):**
+
+**Интерфейс `FeedState`:**
+- `list` - Observable массив постов
+- `buffer` - Буфер для новых постов
+- `manualUpdateMode` - Мануальный режим обновления
+- `newPostsCount` - Счётчик новых постов
+- `userId` - Для пользовательской ленты
+
+**Умные правила:**
+- ✅ Не сбрасывать состояние при переключении вкладок
+- ✅ Не делать новые запросы если данные уже есть
+- ✅ Просто переключаться между уже загруженными лентами
+- ✅ Загружать данные только если лента пуста
+- ✅ Мануальный режим выключается ТОЛЬКО при нажатии кнопки "Load new posts"
+- ✅ Following лента НЕ сбрасывается при переходе в профиль автора поста
+
+</details>
+
+<details>
+<summary><strong>🎯 Виртуальная прокрутка</strong></summary>
+
+**Кастомная реализация для единого интерфейса постам и комментам:**
+- **Универсальность интерфейсов** - один хук `useVirtualItems` для всех типов контента
+- **Адаптивная буферизация** на основе позиции прокрутки
+- **Эффективное использование памяти** при рендеринге больших наборов данных
+
+</details>
+
+<details>
+<summary><strong>🚀 Оптимистичные обновления UI</strong></summary>
+
+**Позитивные лайки (не ждём сервер):**
+- Мгновенное обновление интерфейса при клике на лайк
+- Сервер обрабатывает в фоне и синхронизирует состояние
+- При ошибке - автоматический откат изменений
+
+</details>
+
+<details>
+<summary><strong>🧭 Продвинутая система навигации</strong></summary>
+
+**Слаг-based навигация с сохранением состояния:**
+- Сохранение позиции прокрутки при переходах
+- Восстановление контекста при возврате
+- Умная предзагрузка данных
+
+**Правила сохранения состояния:**
+- Following лента НЕ сбрасывается при переходе в профиль
+- Состояние лент сохраняется при навигации в профили пользователей
+- Возврат из профиля не загружает свежие данные, если они уже есть
+
+</details>
+
+<details>
+<summary><strong>🛡️ Оптимизация рендеринга</strong></summary>
+
+**Защита от лавины рендеров:**
+- **Условный рендеринг** компонентов
+- **Memoized компоненты** для предотвращения лишних рендеров
+- **Стабильные ключи** предотвращают лишние unmount/mount
+- **Ленивая инициализация** тяжёлых компонентов
+
+</details>
+
+---
+
+## 🔧 Ключевые инновации
+
+### 🎯 Атомарные транзакции состояния
+Все изменения состояния происходят в одной атомарной транзакции через `runInAction`, что обеспечивает консистентность данных.
+
+### 🔄 Умное сохранение лент
+Мануальный режим выключается ТОЛЬКО при явном действии пользователя (нажатии кнопки), а не автоматически.
+
+### 🎨 Универсальный дизайн интерфейсов
+Один базовый интерфейс `FeedItemBase` для постов и комментариев, который расширяется специфичными свойствами.
+
+---
+
+## 📱 Продвинутые возможности
+
+<details>
+<summary><strong>🗨️ Система вложенных комментариев</strong></summary>
+
+- **Неограниченная глубина вложенности** с оптимизацией производительности
+- **Ленивая загрузка** веток ответов
+- **Сворачивание/разворачивание** с сохранением состояния
+- **Обновления в реальном времени** для новых ответов на любом уровне
+
+</details>
+
+<details>
+<summary><strong>🔍 Полнотекстовый поис</strong></summary>
+
+- **Мультиентити поиск** по постам, комментариям и пользователям от трёх букв
+- **Подсказки в реальном времени** с debounced вводом
+- **Интеграция с Elasticsearch** для продвинутого анализа текста
+- **Результаты во вкладках** с навигационными шорткатами
+
+</details>
+
+<details>
+<summary><strong>📤 Поддержка медиа</strong></summary>
+
+- **Загрузка изображений** с автоматическим изменением размера и оптимизацией
+- **Файловые вложения** с валидацией типов и предпросмотром
+- **Drag & drop интерфейс** с визуальной обратной связью
+- **CAPTCHA защита** от спама
+
+</details>
+
+<details>
+<summary><strong>🐛 Инструменты отладки</strong></summary>
+
+**Дебаг окно** с детальной информацией о состоянии:
+- Счётчики элементов и виртуальных элементов
+- Статусы загрузки и мануального режима
+- Размер буфера и контекст ленты
+- Кнопки для генерации тестовых данных
+
+</details>
+
+---
+
+## 🚀 Оптимизации производительности
+
+### Виртуальная прокрутка
+- **Кастомная интеграция с TanStack** для плавной бесконечной прокрутки
+- **Адаптивная буферизация** на основе скорости прокрутки
+- **Эффективное использование памяти** при рендеринге больших наборов данных
+
+### Управление состоянием
+- **Минимальные перерисовки** с точными подписками MobX
+- **Мемоизированные компоненты** предотвращают ненужные обновления
+- **Стратегии условного рендеринга**
+
+### Оптимизация сети
+- **Оптимистичные обновления** для мгновенной обратной связи
+- **Умное кеширование** с паттерном stale-while-revalidate
+- **Обработка на основе очередей** для надёжности
+
+---
+
+## 🛠️ TODO и план развития
+
+<details>
+<summary><strong>🎯 Запланированные улучшения</strong></summary>
+
+### Улучшение API слоя
+- [ ] **Обёртки для микросервисов** для лучшей абстракции
+- [ ] **Унифицированное форматирование ответов** во всех эндпоинтах
+- [ ] **Rate limiting** и механизмы throttling
+- [ ] **Интеграция GraphQL** для гибкого получения данных
+
+### Стилизация и UI
+- [ ] **Дизайн-система** с унифицированной библиотекой компонентов
+- [ ] **Поддержка тёмной темы** с сохранением настроек
+- [ ] **Mobile-responsive** улучшения
+- [ ] **Улучшения доступности** (ARIA, навигация с клавиатуры)
+
+### Производительность и масштабирование
+- [ ] **Service Workers** для оффлайн функциональности
+- [ ] **Интеграция CDN** для статических ресурсов
+- [ ] **Оптимизация базы данных** со стратегиями индексирования
+- [ ] **Горизонтальное масштабирование** с балансировщиками нагрузки
+
+### Опыт разработчика
+- [ ] **Комплексный набор тестов** (отдельный модуль)
+- [ ] **CI/CD пайплайны** с автоматическим деплоем
+- [ ] **Документация API** с интерактивными примерами
+
+</details>
+
+---
+
+## 🔗 Детали технологического стека
+
+| Слой | Технология | Назначение |
+|------|------------|------------|
+| **Frontend** | React 18 + TypeScript | UI фреймворк со строгой типизацией |
+| **Управление состоянием** | MobX 6 | Реактивное состояние с атомарными транзакциями |
+| **Backend** | NestJS + TypeScript | Масштабируемая серверная архитектура |
+| **База данных** | PostgreSQL + TypeORM | Реляционные данные с ORM |
+| **Очередь сообщений** | RabbitMQ | Надёжная обработка сообщений |
+| **Реальное время** | Socket.IO | WebSocket коммуникация |
+| **Поиск** | Elasticsearch | Возможности полнотекстового поиска |
+| **Аутентификация** | JWT + Guards | Безопасная аутентификация пользователей |
+| **Инструменты сборки** | Vite + SWC | Быстрая разработка и сборка |
+| **Стилизация** | SCSS + Ant Design | Библиотека компонентов с кастомными стилями |
+
+---
 
 ## How to run
 
 <details>
-<summary>Click to expand the guide </summary>
-  
-```plaintext
-git clone 
+<summary>Click to expand the guide</summary>
+
+### Предварительные требования
+- Node.js 18+
+- PostgreSQL 14+
+- RabbitMQ 3.9+
+- Elasticsearch 8.0+
+
+### Установка
+
+1. **Клонирование репозитория**
+```bash
+git clone https://github.com/your-repo/spa-comments.git
 cd spa-comments
-bash run.sh
-You will see a menu, type 1 and press Enter to start local deployment.
-root@ubuntu-4gb-hel1-2:~/spa-comments# bash run.sh
-  ----------------------------------------------------------------------  
-  -                        Deployment Menu                             -  
-  ----------------------------------------------------------------------  
-         1 - Run Local
-  ----------------------------------------------------------------------  
-
-Input action number >  1
 ```
-  
-- Frontend: http://localhost:5174  
-- Backend API: http://localhost:3001  
-- WebSocket: ws://localhost:3001
-</details>
 
-## A multithreaded test
-
-### `/backend/test/worker.js`
-```ts
-npm i axios 
-node load-test.js
+2. **Запуск bash скрипта**
+Запустите скрипт командой ./run.sh и выберите параметр 1 для локальной разработки.
+```bash
+./run.sh
+1
 ```
-A Node.js worker script for load testing the comments API.
 
-**Purpose:**  
-Simulates multiple users adding comments in parallel threads to test API performance and stability, using jest and POST requests to the comments API.
-
-**How it works:**  
-- Receives parameters (`apiUrl`, `requests`, `threadIndex`) via `workerData`.
-- Reports success or error for each request back to the parent thread.
-- Used in conjunction with a parent script that spawns multiple workers for concurrent load.
-
-## Demo
-<details>
-<summary>Click to expand</summary>
-  
-![image](https://github.com/user-attachments/assets/71ad490a-7514-406a-af11-179028e35882)
-
-  
+### Доступ к приложению
+Актуальные ссылки будут видны в консоли после запуска
 </details>
 
 ---
+
+<div align="center">
+
+**Создано с ❤️ используя современные технологии и лучшие практики**
+
+*Этот проект демонстрирует продвинутые паттерны в fullstack TypeScript разработке, коммуникации в реальном времени и реактивном управлении состоянием.*
+
+</div>

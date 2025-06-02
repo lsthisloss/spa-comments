@@ -35,12 +35,26 @@ class SocketStore {
       setConnected: action,
       setPostsReady: action,
       setCommentsReady: action,
+      checkSocketsReady: action,
     });
+
 
     // Инициализируем сокет users сразу (без токена)
     this.initializeUsersSocket();
   }
-
+  checkSocketsReady = action(() => {
+    if (this.posts?.connected && 
+        this.comments?.connected && 
+        this.users?.connected &&
+        this.search?.connected) {
+      
+      logger.log('[SocketStore] All sockets ready, dispatching event');
+      
+      // Отправляем событие о готовности всех сокетов
+      const event = new CustomEvent('sockets-ready');
+      document.dispatchEvent(event);
+    }
+  })
   setUsers = action((socket: ReturnType<typeof io> | null) => {
     this.users = socket;
   })
@@ -216,6 +230,7 @@ class SocketStore {
       if (!this.search) return;
       this.search.on('connect', () => {
         logger.log('[SocketStore] Search socket connected');
+        this.checkSocketsReady();
       });
       this.search.on('disconnect', () => {
         logger.log('[SocketStore] Search socket disconnected');
@@ -259,6 +274,7 @@ class SocketStore {
       logger.log('[SocketStore] Authenticated users socket connected');
       runInAction(() => {
         this.setConnected(true);
+        this.checkSocketsReady();
       });
     });
 
@@ -281,6 +297,7 @@ class SocketStore {
       logger.log('[SocketStore] Posts socket connected');
       runInAction(() => {
         this.setPostsReady(true);
+        this.checkSocketsReady(); 
       });
     });
 
@@ -303,6 +320,7 @@ class SocketStore {
       logger.log('[SocketStore] Comments socket connected');
       runInAction(() => {
         this.setCommentsReady(true);
+        this.checkSocketsReady(); 
       });
     });
 

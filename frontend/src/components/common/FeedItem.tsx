@@ -108,20 +108,29 @@ const FeedItemComponent = ({
   }, [item.createdAt]);
 
   // Обработчик клика по аватару пользователя
-  const handleAvatarClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (item.user?.id) {
-      logger.log(`Avatar clicked for user ${item.user.id}`);
-      navigate(`/profile/${item.user.id}`);
-    }
-  }, [item.user, navigate]);
-
-  // Обработчик клика по имени пользователя
+ // Обработчик клика по имени пользователя
   const handleUsernameClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (item.user?.id) {
       logger.log(`Username clicked for user ${item.user.id}`);
-      navigate(`/profile/${item.user.id}`);
+      // Используем slug вместо ID если он доступен
+      const profilePath = item.user.slug 
+        ? `/profile/${item.user.slug}` 
+        : `/profile/${item.user.id}`;
+      navigate(profilePath);
+    }
+  }, [item.user, navigate]);
+
+  // То же для handleAvatarClick
+  const handleAvatarClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.user?.id) {
+      logger.log(`Avatar clicked for user ${item.user.id}`);
+      // Используем slug вместо ID если он доступен
+      const profilePath = item.user.slug 
+        ? `/profile/${item.user.slug}` 
+        : `/profile/${item.user.id}`;
+      navigate(profilePath);
     }
   }, [item.user, navigate]);
 

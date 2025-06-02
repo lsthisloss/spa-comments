@@ -275,14 +275,29 @@ async waitForSockets(timeoutMs: number = 5000): Promise<boolean> {
       }
       
       // Если authStore загружен, но userStore нет - синхронизируем
-      if (authStore.isAuthenticated && authStore.userId && !userStore.user) {
-        logger.info("[AppInit] Synchronizing userStore from authStore");
-        userStore.setUser({
-          id: authStore.userId,
-          userName: authStore.userName || "Anonymous",
-          email: "", // Email not available from authStore
-          token: authStore.token || "",
-        });
+      if (authStore.isAuthenticated && authStore.userId) {
+        if (!userStore.user || userStore.user.id !== authStore.userId) {
+          logger.info("[AppInit] Fetching full user data for authenticated user");
+          
+          // Attempt to get complete user data
+          userStore.getUserById(authStore.userId)
+            .then(user => {
+              if (user) {
+                logger.info("[AppInit] Full user data retrieved successfully");
+                
+                // Ensure all stores have the latest user data
+                setTimeout(() => {
+                  if (socketStore.users && socketStore.users.connected) {
+                    // Force a refresh of socket connections with the new user data
+                    socketStore.checkConnections();
+                  }
+                }, 500);
+              }
+            })
+            .catch(err => {
+              logger.error("[AppInit] Failed to fetch full user data:", err);
+            });
+        }
       }
       
       // Если userStore загружен, но authStore нет - синхронизируем

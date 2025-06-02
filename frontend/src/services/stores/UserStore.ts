@@ -87,77 +87,77 @@ class UserStore implements IUserStore {
 
 // Получить пользователя по ID или slug с кэшированием
 async getUserById(userIdOrSlug: string): Promise<User | null> {
-  // Проверяем кэш по всем возможным ключам
+    // Проверяем кэш по всем возможным ключам
   let cachedUser = this.usersCache.get(userIdOrSlug);
-  
-  // Если не нашли по переданному параметру, ищем по всем пользователям в кэше
-  if (!cachedUser) {
-    for (const [, user] of this.usersCache.entries()) {
-      if (user.id === userIdOrSlug || user.slug === userIdOrSlug) {
-        cachedUser = user;
-        // Кэшируем под новым ключом для быстрого доступа
-        this.usersCache.set(userIdOrSlug, user);
-        break;
+    
+    // Если не нашли по переданному параметру, ищем по всем пользователям в кэше
+    if (!cachedUser) {
+      for (const [, user] of this.usersCache.entries()) {
+        if (user.id === userIdOrSlug || user.slug === userIdOrSlug) {
+          cachedUser = user;
+          // Кэшируем под новым ключом для быстрого доступа
+          this.usersCache.set(userIdOrSlug, user);
+          break;
+        }
       }
     }
-  }
-  
-  if (cachedUser) {
-    return cachedUser;
-  }
-
-  // Проверяем, не загружается ли уже
-  if (this.loadingUsers.has(userIdOrSlug)) {
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        if (!this.loadingUsers.has(userIdOrSlug)) {
-          clearInterval(checkInterval);
-          resolve(this.usersCache.get(userIdOrSlug) || null);
-        }
-      }, 100);
-    });
-  }
-
-  // Начинаем загрузку
-  runInAction(() => {
-    this.loadingUsers.add(userIdOrSlug);
-  });
-
-  return new Promise<User | null>((resolve) => {
-    if (!socketStore.users) {
-      runInAction(() => {
-        this.loadingUsers.delete(userIdOrSlug);
-      });
-      resolve(null);
-      return;
+    
+    if (cachedUser) {
+      return cachedUser;
     }
 
-    socketStore.users.emit("getUser", { userId: userIdOrSlug }, (res: { success: boolean; user?: User; message?: string }) => {
-      runInAction(() => {
-        this.loadingUsers.delete(userIdOrSlug);
-        
-        if (res?.success && res.user) {
-          // Инициализируем настройки по умолчанию если их нет
-          if (!res.user.settings) {
-            res.user.settings = {
-              debugMode: false,
-            };
+    // Проверяем, не загружается ли уже
+    if (this.loadingUsers.has(userIdOrSlug)) {
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!this.loadingUsers.has(userIdOrSlug)) {
+            clearInterval(checkInterval);
+            resolve(this.usersCache.get(userIdOrSlug) || null);
           }
-          
-          // Кэшируем под всеми возможными ключами
-          this.usersCache.set(res.user.id, res.user);
-          if (res.user.slug) {
-            this.usersCache.set(res.user.slug, res.user);
-          }
-          this.usersCache.set(userIdOrSlug, res.user);
-          
-          resolve(res.user);
-        } else {
-          console.error('Failed to get user:', res?.message);
-          resolve(null);
-        }
+        }, 100);
       });
+    }
+
+    // Начинаем загрузку
+    runInAction(() => {
+      this.loadingUsers.add(userIdOrSlug);
     });
+
+    return new Promise<User | null>((resolve) => {
+      if (!socketStore.users) {
+        runInAction(() => {
+          this.loadingUsers.delete(userIdOrSlug);
+        });
+        resolve(null);
+        return;
+      }
+
+      socketStore.users.emit("getUser", { userId: userIdOrSlug }, (res: { success: boolean; user?: User; message?: string }) => {
+        runInAction(() => {
+          this.loadingUsers.delete(userIdOrSlug);
+          
+          if (res?.success && res.user) {
+            // Инициализируем настройки по умолчанию если их нет
+            if (!res.user.settings) {
+              res.user.settings = {
+                debugMode: false,
+              };
+            }
+            
+            // Кэшируем под всеми возможными ключами
+            this.usersCache.set(res.user.id, res.user);
+            if (res.user.slug) {
+              this.usersCache.set(res.user.slug, res.user);
+            }
+            this.usersCache.set(userIdOrSlug, res.user);
+            
+            resolve(res.user);
+          } else {
+            console.error('Failed to get user:', res?.message);
+            resolve(null);
+          }
+        });
+      });
   });
 }
 
@@ -236,43 +236,43 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
     return this.usersCache.get(identifier) || null;
   }
 
-// Проверить, загружается ли пользователь (по ID или slug)
-isUserLoading(userIdOrSlug: string): boolean {
-  return this.loadingUsers.has(userIdOrSlug);
-}
-
-
-  async followUser(userId: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      if (!socketStore.users) {
-        reject(new Error("Users socket not available"));
-        return;
-      }
-
-      socketStore.users.emit("followUser", { userId }, (res: { success: boolean; error?: string }) => {
-        if (res.success) {
-          // Обновляем локальное состояние
-          runInAction(() => {
-            if (this.user) {
-              this.user.following = [...(this.user.following || []), { id: userId } as User];
-              localStorage.setItem("user", JSON.stringify(this.user));
-            }
-            
-            // Обновляем кэш пользователя
-            const cachedUser = this.usersCache.get(userId);
-            if (cachedUser) {
-              cachedUser.followers = [...(cachedUser.followers || []), this.user!];
-              this.usersCache.set(userId, cachedUser);
-            }
-          });
-          postStore.resetFeedState("following");
-          resolve();
-        } else {
-          reject(new Error(res.error || "Failed to follow user"));
-        }
-      });
-    });
+  // Проверить, загружается ли пользователь (по ID или slug)
+  isUserLoading(userIdOrSlug: string): boolean {
+    return this.loadingUsers.has(userIdOrSlug);
   }
+
+
+    async followUser(userId: string): Promise<void> {
+      return new Promise<void>((resolve, reject) => {
+        if (!socketStore.users) {
+          reject(new Error("Users socket not available"));
+          return;
+        }
+
+        socketStore.users.emit("followUser", { userId }, (res: { success: boolean; error?: string }) => {
+          if (res.success) {
+            // Обновляем локальное состояние
+            runInAction(() => {
+              if (this.user) {
+                this.user.following = [...(this.user.following || []), { id: userId } as User];
+                localStorage.setItem("user", JSON.stringify(this.user));
+              }
+              
+              // Обновляем кэш пользователя
+              const cachedUser = this.usersCache.get(userId);
+              if (cachedUser) {
+                cachedUser.followers = [...(cachedUser.followers || []), this.user!];
+                this.usersCache.set(userId, cachedUser);
+              }
+            });
+            postStore.resetFeedState("following");
+            resolve();
+          } else {
+            reject(new Error(res.error || "Failed to follow user"));
+          }
+        });
+      });
+    }
 
   async unfollowUser(userId: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
@@ -364,7 +364,6 @@ isUserLoading(userIdOrSlug: string): boolean {
               }
             });
             
-            // ВЫНЕСЛИ ТЯЖЕЛЫЕ ОПЕРАЦИИ ИЗ runInAction
             if (updateData.userName) {
               setTimeout(() => {
                 // Обновить userName в постах всех лент асинхронно
@@ -597,19 +596,20 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
       });
       logger.log(`[UserStore] Updated following list: ${userIds.length} users`);
     }
-// Вспомогательный метод для конвертации файла в base64
-private fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1];
-      resolve(base64Data);
-    };
-    reader.onerror = error => reject(error);
-  });
-}
+
+  // Вспомогательный метод для конвертации файла в base64
+  private fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = reader.result as string;
+        const base64Data = base64String.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = error => reject(error);
+    });
+  }
 }
 
 const userStoreInstance = new UserStore();
