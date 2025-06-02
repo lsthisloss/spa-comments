@@ -1,0 +1,17 @@
+{
+  "name": "spa-comments",
+  "version": "1.0.0",
+  "description": "TypeScript Fullstack SPA Comments Application",
+  "private": true,
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "create-superadmin:local": "cd backend && npm run create-superadmin:local",
+    "create-superadmin:docker": "cd backend && npm run create-superadmin:docker"
+  },
+  "keywords": ["typescript", "nestjs", "react", "mobx", "socket.io", "postgresql"],
+  "author": "sk8",
+  "license": "MIT"
+}

@@ -379,6 +379,29 @@ function app_setup_swap() {
     free -h
 }
 
+function app_create_superadmin() {
+    echo -e "\n${YELLOW}Creating superadmin user...${NORMAL}\n"
+    
+    cd backend
+    
+    if [ ! -f "src/scripts/create-superadmin.ts" ]; then
+        echo -e "${RED}create-superadmin.ts script not found!${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Running superadmin creation script...${NORMAL}"
+    npm run create-superadmin:local
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Superadmin created successfully!${NORMAL}"
+    else
+        echo -e "${RED}❌ Failed to create superadmin${NORMAL}"
+    fi
+    
+    cd ..
+}
+
 while getopts c:t: flag; do
     case "${flag}" in
     c) choice=${OPTARG} ;;
@@ -402,6 +425,7 @@ if [ -z $choice ]; then
     echo "         7 - Build Frontend (Development)"
     echo "         8 - Build Frontend (Production)"
     echo "         9 - Setup Swap Space (for low memory servers)"
+    echo "         10 - Create Superadmin User"
     echo "  ----------------------------------------------------------------------  "
     echo -e "${NORMAL}"
     echo -e "${CYAN}Input action number > ${NORMAL} "
@@ -434,6 +458,9 @@ if [ -z $choice ]; then
         ;;
     9)
         app_setup_swap
+        ;;
+    10)
+        app_create_superadmin
         ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac

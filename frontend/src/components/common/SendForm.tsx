@@ -7,6 +7,7 @@ import { getAvatarColor } from "../ui/particles/avatarColor";
 import { sendFormStore } from "../../services/stores/SendFormStore";
 import userStore from '../../services/stores/UserStore';
 import { SendFormProps } from "../../types/interfaces";
+import { reaction } from "mobx";
 
 const SendForm = observer(({ 
   type, 
@@ -21,24 +22,48 @@ const SendForm = observer(({
   const dragCounterRef = useRef(0);
   const isFormDisabled = sendFormStore.loading;
 
-  useEffect(() => {
-  if (userStore.user?.id && userStore.user?.userName) {
-    console.log("[SendForm] Initializing user from userStore:", {
-      id: userStore.user.id,
-      userName: userStore.user.userName,
-      avatarUrl: userStore.user.avatarUrl,
-      avatarShape: userStore.user.avatarShape,
-      slug: userStore.user.slug
-    });
-    
-    sendFormStore.initializeUser(
-      userStore.user.id, 
-      userStore.user.userName,
-      userStore.user.avatarUrl ?? undefined,
-      (userStore.user.avatarShape as 'circle' | 'square') ?? 'circle',
+useEffect(() => {
+    const disposer = reaction(
+      // Что отслеживаем
+      () => ({
+        id: userStore.user?.id,
+        userName: userStore.user?.userName,
+        avatarUrl: userStore.user?.avatarUrl,
+        avatarShape: userStore.user?.avatarShape,
+      }),
+      // Что делаем при изменении
+      (userData) => {
+        if (userData.id && userData.userName) {
+          // Проверяем, нужно ли обновить данные пользователя в SendFormStore
+          const needsUpdate = 
+            sendFormStore.userId !== userData.id ||
+            sendFormStore.userName !== userData.userName ||
+            sendFormStore.avatarUrl !== userData.avatarUrl ||
+            sendFormStore.avatarShape !== userData.avatarShape;
+          
+          if (needsUpdate) {
+            console.log("[SendForm] User data changed, updating SendFormStore:", userData);
+            
+            sendFormStore.initializeUser(
+              userData.id, 
+              userData.userName,
+              userData.avatarUrl ?? undefined,
+              (userData.avatarShape as 'circle' | 'square') ?? 'circle',
+            );
+          }
+        }
+      },
+      {
+        // Запускаем сразу при создании reaction
+        fireImmediately: true
+      }
     );
-  }
-});
+
+    // Очистка при размонтировании
+    return () => disposer();
+  }, []); 
+
+  
   // Unified drag-and-drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -145,6 +170,7 @@ const SendForm = observer(({
             />
           </div>
         </div>
+        
         
         {/* Form footer with actions */}
         <SendFormFooter

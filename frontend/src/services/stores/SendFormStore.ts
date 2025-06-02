@@ -56,21 +56,32 @@ class SendFormStore {
     });
   }
 
-  initializeUser = (userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
-  console.log('[SendFormStore] Initializing user:', { userId, userName, avatarUrl, avatarShape });
-  
-  this.userId = userId;
-  this.userName = userName;
-  this.avatarUrl = avatarUrl || null;
-  this.avatarShape = avatarShape || 'circle';
-  
-  console.log('[SendFormStore] User initialized with:', {
-    userId: this.userId,
-    userName: this.userName,
-    avatarUrl: this.avatarUrl,
-    avatarShape: this.avatarShape
+  initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
+    // Проверяем, нужно ли обновлять данные
+    const needsUpdate = 
+      this.userId !== userId ||
+      this.userName !== userName ||
+      this.avatarUrl !== (avatarUrl || null) ||
+      this.avatarShape !== (avatarShape || 'circle');
+    
+    if (!needsUpdate) {
+      return; // Не обновляем, если данные не изменились
+    }
+    
+    console.log('[SendFormStore] Initializing user:', { userId, userName, avatarUrl, avatarShape });
+    
+    this.userId = userId;
+    this.userName = userName;
+    this.avatarUrl = avatarUrl || null;
+    this.avatarShape = avatarShape || 'circle';
+    
+    console.log('[SendFormStore] User initialized with:', {
+      userId: this.userId,
+      userName: this.userName,
+      avatarUrl: this.avatarUrl,
+      avatarShape: this.avatarShape
+    });
   });
-};
 
   setText = action((value: string) => {
     this.text = value;
