@@ -22,24 +22,23 @@ const SendForm = observer(({
   const isFormDisabled = sendFormStore.loading;
 
   useEffect(() => {
-    if (userStore.user?.id && userStore.user?.userName) {
-      console.log("[SendForm] Initializing user from userStore:", {
-        id: userStore.user.id,
-        userName: userStore.user.userName,
-        avatarUrl: userStore.user.avatarUrl,
-        avatarShape: userStore.user.avatarShape,
-        slug: userStore.user.slug
-      });
-      
-      sendFormStore.initializeUser(
-        userStore.user.id, 
-        userStore.user.userName,
-        userStore.user.avatarUrl ?? undefined,
-        userStore.user.avatarShape as 'circle' | 'square'
-      );
-    }
-  }, []); 
-  
+  if (userStore.user?.id && userStore.user?.userName) {
+    console.log("[SendForm] Initializing user from userStore:", {
+      id: userStore.user.id,
+      userName: userStore.user.userName,
+      avatarUrl: userStore.user.avatarUrl,
+      avatarShape: userStore.user.avatarShape,
+      slug: userStore.user.slug
+    });
+    
+    sendFormStore.initializeUser(
+      userStore.user.id, 
+      userStore.user.userName,
+      userStore.user.avatarUrl ?? undefined,
+      (userStore.user.avatarShape as 'circle' | 'square') ?? 'circle',
+    );
+  }
+});
   // Unified drag-and-drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();

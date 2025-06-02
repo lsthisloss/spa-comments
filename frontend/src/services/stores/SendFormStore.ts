@@ -57,11 +57,20 @@ class SendFormStore {
   }
 
   initializeUser = (userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
-    this.userId = userId;
-    this.userName = userName;
-    this.avatarUrl = avatarUrl || null;
-    this.avatarShape = avatarShape || 'circle';
-  };
+  console.log('[SendFormStore] Initializing user:', { userId, userName, avatarUrl, avatarShape });
+  
+  this.userId = userId;
+  this.userName = userName;
+  this.avatarUrl = avatarUrl || null;
+  this.avatarShape = avatarShape || 'circle';
+  
+  console.log('[SendFormStore] User initialized with:', {
+    userId: this.userId,
+    userName: this.userName,
+    avatarUrl: this.avatarUrl,
+    avatarShape: this.avatarShape
+  });
+};
 
   setText = action((value: string) => {
     this.text = value;
