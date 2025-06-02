@@ -357,7 +357,6 @@ const UserProfilePage = observer(() => {
           <PostsThread 
             activeTab="user"
             userId={user.id}
-            // Убираем key с timestamp - это вызывает полную перезагрузку
             key={`user-posts-${user.id}`}
           />
         )}

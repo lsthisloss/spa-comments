@@ -520,15 +520,6 @@ class PostStore extends BaseStore<Post> {
       }
     });
   }
-// Убираем весь таймер - он не нужен!
-private startBufferInterval(type: FeedType) {
-  // УДАЛЯЕМ ВСЁ - никаких таймеров!
-  // Просто очищаем если был старый
-  if (this.intervals[type]) {
-    clearInterval(this.intervals[type]!);
-    this.intervals[type] = null;
-  }
-}
 
 /**
  * Загрузка новых постов из буфера

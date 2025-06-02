@@ -5,29 +5,102 @@ import * as express from 'express';
 import * as path from 'path';
 import { AuthenticatedSocketIoAdapter } from './socket-io.adapter';
 import { createConnection } from 'net';
+import { Client, ClientConfig } from 'pg';
 
-async function waitForPostgres() {
+interface ErrorLike {
+  message: unknown;
+}
+
+function isErrorLike(err: unknown): err is ErrorLike {
+  return err != null && typeof err === 'object' && 'message' in err;
+}
+
+function toError(err: unknown): Error {
+  if (err instanceof Error) {
+    return err;
+  }
+  if (typeof err === 'string') {
+    return new Error(err);
+  }
+  if (isErrorLike(err)) {
+    return new Error(String(err.message));
+  }
+  return new Error('Unknown error occurred');
+}
+
+async function createDatabaseIfNotExists(): Promise<void> {
   if (process.env.NODE_ENV !== 'production') {
     return;
   }
 
-  const maxRetries = 60; // Увеличили до 60 попыток
-  const retryDelay = 3000; // 3 секунды между попытками
+  const dbName = process.env.DB_NAME || 'spa_comments';
+
+  // Создаем конфигурацию с явными строковыми типами
+  const host = process.env.DB_HOST || 'postgres';
+  const port = parseInt(process.env.DB_PORT ?? '5432');
+  const user = process.env.DB_USER || 'postgres';
+  const password = process.env.DB_PASSWORD || 'postgres';
+
+  console.log(`🔧 Checking if database "${dbName}" exists...`);
+
+  // Создаем объект конфигурации с явной типизацией
+  const clientConfig = {
+    host,
+    port,
+    user,
+    password,
+    database: 'postgres' as const, // Подключаемся к системной БД
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+  const client = new Client(clientConfig);
+
+  try {
+    await client.connect();
+    console.log('✅ Connected to PostgreSQL server');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+    const result = await client.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
+      [dbName],
+    );
+
+    if (result.rows.length === 0) {
+      console.log(`📦 Creating database "${dbName}"...`);
+      await client.query(`CREATE DATABASE "${dbName}"`);
+      console.log(`✅ Database "${dbName}" created successfully!`);
+    } else {
+      console.log(`✅ Database "${dbName}" already exists`);
+    }
+  } catch (err: unknown) {
+    const error = toError(err);
+    console.error('❌ Error creating database:', error.message);
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+async function waitForPostgres(): Promise<void> {
+  if (process.env.NODE_ENV !== 'production') {
+    return;
+  }
+
+  const maxRetries = 60;
+  const retryDelay = 3000;
   const host = process.env.DB_HOST || 'postgres';
   const port = parseInt(process.env.DB_PORT ?? '5432');
 
-  console.log(`Waiting for PostgreSQL at ${host}:${port}...`);
+  console.log(`⏳ Waiting for PostgreSQL at ${host}:${port}...`);
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const socket = createConnection({ host, port }, () => {
           socket.end();
-          resolve(void 0);
+          resolve();
         });
 
-        socket.on('error', (err) => {
-          reject(err);
+        socket.on('error', (socketErr: Error) => {
+          reject(socketErr);
         });
 
         socket.setTimeout(3000, () => {
@@ -36,155 +109,151 @@ async function waitForPostgres() {
         });
       });
 
-      console.log('✅ PostgreSQL is ready!');
+      console.log('✅ PostgreSQL server is ready!');
       return;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+    } catch (err: unknown) {
+      const error = toError(err);
       console.log(
-        `⏳ PostgreSQL not ready (${i + 1}/${maxRetries}): ${errorMessage}`,
+        `⏳ PostgreSQL not ready (${i + 1}/${maxRetries}): ${error.message}`,
       );
       if (i === maxRetries - 1) {
         throw new Error(
           'Failed to connect to PostgreSQL after maximum retries',
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      await new Promise<void>((resolve) => setTimeout(resolve, retryDelay));
     }
   }
 }
 
-async function bootstrap() {
-  // Ждем PostgreSQL
-  await waitForPostgres();
+async function bootstrap(): Promise<void> {
+  try {
+    await waitForPostgres();
+    await createDatabaseIfNotExists();
 
-  console.log('🚀 Starting NestJS application...');
+    console.log('🚀 Starting NestJS application...');
 
-  // ОТЛАДКА: Выводим все переменные окружения для DB
-  console.log('🔍 DATABASE ENVIRONMENT DEBUG:');
-  console.log('NODE_ENV:', process.env.NODE_ENV);
-  console.log('DB_HOST:', process.env.DB_HOST);
-  console.log('DB_PORT:', process.env.DB_PORT);
-  console.log('DB_USER:', process.env.DB_USER);
-  console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'undefined');
-  console.log('DB_NAME:', process.env.DB_NAME);
-  console.log(
-    'DATABASE_URL:',
-    process.env.DATABASE_URL
-      ? process.env.DATABASE_URL.replace(/:[^:@]*@/, ':***@')
-      : 'undefined',
-  );
+    console.log('🔍 DATABASE ENVIRONMENT DEBUG:');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('DB_HOST:', process.env.DB_HOST);
+    console.log('DB_PORT:', process.env.DB_PORT);
+    console.log('DB_USER:', process.env.DB_USER);
+    console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'undefined');
+    console.log('DB_NAME:', process.env.DB_NAME);
+    console.log(
+      'DATABASE_URL:',
+      process.env.DATABASE_URL
+        ? process.env.DATABASE_URL.replace(/:[^:@]*@/, ':***@')
+        : 'undefined',
+    );
 
-  const app = await NestFactory.create(AppModule, {
-    logger:
-      process.env.NODE_ENV === 'production'
-        ? ['error', 'warn', 'log']
-        : ['error', 'warn', 'log', 'debug', 'verbose'],
-  });
-
-  // Global validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-
-  // Static uploads with proper headers
-  app.use(
-    '/uploads',
-    (
-      req: express.Request,
-      res: express.Response,
-      next: express.NextFunction,
-    ) => {
-      // Security headers для файлов
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'DENY');
-
-      // Определяем тип контента для корректного отображения
-      const ext = path.extname(req.path).toLowerCase();
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-        // Для изображений показываем inline
-        res.setHeader('Content-Disposition', 'inline');
-      } else {
-        // Для остальных файлов - скачивание
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${req.path.split('/').pop()}"`,
-        );
-      }
-      next();
-    },
-    express.static(path.join(__dirname, '../uploads')),
-  );
-
-  // Health check endpoint (должен быть до WebSocket adapter'а)
-  app
-    .getHttpAdapter()
-    .get('/health', (req: express.Request, res: express.Response) => {
-      res.status(200).json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        environment: process.env.NODE_ENV || 'development',
-        memory: process.memoryUsage(),
-      });
+    const app = await NestFactory.create(AppModule, {
+      logger:
+        process.env.NODE_ENV === 'production'
+          ? ['error', 'warn', 'log']
+          : ['error', 'warn', 'log', 'debug', 'verbose'],
     });
 
-  // WebSocket JWT middleware
-  app.useWebSocketAdapter(new AuthenticatedSocketIoAdapter(app));
-  console.log('[SOCKET AUTH] WebSocket adapter initialized');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
 
-  // CORS configuration
-  app.enableCors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? [
-            process.env.FRONTEND_URL || 'http://localhost',
-            /^https?:\/\/localhost(:\d+)?$/,
-          ]
-        : true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Origin',
-      'X-Requested-With',
-      'Content-Type',
-      'Accept',
-      'Authorization',
-      'Bearer',
-    ],
-  });
+    app.use(
+      '/uploads',
+      (
+        req: express.Request,
+        res: express.Response,
+        next: express.NextFunction,
+      ) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
 
-  // Graceful shutdown
-  const gracefulShutdown = () => {
-    console.log('Received shutdown signal, closing server gracefully...');
+        const ext = path.extname(req.path).toLowerCase();
+        if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+          res.setHeader('Content-Disposition', 'inline');
+        } else {
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${req.path.split('/').pop() || 'file'}"`,
+          );
+        }
+        next();
+      },
+      express.static(path.join(__dirname, '../uploads')),
+    );
+
     app
-      .close()
-      .then(() => {
-        console.log('Server closed successfully');
-        process.exit(0);
-      })
-      .catch((error) => {
-        console.error('Error during server shutdown:', error);
-        process.exit(1);
+      .getHttpAdapter()
+      .get('/health', (req: express.Request, res: express.Response) => {
+        res.status(200).json({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          uptime: process.uptime(),
+          environment: process.env.NODE_ENV || 'development',
+          memory: process.memoryUsage(),
+        });
       });
-  };
 
-  process.on('SIGTERM', gracefulShutdown);
-  process.on('SIGINT', gracefulShutdown);
+    app.useWebSocketAdapter(new AuthenticatedSocketIoAdapter(app));
+    console.log('[SOCKET AUTH] WebSocket adapter initialized');
 
-  const port = process.env.PORT ?? 3001;
-  await app.listen(port, '0.0.0.0');
+    app.enableCors({
+      origin:
+        process.env.NODE_ENV === 'production'
+          ? [
+              process.env.FRONTEND_URL || 'http://localhost',
+              /^https?:\/\/localhost(:\d+)?$/,
+            ]
+          : true,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'Bearer',
+      ],
+    });
 
-  console.log(`🎉 Application is running on: http://0.0.0.0:${port}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Health check: http://0.0.0.0:${port}/health`);
+    const gracefulShutdown = (): void => {
+      console.log('Received shutdown signal, closing server gracefully...');
+      app
+        .close()
+        .then(() => {
+          console.log('Server closed successfully');
+          process.exit(0);
+        })
+        .catch((err: unknown) => {
+          const error = toError(err);
+          console.error('Error during server shutdown:', error.message);
+          process.exit(1);
+        });
+    };
+
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+
+    const port = process.env.PORT ?? 3001;
+    await app.listen(port, '0.0.0.0');
+
+    console.log(`🎉 Application is running on: http://0.0.0.0:${port}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Health check: http://0.0.0.0:${port}/health`);
+  } catch (err: unknown) {
+    const error = toError(err);
+    console.error('❌ Failed to start application:', error.message);
+    process.exit(1);
+  }
 }
 
-bootstrap().catch((error) => {
-  console.error('❌ Failed to start application:', error);
+bootstrap().catch((err: unknown) => {
+  const error = toError(err);
+  console.error('❌ Failed to start application:', error.message);
   process.exit(1);
 });

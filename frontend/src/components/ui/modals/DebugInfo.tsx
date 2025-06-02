@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { VirtualListItem } from '../../common/VirtualList';
 import userStore from '../../../services/stores/UserStore';
@@ -52,18 +52,28 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
     return saved ? JSON.parse(saved) : false;
   });
 
-  // Состояние для позиции формы
+  // Состояние для позиции формы - начальная позиция
   const [position, setPosition] = useState(() => {
-    const saved = localStorage.getItem('debugInfoPosition');
-    return saved
-      ? JSON.parse(saved)
-      : { top: window.innerHeight - 120, left: window.innerWidth - 340 };
+    try {
+      const saved = localStorage.getItem('debugInfoPosition');
+      return saved
+        ? JSON.parse(saved)
+        : { top: window.innerHeight - 120, left: window.innerWidth - 340 };
+    } catch {
+      return { top: window.innerHeight - 120, left: window.innerWidth - 340 };
+    }
   });
 
-  // Состояние для перетаскивания
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  // Используем refs для отслеживания состояния перетаскивания
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const currentPositionRef = useRef(position);
   const debugRef = useRef<HTMLDivElement>(null);
+
+  // Обновляем ref при изменении позиции через state
+  useEffect(() => {
+    currentPositionRef.current = position;
+  }, [position]);
 
   // Проверяем, должен ли отображаться дебаг
   const user = userStore.user;
@@ -72,14 +82,22 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   // Корректировка позиции при изменении размера окна
   useEffect(() => {
     const handleResize = () => {
-      setPosition((prev: { top: number; left: number }) => {
-        const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
-        const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
-        return {
-          left: Math.max(10, Math.min(prev.left, maxX)),
-          top: Math.max(10, Math.min(prev.top, maxY)),
-        };
-      });
+      const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
+      const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
+      
+      const newPosition = {
+        left: Math.max(10, Math.min(currentPositionRef.current.left, maxX)),
+        top: Math.max(10, Math.min(currentPositionRef.current.top, maxY)),
+      };
+      
+      // Обновляем DOM напрямую для лучшей производительности
+      if (debugRef.current) {
+        debugRef.current.style.left = `${newPosition.left}px`;
+        debugRef.current.style.top = `${newPosition.top}px`;
+      }
+      
+      currentPositionRef.current = newPosition;
+      setPosition(newPosition);
     };
 
     window.addEventListener('resize', handleResize);
@@ -97,82 +115,147 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   }, [isExpanded]);
 
   useEffect(() => {
-    localStorage.setItem('debugInfoPosition', JSON.stringify(position));
+    try {
+      localStorage.setItem('debugInfoPosition', JSON.stringify(position));
+    } catch (e) {
+      console.error('Failed to save position to localStorage', e);
+    }
   }, [position]);
 
-  // Обработчики для мыши
+  // Настраиваем обработчики для перетаскивания
+  useEffect(() => {
+    // Обработчик движения мыши
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      
+      // Используем requestAnimationFrame для плавного обновления
+      requestAnimationFrame(() => {
+        const newLeft = e.clientX - dragStartRef.current.x;
+        const newTop = e.clientY - dragStartRef.current.y;
+        
+        const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
+        const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
+        
+        const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
+        const boundedTop = Math.max(10, Math.min(newTop, maxY));
+        
+        // Обновляем DOM напрямую вместо обновления состояния React
+        if (debugRef.current) {
+          debugRef.current.style.left = `${boundedLeft}px`;
+          debugRef.current.style.top = `${boundedTop}px`;
+          
+          // Сохраняем текущую позицию в ref
+          currentPositionRef.current = { left: boundedLeft, top: boundedTop };
+        }
+      });
+    };
+
+    // Обработчик отпускания мыши
+    const handleMouseUp = () => {
+      if (!isDraggingRef.current) return;
+      
+      isDraggingRef.current = false;
+      
+      if (debugRef.current) {
+        debugRef.current.classList.remove('debug-info__container--dragging');
+      }
+      
+      // Обновляем React state только в конце перетаскивания
+      setPosition(currentPositionRef.current);
+    };
+
+    // Обработчик движения на сенсорных устройствах
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current || e.touches.length === 0) return;
+      
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      
+      requestAnimationFrame(() => {
+        const touch = e.touches[0];
+        const newLeft = touch.clientX - dragStartRef.current.x;
+        const newTop = touch.clientY - dragStartRef.current.y;
+        
+        const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
+        const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
+        
+        const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
+        const boundedTop = Math.max(10, Math.min(newTop, maxY));
+        
+        if (debugRef.current) {
+          debugRef.current.style.left = `${boundedLeft}px`;
+          debugRef.current.style.top = `${boundedTop}px`;
+          
+          currentPositionRef.current = { left: boundedLeft, top: boundedTop };
+        }
+      });
+    };
+
+    // Обработчик окончания касания
+    const handleTouchEnd = () => {
+      if (!isDraggingRef.current) return;
+      
+      isDraggingRef.current = false;
+      
+      if (debugRef.current) {
+        debugRef.current.classList.remove('debug-info__container--dragging');
+      }
+      
+      setPosition(currentPositionRef.current);
+    };
+
+    // Устанавливаем обработчики один раз
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []); // Пустой массив зависимостей - обработчики создаются только один раз
+
+  // Обработчики начала перетаскивания
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX - position.left,
-      y: e.clientY - position.top,
-    });
-    e.preventDefault();
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      const newLeft = e.clientX - dragStart.x;
-      const newTop = e.clientY - dragStart.y;
-  
-      const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
-      const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
-      const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
-      const boundedTop = Math.max(10, Math.min(newTop, maxY));
-  
-      setPosition({ left: boundedLeft, top: boundedTop });
-    }
-  }, [isDragging, dragStart]);
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Обработчики для сенсорных устройств
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    setIsDragging(true);
-    setDragStart({
-      x: touch.clientX - position.left,
-      y: touch.clientY - position.top,
-    });
-  };
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (isDragging && e.touches.length > 0) {
-      const touch = e.touches[0];
-      const newLeft = touch.clientX - dragStart.x;
-      const newTop = touch.clientY - dragStart.y;
-
-      const maxX = window.innerWidth - (debugRef.current?.offsetWidth || 340);
-      const maxY = window.innerHeight - (debugRef.current?.offsetHeight || 120);
-      const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
-      const boundedTop = Math.max(10, Math.min(newTop, maxY));
-
-      setPosition({ left: boundedLeft, top: boundedTop });
+    if (e.target instanceof HTMLElement && 
+        e.target.closest('.debug-info__header') && 
+        !e.target.closest('button')) {
+      
+      isDraggingRef.current = true;
+      dragStartRef.current = {
+        x: e.clientX - currentPositionRef.current.left,
+        y: e.clientY - currentPositionRef.current.top
+      };
+      
+      if (debugRef.current) {
+        debugRef.current.classList.add('debug-info__container--dragging');
+      }
+      
       e.preventDefault();
     }
-  }, [isDragging, dragStart]);
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
   };
 
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('touchmove', handleTouchMove, { passive: false });
-      window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.target instanceof HTMLElement && 
+        e.target.closest('.debug-info__header') && 
+        !e.target.closest('button')) {
+      
+      const touch = e.touches[0];
+      isDraggingRef.current = true;
+      dragStartRef.current = {
+        x: touch.clientX - currentPositionRef.current.left,
+        y: touch.clientY - currentPositionRef.current.top
+      };
+      
+      if (debugRef.current) {
+        debugRef.current.classList.add('debug-info__container--dragging');
+      }
     }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [isDragging, dragStart, handleMouseMove, handleTouchMove]);
+  };
 
   // Не показываем, если не включен режим дебага
   if (!shouldShow) {
@@ -205,16 +288,19 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   return (
     <div
       ref={debugRef}
-      className={`debug-info__container ${isDragging ? 'debug-info__container--dragging' : 'debug-info__container--normal'}`}
+      className="debug-info__container"
       style={{
+        position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
-        touchAction: isDragging ? 'none' : 'auto',
+        zIndex: 10000,
+        touchAction: 'none'
       }}
     >
       {/* Header */}
       <div
         className="debug-info__header"
+        style={{ cursor: 'grab' }}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
@@ -251,6 +337,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
 
       {isExpanded && (
         <div className="debug-info__content">  
+          {/* content remains the same */}
           <div className="debug-info__info-row">
             <span className="debug-info__label">Items:</span>
             <span className="debug-info__value">{itemsCount}</span>
@@ -314,43 +401,43 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
             <span className="debug-info__value">{totalHeight}px</span>
           </div>
           <div className="debug-info__test-data">
-  <button
-    className="debug-info__button"
-    style={{ marginBottom: 8 }}
-    onClick={() => setTestGenExpanded(v => !v)}
-  >
-    Generate Test Data {testGenExpanded ? '▲' : '▼'}
-  </button>
-  {testGenExpanded && (
-    <div style={{ marginTop: 8 }}>
-      <div>
-        <label htmlFor="usersCount">Users:</label>
-        <input
-          id="usersCount"
-          type="number"
-          value={usersCount}
-          onChange={(e) => setUsersCount(Number(e.target.value))}
-          min={1}
-          max={100}
-        />
-      </div>
-      <div>
-        <label htmlFor="postsPerUser">Posts per User:</label>
-        <input
-          id="postsPerUser"
-          type="number"
-          value={postsPerUser}
-          onChange={(e) => setPostsPerUser(Number(e.target.value))}
-          min={1}
-          max={50}
-        />
-      </div>
-      <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
-        Generate
-      </button>
-    </div>
-  )}
-</div>
+            <button
+              className="debug-info__button"
+              style={{ marginBottom: 8 }}
+              onClick={() => setTestGenExpanded(v => !v)}
+            >
+              Generate Test Data {testGenExpanded ? '▲' : '▼'}
+            </button>
+            {testGenExpanded && (
+              <div style={{ marginTop: 8 }}>
+                <div>
+                  <label htmlFor="usersCount">Users:</label>
+                  <input
+                    id="usersCount"
+                    type="number"
+                    value={usersCount}
+                    onChange={(e) => setUsersCount(Number(e.target.value))}
+                    min={1}
+                    max={100}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="postsPerUser">Posts per User:</label>
+                  <input
+                    id="postsPerUser"
+                    type="number"
+                    value={postsPerUser}
+                    onChange={(e) => setPostsPerUser(Number(e.target.value))}
+                    min={1}
+                    max={50}
+                  />
+                </div>
+                <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
+                  Generate
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

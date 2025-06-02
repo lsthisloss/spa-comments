@@ -29,7 +29,7 @@ const CommentPage = observer(() => {
     return pathParts[pathParts.length - 1] || '';
   }, [params.commentId, location.pathname]);
   
-  // Состояние компонента - УБИРАЕМ mountedRef ПОЛНОСТЬЮ
+  // Состояние компонента
   const commentFetchedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState<Comment | null>(null);
@@ -64,7 +64,7 @@ const CommentPage = observer(() => {
     
     logger.log(`[CommentPage] Loading comment with slug: ${commentSlug}`);
     
-    // Загрузка комментария по slug - УБИРАЕМ ВСЕ ПРОВЕРКИ mountedRef
+    // Загрузка комментария по slug
     commentStore.fetchCommentBySlug(commentSlug)
       .then(fetchedComment => {
         if (fetchedComment) {
