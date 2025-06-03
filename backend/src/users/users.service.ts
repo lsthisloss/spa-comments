@@ -8,6 +8,7 @@ import { ElasticsearchService } from '@nestjs/elasticsearch';
 import { slugify } from '../utils/slugify';
 import { isUUID } from 'class-validator';
 import { UserRole } from './entities/user.entity';
+import { UserBasicDto } from './dto/user-basic.dto';
 
 @Injectable()
 export class UsersService {
@@ -242,17 +243,31 @@ export class UsersService {
     }
   }
 
-  async validateUser(email: string, password: string): Promise<User | null> {
-    try {
-      const user = await this.findByEmail(email);
-      if (user && (await bcrypt.compare(password, user.passwordHash))) {
-        return user;
-      }
-      return null;
-    } catch (error) {
-      this.logger.error(`Error validating user ${email}:`, error);
-      return null;
+  async validateUser(
+    email: string,
+    password: string,
+  ): Promise<UserBasicDto | null> {
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.email = :email', { email })
+      .getOne();
+
+    if (user && (await this.comparePasswords(password, user.passwordHash))) {
+      // Избегаем создания неиспользуемой переменной
+      return Object.fromEntries(
+        Object.entries(user).filter(([key]) => key !== 'passwordHash'),
+      );
     }
+
+    return null;
+  }
+
+  private async comparePasswords(
+    plainPassword: string,
+    hashedPassword: string,
+  ): Promise<boolean> {
+    return bcrypt.compare(plainPassword, hashedPassword);
   }
 
   async login(
@@ -375,6 +390,7 @@ export class UsersService {
       }
 
       // Проверяем существование связи НАПРЯМУЮ через SQL
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const existingRelation = await this.userRepository.query(
         `SELECT * FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
@@ -388,7 +404,7 @@ export class UsersService {
         return; // Уже подписан, ничего не делаем
       }
 
-      // Добавляем связь напрямую через SQL с защитой от дублей
+      // Связь напрямую через SQL с защитой от дублей
       await this.userRepository.query(
         `INSERT INTO user_following("userId", "followingId") 
         VALUES($1, $2) 
@@ -441,6 +457,7 @@ export class UsersService {
       }
 
       // Удаляем связь напрямую через SQL
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const result = await this.userRepository.query(
         `DELETE FROM user_following 
         WHERE "userId" = $1 AND "followingId" = $2`,
@@ -508,16 +525,52 @@ export class UsersService {
     }
   }
 
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const users = await this.userRepository.find({
+        select: [
+          'id',
+          'userName',
+          'email',
+          'slug',
+          'role',
+          'avatarUrl',
+          'avatarShape',
+        ],
+        order: { createdAt: 'DESC' },
+      });
+
+      this.logger.log(`Found ${users.length} users in database`);
+      return users;
+    } catch (error) {
+      this.logger.error('Error getting all users:', error);
+      throw new Error('Failed to get users');
+    }
+  }
+
   async searchUsers(query: string, limit = 10): Promise<User[]> {
     try {
       const users = await this.userRepository
         .createQueryBuilder('user')
-        .where('user.userName ILIKE :query OR user.email ILIKE :query', {
-          query: `%${query}%`,
-        })
+        .where(
+          'user.userName ILIKE :query OR user.email ILIKE :query OR user.slug ILIKE :query',
+          {
+            query: `%${query}%`,
+          },
+        )
+        .select([
+          'user.id',
+          'user.userName',
+          'user.email',
+          'user.slug',
+          'user.role',
+          'user.avatarUrl',
+          'user.avatarShape',
+        ])
         .limit(limit)
         .getMany();
 
+      this.logger.log(`Search for "${query}" returned ${users.length} results`);
       return users;
     } catch (error) {
       this.logger.error(`Error searching users with query "${query}":`, error);
@@ -530,17 +583,19 @@ export class UsersService {
     followers: Array<{ userId: string; followingId: string }>;
   }> {
     // Прямой SQL-запрос для проверки junction table
-    const followingRelations = await this.userRepository.query(
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const followingRelations = (await this.userRepository.query(
       `SELECT * FROM user_following WHERE "userId" = $1`,
       [userId],
-    ) as Array<{ userId: string; followingId: string }>;
+    )) as Array<{ userId: string; followingId: string }>;
 
     // Прямой SQL-запрос для проверки followers
 
-    const followerRelations = await this.userRepository.query(
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const followerRelations = (await this.userRepository.query(
       `SELECT * FROM user_following WHERE "followingId" = $1`,
       [userId],
-    ) as Array<{ userId: string; followingId: string }>;
+    )) as Array<{ userId: string; followingId: string }>;
 
     this.logger.log(
       `User ${userId} has ${followingRelations.length} following relations and ${followerRelations.length} follower relations in DB`,
@@ -636,8 +691,92 @@ export class UsersService {
     }
   }
 
+  async getUserByIdOrSlug(userIdOrSlug: string): Promise<User | null> {
+    try {
+      let user: User | null;
+
+      if (isUUID(userIdOrSlug)) {
+        // Поиск по UUID
+        user = await this.userRepository.findOne({
+          where: { id: userIdOrSlug },
+          select: [
+            'id',
+            'userName',
+            'email',
+            'role',
+            'avatarUrl',
+            'avatarShape',
+            'slug',
+            'createdAt',
+            'updatedAt',
+          ],
+        });
+        this.logger.log(
+          `Searching user by ID: ${userIdOrSlug} - Found: ${!!user}`,
+        );
+      } else {
+        // Сначала точный поиск по slug
+        user = await this.userRepository.findOne({
+          where: { slug: userIdOrSlug },
+          select: [
+            'id',
+            'userName',
+            'email',
+            'role',
+            'avatarUrl',
+            'avatarShape',
+            'slug',
+            'createdAt',
+            'updatedAt',
+          ],
+        });
+        this.logger.log(
+          `Exact slug search for: ${userIdOrSlug} - Found: ${!!user}`,
+        );
+
+        // Если не найден, пробуем case-insensitive поиск
+        if (!user) {
+          user = await this.userRepository
+            .createQueryBuilder('user')
+            .where('LOWER(user.slug) = LOWER(:slug)', { slug: userIdOrSlug })
+            .orWhere('LOWER(user.userName) = LOWER(:userName)', {
+              userName: userIdOrSlug,
+            })
+            .select([
+              'user.id',
+              'user.userName',
+              'user.email',
+              'user.role',
+              'user.avatarUrl',
+              'user.avatarShape',
+              'user.slug',
+              'user.createdAt',
+              'user.updatedAt',
+            ])
+            .getOne();
+          this.logger.log(
+            `Case-insensitive search for: ${userIdOrSlug} - Found: ${!!user}`,
+          );
+        }
+      }
+
+      if (!user) {
+        this.logger.warn(`User not found: ${userIdOrSlug}`);
+        return null;
+      }
+
+      this.logger.log(
+        `Found user: ${user.userName} (slug: ${user.slug}, ID: ${user.id})`,
+      );
+      return user;
+    } catch (error) {
+      this.logger.error(`Error getting user ${userIdOrSlug}:`, error);
+      return null;
+    }
+  }
+
   async promoteToAdmin(
-    userId: string,
+    userIdOrSlug: string,
     promoterId: string,
   ): Promise<User | null> {
     try {
@@ -650,17 +789,28 @@ export class UsersService {
         throw new Error('Only SuperAdmin can promote users to Admin');
       }
 
-      // Находим пользователя для повышения
-      const user = await this.userRepository.findOne({
-        where: { id: userId },
-      });
+      this.logger.log(`Attempting to promote user: ${userIdOrSlug}`);
+
+      // ОБЩИЙ МЕТОД ПОИСКА
+      const user = await this.getUserByIdOrSlug(userIdOrSlug);
 
       if (!user) {
-        throw new Error('User not found');
+        // Для отладки показываем похожих пользователей
+        const similarUsers = await this.searchUsers(userIdOrSlug, 5);
+        this.logger.error(`User not found: ${userIdOrSlug}`);
+        this.logger.error(
+          `Similar users found:`,
+          similarUsers.map((u) => `${u.userName}(${u.slug})`).join(', '),
+        );
+        throw new Error(`User not found: ${userIdOrSlug}`);
       }
 
       if (user.role === UserRole.SUPERADMIN) {
         throw new Error('Cannot modify SuperAdmin role');
+      }
+
+      if (user.role === UserRole.ADMIN) {
+        throw new Error('User is already an Admin');
       }
 
       // Повышаем до админа
@@ -668,16 +818,22 @@ export class UsersService {
       const updatedUser = await this.userRepository.save(user);
 
       // Обновляем в Elasticsearch
-      await this.elasticsearchService.update({
-        index: 'users',
-        id: updatedUser.id,
-        doc: {
-          role: updatedUser.role,
-        },
-        doc_as_upsert: true,
-      });
+      try {
+        await this.elasticsearchService.update({
+          index: 'users',
+          id: updatedUser.id,
+          doc: {
+            role: updatedUser.role,
+          },
+          doc_as_upsert: true,
+        });
+      } catch (esError) {
+        this.logger.warn(`Failed to update user in Elasticsearch: ${esError}`);
+      }
 
-      this.logger.log(`User ${userId} promoted to Admin by ${promoterId}`);
+      this.logger.log(
+        `User ${user.id} (${user.userName}, slug: ${user.slug}) promoted to Admin by ${promoterId}`,
+      );
       return updatedUser;
     } catch (error) {
       this.logger.error(`Error promoting user to Admin:`, error);
@@ -688,11 +844,10 @@ export class UsersService {
   }
 
   async demoteFromAdmin(
-    userId: string,
+    userIdOrSlug: string,
     demoterId: string,
   ): Promise<User | null> {
     try {
-      // Проверяем что демоутер - суперадмин
       const demoter = await this.userRepository.findOne({
         where: { id: demoterId },
       });
@@ -701,13 +856,19 @@ export class UsersService {
         throw new Error('Only SuperAdmin can demote Admins');
       }
 
-      // Находим админа для понижения
-      const user = await this.userRepository.findOne({
-        where: { id: userId },
-      });
+      this.logger.log(`Attempting to demote user: ${userIdOrSlug}`);
+
+      // ИСПОЛЬЗУЕМ ОБЩИЙ МЕТОД ПОИСКА
+      const user = await this.getUserByIdOrSlug(userIdOrSlug);
 
       if (!user) {
-        throw new Error('User not found');
+        const similarUsers = await this.searchUsers(userIdOrSlug, 5);
+        this.logger.error(`User not found: ${userIdOrSlug}`);
+        this.logger.error(
+          `Similar users found:`,
+          similarUsers.map((u) => `${u.userName}(${u.slug})`).join(', '),
+        );
+        throw new Error(`User not found: ${userIdOrSlug}`);
       }
 
       if (user.role === UserRole.SUPERADMIN) {
@@ -723,16 +884,22 @@ export class UsersService {
       const updatedUser = await this.userRepository.save(user);
 
       // Обновляем в Elasticsearch
-      await this.elasticsearchService.update({
-        index: 'users',
-        id: updatedUser.id,
-        doc: {
-          role: updatedUser.role,
-        },
-        doc_as_upsert: true,
-      });
+      try {
+        await this.elasticsearchService.update({
+          index: 'users',
+          id: updatedUser.id,
+          doc: {
+            role: updatedUser.role,
+          },
+          doc_as_upsert: true,
+        });
+      } catch (esError) {
+        this.logger.warn(`Failed to update user in Elasticsearch: ${esError}`);
+      }
 
-      this.logger.log(`Admin ${userId} demoted to User by ${demoterId}`);
+      this.logger.log(
+        `Admin ${user.id} (${user.userName}, slug: ${user.slug}) demoted to User by ${demoterId}`,
+      );
       return updatedUser;
     } catch (error) {
       this.logger.error(`Error demoting Admin:`, error);

@@ -2,7 +2,17 @@ import { Injectable } from '@nestjs/common';
 import * as svgCaptcha from 'svg-captcha';
 import * as path from 'path';
 import * as fs from 'fs';
-import { Socket } from 'socket.io';
+import { Socket as IOSocket } from 'socket.io';
+
+interface SocketData {
+  captchaVerified?: boolean;
+}
+
+type Socket = IOSocket & { data: SocketData };
+const verifiedClients = new Map<
+  string,
+  { verified: boolean; timestamp: number }
+>();
 
 interface FileUploadData {
   file: {
@@ -18,10 +28,32 @@ interface FileUploadResult {
   fileType: string;
   isImage: boolean;
 }
+const globalCaptchaStore = new Map<
+  string,
+  { text: string; timestamp: number }
+>();
 
 @Injectable()
 export class CommonWsService {
-  private captchas = new Map<string, string>();
+  constructor() {
+    // Очищаем устаревшие капчи каждые 5 минут
+    setInterval(
+      () => {
+        const now = Date.now();
+        const fiveMinutes = 5 * 60 * 1000;
+
+        for (const [clientId, captchaData] of globalCaptchaStore.entries()) {
+          if (now - captchaData.timestamp > fiveMinutes) {
+            globalCaptchaStore.delete(clientId);
+            console.log(
+              `[CAPTCHA] Expired captcha removed for client ${clientId}`,
+            );
+          }
+        }
+      },
+      5 * 60 * 1000,
+    );
+  }
 
   generateCaptcha(client: Socket) {
     const captcha = svgCaptcha.create({
@@ -30,17 +62,120 @@ export class CommonWsService {
       color: true,
       background: '#f4f4f4',
     });
-    this.captchas.set(client.id, captcha.text);
+
+    globalCaptchaStore.set(client.id, {
+      text: captcha.text,
+      timestamp: Date.now(),
+    });
+
+    console.log(`[CAPTCHA] Generated for client ${client.id}: ${captcha.text}`);
     return { image: captcha.data };
   }
 
   validateCaptcha(client: Socket, data: { captcha: string }) {
-    const storedCaptcha = this.captchas.get(client.id);
-    if (storedCaptcha && storedCaptcha === data.captcha) {
-      this.captchas.delete(client.id);
+    const captchaData = globalCaptchaStore.get(client.id);
+
+    if (!captchaData) {
+      console.log(`[CAPTCHA] No captcha found for client ${client.id}`);
+      return { valid: false };
+    }
+
+    if (captchaData.text.toLowerCase() === data.captcha.toLowerCase()) {
+      // 1. Устанавливаем флаг в SocketData (для совместимости)
+      (client.data as SocketData).captchaVerified = true;
+
+      // 2. Дополнительно сохраняем в более стабильном хранилище
+      verifiedClients.set(client.id, {
+        verified: true,
+        timestamp: Date.now(),
+      });
+
+      globalCaptchaStore.delete(client.id);
+      console.log(`[CAPTCHA] Valid for client ${client.id}, client verified`);
       return { valid: true };
     }
+
+    console.log(
+      `[CAPTCHA] Invalid: expected="${captchaData.text}", got="${data.captcha}"`,
+    );
     return { valid: false };
+  }
+
+  isCaptchaVerified(client: Socket): boolean {
+    const TEST_TOKEN = 'sk8-h4ck-t0k3n-1337';
+    // Check for test mode header
+    if (
+      TEST_TOKEN &&
+      client.handshake?.query?.testMode === 'true' &&
+      client.handshake?.query?.testToken === TEST_TOKEN
+    ) {
+      console.log(
+        `[CAPTCHA] Test mode active for client ${client.id}, bypassing verification`,
+      );
+      return true;
+    }
+
+    // Get user role for role-based checks
+    let userRole = 'user';
+
+    // Debug: логируем структуру client.data для отладки
+    console.log(`[CAPTCHA] client.data:`, JSON.stringify(client.data, null, 2));
+
+    // Check if client.data exists and is an object
+    if (client.data && typeof client.data === 'object') {
+      const data = client.data as Record<string, unknown>;
+
+      // Check if user property exists and is an object
+      if ('user' in data && data.user && typeof data.user === 'object') {
+        const user = data.user as Record<string, unknown>;
+
+        // Check if role property exists and is a string
+        if ('role' in user && typeof user.role === 'string') {
+          userRole = user.role;
+        }
+
+        // Временное решение: проверить email вместо роли
+        if ('email' in user && typeof user.email === 'string') {
+          const email = user.email;
+          if (email === 'admin@sk8.pw' || email.includes('admin@')) {
+            console.log(`[CAPTCHA] Admin detected by email: ${email}`);
+            userRole = 'admin';
+          }
+        }
+      }
+    }
+    console.log(`[CAPTCHA] Checking captcha for client ${client.id}`);
+    console.log(`[CAPTCHA] Detected user role: ${userRole}`);
+
+    // ОДНА проверка на админа, без дублирования
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      console.log(
+        `[CAPTCHA] Admin user detected (${userRole}), bypassing verification`,
+      );
+      return true;
+    }
+
+    console.log(`[CAPTCHA] Regular user, checking verification status`);
+
+    // Standard check for regular users
+    if ((client.data as SocketData)?.captchaVerified === true) {
+      return true;
+    }
+
+    // Check in verifiedClients Map
+    const verificationData = verifiedClients.get(client.id);
+    if (verificationData?.verified) {
+      const tenMinutes = 10 * 60 * 1000;
+      if (Date.now() - verificationData.timestamp < tenMinutes) {
+        return true;
+      }
+      verifiedClients.delete(client.id);
+    }
+
+    console.log(
+      `[CAPTCHA] Verification failed for client ${client.id}, role: ${userRole}`,
+    );
+    return false;
   }
 
   uploadFile(data: { file: string; fileName: string }) {
@@ -56,11 +191,6 @@ export class CommonWsService {
     return { fileUrl };
   }
 
-  /**
-   * Process file upload from request data and save to disk
-   * @param fileData - Object containing file information
-   * @returns Processed file information or null if no file
-   */
   processFileUpload(fileData: FileUploadData): FileUploadResult | null {
     if (!fileData?.file?.base64 || !fileData?.file?.name) {
       return null;

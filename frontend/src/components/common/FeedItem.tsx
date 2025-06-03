@@ -2,18 +2,15 @@ import { Image, Tooltip, Card, Typography, Spin } from "antd";
 import { getAvatarColor } from "../ui/particles/avatarColor";
 import ItemFooter from "./ItemFooter";
 import OptimizedText from "../ui/optimization/OptimizedText";
-import AdminBadge from "../ui/particles/AdminBadge"; // Добавляем импорт
+import AdminBadge from "../ui/particles/AdminBadge";
 import { useState, useMemo, useCallback } from "react";
 import React from "react";
 import { observer } from "mobx-react-lite";
-import { commentStore } from "../../services/stores/CommentStore";
-import userStore from "../../services/stores/UserStore";
 import { Comment as CommentType, Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
 import { formatDistanceToNow } from "date-fns";
-import { postStore } from "../../services/stores/PostStore";
 import { useNavigate } from "react-router-dom";
-
+import { useUserStore, usePostStore, useCommentStore } from '../../hooks/useStore';
 const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
 type FeedItemType = CommentType | Post;
@@ -41,6 +38,9 @@ const FeedItemComponent = ({
   hideCommentButton,
   onClick,
 }: FeedItemProps) => {
+  const userStore = useUserStore();
+  const postStore = usePostStore();
+  const commentStore = useCommentStore();
   const navigate = useNavigate();
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const [, setImageLoaded] = useState(false);
@@ -97,7 +97,7 @@ const FeedItemComponent = ({
       logger.log(`Liking comment ${item.id} as user ${currentUserId}`);
       commentStore.toggleLike(item.id, currentUserId);
     }
-  }, [onLikeClick, type, item.id]);
+  }, [onLikeClick, type, item.id, userStore.user, postStore, commentStore]);
 
   const handleTextToggle = useCallback(() => {
     const newExpandedState = !localExpanded;
@@ -114,26 +114,26 @@ const FeedItemComponent = ({
 
   // Обработчик клика по имени пользователя
   const handleUsernameClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (item.user?.id) {
-      logger.log(`Username clicked for user ${item.user.id}`);
-      const profilePath = item.user.slug 
-        ? `/profile/${item.user.slug}` 
-        : `/profile/${item.user.id}`;
-      navigate(profilePath);
-    }
-  }, [item.user, navigate]);
+  e.stopPropagation();
+  if (item.user?.id) {
+    logger.log(`Username clicked for user ${item.user.id}`);
+    const profilePath = item.user.slug 
+      ? `/user/${item.user.slug}` 
+      : `/user/${item.user.userName}`;
+    navigate(profilePath);
+  }
+}, [item.user, navigate]);
 
-  const handleAvatarClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (item.user?.id) {
-      logger.log(`Avatar clicked for user ${item.user.id}`);
-      const profilePath = item.user.slug 
-        ? `/profile/${item.user.slug}` 
-        : `/profile/${item.user.id}`;
-      navigate(profilePath);
-    }
-  }, [item.user, navigate]);
+const handleAvatarClick = useCallback((e: React.MouseEvent) => {
+  e.stopPropagation();
+  if (item.user?.id) {
+    logger.log(`Avatar clicked for user ${item.user.id}`);
+    const profilePath = item.user.slug 
+      ? `/user/${item.user.slug}` 
+      : `/user/${item.user.userName}`;
+    navigate(profilePath);
+  }
+}, [item.user, navigate]);
 
   return (
     <Card
@@ -178,7 +178,6 @@ const FeedItemComponent = ({
         )}
         <div className="item-content">
           <div className="item-user-info">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Typography.Text
                 strong
                 className="clickable-username"
@@ -191,7 +190,6 @@ const FeedItemComponent = ({
                 {userName}
               </Typography.Text>
               <AdminBadge role={userRole} />
-            </div>
             <span className="item-separator">·</span>
             <Tooltip title={new Date(item.createdAt).toLocaleString()}>
               <span className="item-date">{formattedDate}</span>

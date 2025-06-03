@@ -3,17 +3,23 @@ import { observer } from 'mobx-react-lite';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Empty, Button, Spin } from 'antd';
 import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
-import { commentStore } from '../services/stores/CommentStore';
+import { useCommentStore, useUserStore, usePostStore } from '../hooks/useStore';
 import { Comment } from '../types/interfaces';
+import { logger } from '../utils/Logger';
+import { useNavigationHelper } from '../hooks/useNavigationHelper';
 import CommentItem from '../components/comments/CommentsItem';
-import CommentsThread from '../components/comments/CommentsThread';
 import SendForm from '../components/common/SendForm';
-import { logger } from "../utils/Logger";
-import { navigationStore } from '../services/stores/NavigationStore';
-import userStore from '../services/stores/UserStore';
-import { postStore } from '../services/stores/PostStore';
+import CommentsThread from '../components/comments/CommentsThread';
 
 const CommentPage = observer(() => {
+  // Получаем сторы через хуки
+  const commentStore = useCommentStore();
+  const userStore = useUserStore();
+  const postStore = usePostStore();
+  
+  // Добавить использование хука здесь
+  const navigationHelper = useNavigationHelper();
+  
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
@@ -36,6 +42,7 @@ const CommentPage = observer(() => {
   const [error, setError] = useState<string | null>(null);
   const [repliesSort, setRepliesSort] = useState<'date' | 'likes'>('date');
   const [, setRepliesLoading] = useState(false);
+  
   // Инициализация компонента
   useEffect(() => {
     logger.log(`[CommentPage] Component mounted for slug: ${commentSlug}`);
@@ -91,28 +98,28 @@ const CommentPage = observer(() => {
         setError('Failed to load comment');
         setLoading(false);
       });
-  }, [commentSlug]);
+  }, [commentSlug, commentStore, postStore, comment]);
 
   // Обработчик смены сортировки ответов
   const handleSortChange = useCallback((sort: 'date' | 'likes') => {
     setRepliesSort(sort);
   }, []);
 
-  // Обработчик загрузки дополнительных ответов - НЕ ИСПОЛЬЗУЕТСЯ
-const handleLoadMoreReplies = useCallback(() => {
-  if (!comment?.id) return;
-  
-  logger.log(`[CommentPage] Loading more replies for comment: ${comment.id}`);
-  const replies = commentStore.getReplies(comment.id);
-  const page = Math.floor(replies.length / 10) + 1;
-  
-  setRepliesLoading(true);
-  
-  commentStore.loadComments(comment.id, 10, page, repliesSort, true)
-    .finally(() => {
-      setRepliesLoading(false);
-    });
-}, [comment?.id, repliesSort]);
+  // Обработчик загрузки дополнительных ответов
+  const handleLoadMoreReplies = useCallback(() => {
+    if (!comment?.id) return;
+    
+    logger.log(`[CommentPage] Loading more replies for comment: ${comment.id}`);
+    const replies = commentStore.getReplies(comment.id);
+    const page = Math.floor(replies.length / 10) + 1;
+    
+    setRepliesLoading(true);
+    
+    commentStore.loadComments(comment.id, 10, page, repliesSort, true)
+      .finally(() => {
+        setRepliesLoading(false);
+      });
+  }, [comment?.id, repliesSort, commentStore]);
 
   // Обработчик успешного создания ответа
   const handleReplySuccess = useCallback(() => {
@@ -153,42 +160,31 @@ const handleLoadMoreReplies = useCallback(() => {
         setError('Failed to load comment');
         setLoading(false);
       });
-  }, [commentSlug]);
+  }, [commentSlug, commentStore, postStore]);
 
   // Обработчик возврата назад
-  const handleBackClick = useCallback(() => {
-    if (!commentSlug) return;
-    
-    const currentState = navigationStore.currentState;
-    
-    if (!location.state && comment?.postId) {
-      const postState = {
+  const handleGoBack = useCallback(() => {
+  if (!comment) {
+    // Если комментарий еще не загружен, используем обычную навигацию назад
+    navigationHelper.goBack();
+    return;
+  }
+  
+  // Если есть информация о родительском посте, возвращаемся к нему
+  if (comment.postSlug) {
+    logger.log(`[CommentPage] Navigating back to parent post: ${comment.postSlug}`);
+    navigate(`/post/${comment.postSlug}`, {
+      replace: true,
+      state: {
         fromComment: true,
-        slug: commentSlug,
-        postId: comment.postSlug || comment.postId,
-        scrollPosition: 0,
-        timestamp: Date.now()
-      };
-      
-      navigationStore.currentState = postState;
-      navigate(`/post/${comment.postSlug || comment.postId}`, { 
-        replace: true,
-        state: postState
-      });
-      return;
-    }
-    
-    if (currentState && (currentState.fromFeed || currentState.fromFollowing || 
-                         currentState.fromUserProfile || currentState.fromPost)) {
-      if (currentState.fromPost && currentState.postId) {
-        currentState.fromComment = true;
+        commentId: comment.id
       }
-      
-      navigationStore.handleBackNavigation(navigate);
-    } else {
-      navigate(-1);
-    }
-  }, [commentSlug, navigate, location.state, comment]);
+    });
+  } else {
+    // Если нет информации о посте, используем общий механизм
+    navigationHelper.goBack();
+  }
+}, [comment, navigate, navigationHelper]);
 
   return (
     <section className="post-page-container">
@@ -196,7 +192,7 @@ const handleLoadMoreReplies = useCallback(() => {
         <Button
           type="text"
           icon={<LeftOutlined />}
-          onClick={handleBackClick}
+          onClick={handleGoBack}
           style={{ marginRight: 8 }}
         />
         <span className="post-span">Comment</span>

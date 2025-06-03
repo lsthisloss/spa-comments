@@ -17,7 +17,7 @@ class Logger {
   private recentLogs: Map<string, number> = new Map();
   private readonly LOG_EXPIRY_TIME = 2000; // 2 секунды
   private readonly LOG_THROTTLE_MAP = new Map<string, number>();
-private readonly THROTTLE_INTERVAL = 5000; // 5 секунд
+  private readonly THROTTLE_INTERVAL = 5000; // 5 секунд
 
   // Метод для изменения уровня логирования
   setLogLevel(level: LogLevel) {
@@ -45,11 +45,7 @@ private readonly THROTTLE_INTERVAL = 5000; // 5 секунд
     
     // Очистка старых записей (каждые 100 логов)
     if (this.recentLogs.size > 100) {
-      for (const [k, time] of this.recentLogs.entries()) {
-        if (now - time > this.LOG_EXPIRY_TIME) {
-          this.recentLogs.delete(k);
-        }
-      }
+      this.cleanupOldLogs();
     }
     
     return true;
@@ -96,6 +92,16 @@ warn(message: string, ...args: unknown[]) {
   // Для обратной совместимости
   log(message: string, ...args: unknown[]) {
     this.info(message, ...args);
+  }
+
+  // Метод для очистки старых записей из recentLogs
+  private cleanupOldLogs() {
+    const now = Date.now();
+    for (const [key, timestamp] of this.recentLogs.entries()) {
+      if (now - timestamp > this.LOG_EXPIRY_TIME) {
+        this.recentLogs.delete(key);
+      }
+    }
   }
 }
 

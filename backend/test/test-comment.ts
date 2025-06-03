@@ -11,10 +11,32 @@ const COMMENTS_COUNT = 5;
 const POST_ID = 'd8488f77-882e-4ddc-a66f-51c9a0bedbd3';
 function randomText(length = 30) {
   const words = [
-    'Lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing',
-    'elit', 'sed', 'do', 'eiusmod', 'tempor', 'incididunt', 'ut', 'labore',
-    'et', 'dolore', 'magna', 'aliqua', 'ut', 'enim', 'ad', 'minim', 'veniam',
-    'quis', 'nostrud',
+    'Lorem',
+    'ipsum',
+    'dolor',
+    'sit',
+    'amet',
+    'consectetur',
+    'adipiscing',
+    'elit',
+    'sed',
+    'do',
+    'eiusmod',
+    'tempor',
+    'incididunt',
+    'ut',
+    'labore',
+    'et',
+    'dolore',
+    'magna',
+    'aliqua',
+    'ut',
+    'enim',
+    'ad',
+    'minim',
+    'veniam',
+    'quis',
+    'nostrud',
   ];
   const randomWords: string[] = [];
   const count = Math.max(1, Math.floor(length / 5)); // всегда хотя бы 1 слово!

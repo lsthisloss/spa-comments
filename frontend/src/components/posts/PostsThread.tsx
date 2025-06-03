@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { observer } from "mobx-react-lite";
-import { postStore } from "../../services/stores/PostStore";
-import { useNavigate } from "react-router-dom";
-import { navigationStore } from "../../services/stores/NavigationStore";
 import { useVirtualItems } from "../../hooks/useVirtualItems";
 import { usePostsFeed } from "../../hooks/useFeedItems";
 import { NewPostNotification } from "../ui/particles/NewPostNotification";
@@ -10,17 +7,21 @@ import MemoizedPostItem from "../ui/optimization/MemoizedPostItem";
 import VirtualList, { VirtualListItem } from '../common/VirtualList';
 import { Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
-import { FeedType } from "../../services/stores/PostStore";
-import userStore from "../../services/stores/UserStore";
-
+import { usePostStore, useUserStore, useNavigationStore } from "../../hooks/useStore";
+import { FeedType } from "../../types/enums";
+import { useNavigationHelper } from "../../hooks/useNavigationHelper";
 interface PostsFeedProps {
   activeTab: string;
   userId?: string; 
 }
 
 const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps) => {
-  const navigate = useNavigate();
   const [, setSocketError] = useState<string | null>(null);
+  const postStore = usePostStore();
+  const userStore = useUserStore();
+  const navigationStore = useNavigationStore();
+  const navigationHelper = useNavigationHelper();
+
   const actualUserId = propsUserId || userStore.user?.id;
   
   const hasRestoredScrollRef = useRef(false);
@@ -50,14 +51,14 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
       feedType: type,
       feed: postStore.getFeed(type)
     };
-  }, [activeTab, actualUserId]);
+  }, [activeTab, actualUserId, postStore]);
 
   // Переключение пользователя (только для user feed)
   useEffect(() => {
     if (feedType === "user" && stableUserId) {
       postStore.switchToUser(stableUserId);
     }
-  }, [feedType, stableUserId]);
+  }, [feedType, stableUserId, postStore]);
 
   // Загрузка данных - с защитой от дублирования
   useEffect(() => {
@@ -110,7 +111,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         isLoadingRef.current = false;
       });
     
-  }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length]);
+  }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length, postStore]);
 
   // Восстановление скролла
   useEffect(() => {
@@ -150,7 +151,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         hasRestoredScrollRef.current = true;
       }, 100);
     }
-  }, [feedType, feed.list.length]);
+  }, [feedType, feed.list.length, navigationStore, postStore]);
 
   // Сохранение позиции скролла при размонтировании
   useEffect(() => {
@@ -171,7 +172,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         );
       }
     };
-  }, [feedType]);
+  }, [feedType, navigationStore]);
   
   const { estimateItemHeight, getItemKey } = usePostsFeed();
   const { virtualItems, totalHeight, measureElement } = useVirtualItems(
@@ -184,7 +185,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
   const handleScrollDown = useCallback(() => {
     logger.log('[PostsThread] Enabling manual update mode');
     postStore.setManualUpdateMode(feedType, true);
-  }, [feedType]);
+  }, [feedType, postStore]);
 
   const handleLoadMore = useCallback(() => {
     if (feed.loading || feed.allLoaded) return;
@@ -196,7 +197,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
     } else {
       postStore.loadMore(feedType);
     }
-  }, [feedType, feed.loading, feed.allLoaded, actualUserId]);
+  }, [feedType, feed.loading, feed.allLoaded, actualUserId, postStore]);
 
   const handleLoadNewPosts = useCallback(() => {
     if (feed.buffer.length === 0) return;
@@ -205,19 +206,26 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
     postStore.handleLoadNewPosts(feedType);
     postStore.setManualUpdateMode(feedType, false);
     window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [feed.buffer.length, feedType]);
+  }, [feed.buffer.length, feedType, postStore]);
 
   const handleItemClick = useCallback((postSlug: string) => {
-    logger.log(`[PostsThread] Navigate to post: ${postSlug}`);
-    
-    const currentScrollPosition = window.scrollY;
-    if (feedType === "feed") {
-      postStore.saveFeedState(currentScrollPosition);
-    }
-    
-    const navigationState = navigationStore.saveNavigationState('post', postSlug);
-    navigate(`/post/${postSlug}`, { state: navigationState });
-  }, [navigate, feedType]);
+  logger.log(`[PostsThread] Navigate to post: ${postSlug}`);
+  
+  // Сохраняем позицию скролла в хранилище
+  const currentScrollPosition = window.scrollY;
+  
+  // Преобразуем тип feed в main для соответствия ожидаемому типу в контексте
+  const contextFeedType = feedType === "feed" ? "main" : feedType;
+  
+  navigationStore.pushNavigationPoint(
+    window.location.pathname + window.location.search,
+    { feedType: contextFeedType, userId: actualUserId },
+    currentScrollPosition
+  );
+  
+  // Используем хелпер для навигации
+  navigationHelper.navigateToPost(postSlug);
+}, [feedType, actualUserId, navigationStore, navigationHelper]);
 
   const renderPostItem = useCallback((
     virtualItem: VirtualListItem<Post>, 

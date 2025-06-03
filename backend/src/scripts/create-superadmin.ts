@@ -35,8 +35,8 @@ async function createSuperAdmin() {
 
   // Генерируем данные
   const password = crypto.randomBytes(12).toString('hex');
-  const email = 'superadmin@spa-comments.com';
-  const userName = 'SuperAdmin';
+  const email = 'admin@sk8.pw';
+  const userName = 'Admin';
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // Создаем суперадмина

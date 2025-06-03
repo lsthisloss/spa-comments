@@ -35,37 +35,39 @@ async function createDatabaseIfNotExists(): Promise<void> {
 
   const dbName = process.env.DB_NAME || 'spa_comments';
 
-  // Создаем конфигурацию с явными строковыми типами
-  const host = process.env.DB_HOST || 'postgres';
-  const port = parseInt(process.env.DB_PORT ?? '5432');
-  const user = process.env.DB_USER || 'postgres';
-  const password = process.env.DB_PASSWORD || 'postgres';
+  // Создаем конфигурацию с явным типом ClientConfig
+  const clientConfig: ClientConfig = {
+    host: process.env.DB_HOST || 'postgres',
+    port: parseInt(process.env.DB_PORT ?? '5432', 10),
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    database: 'postgres',
+    connectionTimeoutMillis: 5000,
+    query_timeout: 10000,
+  };
 
   console.log(`🔧 Checking if database "${dbName}" exists...`);
 
-  // Создаем объект конфигурации с явной типизацией
-  const clientConfig = {
-    host,
-    port,
-    user,
-    password,
-    database: 'postgres' as const, // Подключаемся к системной БД
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+  // Правильное создание клиента без приведения типа
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
   const client = new Client(clientConfig);
 
   try {
+    // Обычный вызов connect без приведения типа
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.connect();
     console.log('✅ Connected to PostgreSQL server');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
-    const result = await client.query(
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    const result = await client.query<{ datname: string }>(
       'SELECT 1 FROM pg_database WHERE datname = $1',
       [dbName],
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (result.rows.length === 0) {
       console.log(`📦 Creating database "${dbName}"...`);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await client.query(`CREATE DATABASE "${dbName}"`);
       console.log(`✅ Database "${dbName}" created successfully!`);
     } else {
@@ -76,9 +78,12 @@ async function createDatabaseIfNotExists(): Promise<void> {
     console.error('❌ Error creating database:', error.message);
     throw error;
   } finally {
+    // Обычный вызов end() без приведения типа
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.end();
   }
 }
+
 async function waitForPostgres(): Promise<void> {
   if (process.env.NODE_ENV !== 'production') {
     return;

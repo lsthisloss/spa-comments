@@ -40,7 +40,6 @@ export const AdminBadge: React.FC<AdminBadgeProps> = ({ role, className = '' }) 
     <Tooltip title={config.title} placement="top">
       <span 
         className={`${config.className} ${className}`}
-        style={{ color: config.color, marginLeft: '4px', fontSize: '0.9em' }}
       >
         {config.icon}
       </span>

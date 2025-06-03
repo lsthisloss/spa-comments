@@ -5,42 +5,64 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketServer,
-  WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Injectable, Logger } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { CommentsService } from '../comments/comments.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CommonWsService } from '../common/common-ws.service';
 import { UsersService } from '../users/users.service';
+import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { isUUID } from 'class-validator';
 import { PostResponseDto } from './dto/post-response.dto';
 
+@Injectable()
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/posts' })
-export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class PostsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
+
+  private readonly logger = new Logger(PostsGateway.name);
   private requestCooldowns = new Map<string, number>();
   private readonly COOLDOWN_MS = 1000; // 1 секунда между запросами
+  private userPostCounts = new Map<
+    string,
+    { count: number; resetTime: number }
+  >();
+  private readonly MAX_POSTS_PER_MINUTE = 10;
+  private readonly RATE_LIMIT_WINDOW = 60 * 1000;
 
   constructor(
     private readonly commonWsService: CommonWsService,
     private readonly postsService: PostsService,
     private readonly commentsService: CommentsService,
     private readonly usersService: UsersService,
+    private readonly rabbitMQService: RabbitMQService,
   ) {}
 
+  afterInit(server: Server) {
+    this.server = server;
+    this.logger.log('Posts WebSocket Gateway initialized');
+
+    // Очистка rate limit кэша каждые 5 минут
+    setInterval(
+      () => {
+        this.cleanupRateLimitCache();
+      },
+      5 * 60 * 1000,
+    );
+  }
+
   handleConnection(client: Socket) {
-    console.log(
-      'Posts WS connected to:',
-      client.nsp.name,
-      'client:',
-      client.id,
-      'user:',
-      (client.data as { user?: { id?: string } })?.user?.id || 'anonymous',
+    this.logger.log(
+      `Posts WS connected to: ${client.nsp.name}, client: ${client.id}, user: ${(client.data as { user?: { id?: string } })?.user?.id || 'anonymous'}`,
     );
   }
 
@@ -65,75 +87,136 @@ export class PostsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
     return await this.postsService.getPostBySlug(slug);
   }
+
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('addPost')
   async handleAddPost(
-    @MessageBody() createPostDto: CreatePostDto,
     @ConnectedSocket() client: Socket,
-  ) {
-    const userData = client.data as { user?: { id?: string } };
-    const userId = userData.user?.id;
-
-    if (!userId) {
-      throw new WsException('Unauthorized user');
-    }
-
-    createPostDto.userId = userId;
-
-    console.log('Creating post with data:', createPostDto);
-
+    @MessageBody() createPostDto: CreatePostDto,
+  ): Promise<{ success: boolean; message: string; postId?: string }> {
     try {
-      if (createPostDto.image && createPostDto.file) {
-        console.log('Processing both image and file');
-        const fileResult = this.commonWsService.processContentWithMultipleFiles(
-          createPostDto.content,
-          {
-            image: createPostDto.image,
-            file: createPostDto.file,
-          },
-        );
+      const userData = client.data as { user?: { id?: string; role?: string } };
+      const userId = userData.user?.id;
+      const userRole = userData.user?.role || 'user';
 
-        Object.assign(createPostDto, fileResult);
-
-        delete createPostDto.file;
-        delete createPostDto.image;
-      } else if (createPostDto.file) {
-        console.log('Processing file only');
-        const fileResult = this.commonWsService.processContentWithFile(
-          createPostDto.content,
-          { file: createPostDto.file },
-        );
-
-        Object.assign(createPostDto, fileResult);
-
-        delete createPostDto.file;
-      } else if (createPostDto.image) {
-        console.log('Processing image only');
-        const fileResult = this.commonWsService.processContentWithFile(
-          createPostDto.content,
-          { file: createPostDto.image },
-        );
-
-        Object.assign(createPostDto, {
-          ...fileResult,
-          imageUrl: fileResult.fileUrl,
-        });
-
-        delete createPostDto.image;
+      if (!userId) {
+        return { success: false, message: 'User not authenticated' };
       }
 
-      console.log('Final post data before queue:', createPostDto);
+      // Проверка капчи только для обычных пользователей
+      const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
-      await this.postsService.sendPostToQueue(createPostDto);
+      // Если пользователь НЕ админ, проверяем капчу
+      if (!isAdmin) {
+        // Используем новый метод для проверки верификации капчи
+        const captchaVerified = this.commonWsService.isCaptchaVerified(client);
+        if (!captchaVerified) {
+          return { success: false, message: 'CAPTCHA verification required' };
+        }
+      }
 
-      return { success: true, message: 'Post sent to queue' };
+      // ПРОВЕРКА RATE LIMIT ПЕРЕД ОТПРАВКОЙ В ОЧЕРЕДЬ
+      const rateLimitResult = this.checkUserRateLimit(userId);
+      if (!rateLimitResult.allowed) {
+        this.logger.warn(
+          `Rate limit exceeded for user ${userId}: ${rateLimitResult.currentCount}/${rateLimitResult.maxPosts}`,
+        );
+        return {
+          success: false,
+          message: `Rate limit exceeded. You can create ${rateLimitResult.maxPosts} posts per minute. Try again in ${rateLimitResult.retryAfter} seconds.`,
+        };
+      }
+
+      const postData = {
+        ...createPostDto,
+        userId,
+      };
+
+      this.logger.log(
+        `Post sent to queue "add_post_queue": ${JSON.stringify(postData)}`,
+      );
+
+      // Отправляем в очередь
+      await this.rabbitMQService.sendToQueue('add_post_queue', {
+        createPostDto: postData,
+      });
+
+      // Обновляем rate limit счетчик ТОЛЬКО если пост отправлен в очередь
+      this.updateUserRateLimit(userId);
+
+      return {
+        success: true,
+        message: 'Post queued for processing',
+        postId: 'pending', // Временный ID пока не обработан
+      };
     } catch (error) {
-      console.error('Error processing post:', error);
+      this.logger.error(
+        `Error adding post: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return {
         success: false,
         message:
-          error instanceof Error ? error.message : 'Failed to process post',
+          error instanceof Error ? error.message : 'Failed to create post',
       };
+    }
+  }
+  private checkUserRateLimit(userId: string): {
+    allowed: boolean;
+    maxPosts: number;
+    currentCount: number;
+    retryAfter: number;
+  } {
+    const now = Date.now();
+    const userLimit = this.userPostCounts.get(userId);
+
+    if (!userLimit || now > userLimit.resetTime) {
+      // Сбрасываем лимит для пользователя
+      this.userPostCounts.set(userId, {
+        count: 0,
+        resetTime: now + this.RATE_LIMIT_WINDOW,
+      });
+
+      return {
+        allowed: true,
+        maxPosts: this.MAX_POSTS_PER_MINUTE,
+        currentCount: 0,
+        retryAfter: 0,
+      };
+    }
+
+    const allowed = userLimit.count < this.MAX_POSTS_PER_MINUTE;
+    const retryAfter = Math.ceil((userLimit.resetTime - now) / 1000);
+
+    return {
+      allowed,
+      maxPosts: this.MAX_POSTS_PER_MINUTE,
+      currentCount: userLimit.count,
+      retryAfter,
+    };
+  }
+
+  private updateUserRateLimit(userId: string): void {
+    const userLimit = this.userPostCounts.get(userId);
+    if (userLimit) {
+      userLimit.count++;
+      this.logger.log(
+        `User ${userId} post count: ${userLimit.count}/${this.MAX_POSTS_PER_MINUTE}`,
+      );
+    }
+  }
+  private cleanupRateLimitCache() {
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [userId, limit] of this.userPostCounts.entries()) {
+      if (now > limit.resetTime) {
+        this.userPostCounts.delete(userId);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      this.logger.log(`Cleaned ${cleaned} expired rate limit entries`);
     }
   }
 

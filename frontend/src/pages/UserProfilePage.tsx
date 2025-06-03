@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Spin, Button, Avatar, Empty, Collapse, message } from "antd";
 import { 
@@ -13,95 +13,116 @@ import {
 import { getAvatarColor } from "../components/ui/particles/avatarColor";
 import { observer } from "mobx-react";
 import { autorun } from "mobx";
-import userStore from "../services/stores/UserStore";
-import { postStore } from "../services/stores/PostStore";
 import PostsThread from "../components/posts/PostsThread";
 import EditProfileModal from "../components/user/modals/EditProfileModal";
 import AvatarModal from "../components/user/modals/AvatarModal";
 import UserSettings from "../components/user/UserSettings";
-import { navigationStore } from "../services/stores/NavigationStore";
 import { logger } from "../utils/Logger";
+import AdminBadge from "../components/ui/particles/AdminBadge";
+import { User } from "../types/interfaces";
+import { useUserStore, usePostStore } from "../hooks/useStore";
+import { useNavigationHelper } from "../hooks/useNavigationHelper";
 
 const TABS = [
   { key: "posts", label: "Posts", icon: <InboxOutlined /> },
 ];
 
 const UserProfilePage = observer(() => {
-  const { userId: userIdParam } = useParams();
-  const navigate = useNavigate();
+  // Используем хуки для получения сторов
+  const userStore = useUserStore();
+  const postStore = usePostStore();
+  const navigationHelper = useNavigationHelper();
+
+  const { userId: userIdParam, username: usernameParam } = useParams();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState("posts");
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  
-  // Используем UserStore как единый источник правды
+  const [profileUser, setProfileUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Определяем что искать
+  const searchParam = userIdParam || usernameParam;
   const currentUser = userStore.user;
   
-  // Определяем эффективный userId
-  const user = useMemo(() => {
-    // Для собственного профиля - без побочных эффектов
-    if (!userIdParam) {
-      logger.log('[UserProfilePage] Own profile, using current user');
-      return currentUser;
-    }
-    
-    // Для чужого - только возвращаем кэшированное значение, без запросов
-    return userStore.getCachedUser(userIdParam);
-  }, [userIdParam, currentUser]);
+  // Определяем является ли профиль собственным
+  const isOwnProfile = !searchParam || 
+    searchParam === currentUser?.id || 
+    searchParam === currentUser?.slug || 
+    searchParam === currentUser?.userName;
+  
+  // Получаем пользователя для отображения
+  const user = isOwnProfile ? currentUser : profileUser;
 
-  const isOwnProfile = useMemo(() => {
-    // Если нет параметра userId, то это собственный профиль
-    if (!userIdParam) return true;
-    
-    // Если есть пользователь и его ID совпадает с текущим - собственный профиль
-    if (user?.id && currentUser?.id) {
-      return user.id === currentUser.id;
+  // Загрузка пользователя
+  useEffect(() => {
+    if (!searchParam || isOwnProfile) {
+      setProfileUser(null);
+      setIsLoading(false);
+      return;
     }
-    
-    return false;
-  }, [userIdParam, user?.id, currentUser?.id]);
 
+    const loadUser = async () => {
+      setIsLoading(true);
+      try {
+        logger.log(`[UserProfilePage] Loading user: ${searchParam}`);
+        
+        // Сначала проверяем кэш
+        const cachedUser = userStore.getCachedUser(searchParam);
+        
+        if (cachedUser) {
+          logger.log(`[UserProfilePage] Found user in cache: ${cachedUser.userName} (${cachedUser.slug})`);
+          setProfileUser(cachedUser);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Загружаем через API
+        const loadedUser = await userStore.getUserById(searchParam);
+        
+        if (loadedUser) {
+          logger.log(`[UserProfilePage] Loaded user: ${loadedUser.userName} (${loadedUser.slug})`);
+          setProfileUser(loadedUser);
+        } else {
+          logger.warn(`[UserProfilePage] User not found: ${searchParam}`);
+          setProfileUser(null);
+        }
+      } catch (error) {
+        logger.error(`[UserProfilePage] Error loading user ${searchParam}:`, error);
+        setProfileUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadUser();
+  }, [searchParam, isOwnProfile, userStore]);
+
+  // Проверяем подписку
   const isFollowing = useMemo(() => {
     if (isOwnProfile || !user?.id || !currentUser?.following) return false;
-    
-    // Проверяем наличие ID пользователя в списке подписок
     return currentUser.following.some(followedUser => followedUser.id === user.id);
   }, [isOwnProfile, user?.id, currentUser?.following]);
 
-  useEffect(() => {
-    if (userIdParam && !userStore.getCachedUser(userIdParam) && !userStore.isUserLoading(userIdParam)) {
-      logger.log(`[UserProfilePage] Loading user: ${userIdParam}`);
-      userStore.getUserById(userIdParam);
-    }
-  }, [userIdParam]);
-
-  //  Определяем, загружаем ли мы пользователя
-  const isLoading = useMemo(() => {
-    if (!userIdParam) return false;
-    return userStore.isUserLoading(userIdParam);
-  }, [userIdParam]);
-
-  //Стабильный ID для PostsThread
+  // Стабильный ID для PostsThread
   const stableUserId = useMemo(() => user?.id, [user?.id]);
 
   // Ленивая инициализация PostsThread 
   const PostsThreadComponent = useMemo(() => {
-  if (activeTab !== "posts" || !stableUserId || isLoading) {
-    return null;
-  }
-  
-  return (
-    <PostsThread 
-      activeTab="user"
-      userId={stableUserId}
-      key={`user-${stableUserId}`}
-    />
-  );
-}, [activeTab, stableUserId, isLoading]);
+    if (activeTab !== "posts" || !stableUserId || isLoading) {
+      return null;
+    }
+    
+    return (
+      <PostsThread 
+        activeTab="user"
+        userId={stableUserId}
+        key={`user-${stableUserId}`}
+      />
+    );
+  }, [activeTab, stableUserId, isLoading]);
 
-
-  
   // Проверяем preserveFeeds для сохранения лент
   useEffect(() => {
     interface LocationState {
@@ -115,44 +136,33 @@ const UserProfilePage = observer(() => {
       return;
     }
     
-    // Сбрасываем ленту подписок только если НЕ сохраняем состояние
     logger.log("[UserProfilePage] Resetting following feed state");
-    postStore.resetFeedState("following");
-  }, [location.state]);
+    postStore.resetFeedsState("following");
+  }, [location.state, postStore]);
 
-  //  Отслеживаем изменения подписок через MobX
+  // Отслеживаем изменения подписок через MobX
   useEffect(() => {
     if (!currentUser) return;
 
-    // Сохраняем начальное количество подписок
     let initialFollowingCount = currentUser.following?.length || 0;
-    
     logger.log(`[UserProfilePage] Initial following count: ${initialFollowingCount}`);
     
-    // Используем MobX autorun для автоматического отслеживания изменений
     const disposer = autorun(() => {
       const currentFollowingCount = currentUser.following?.length || 0;
       
-      // При изменении количества подписок помечаем following ленту для обновления
       if (currentFollowingCount !== initialFollowingCount) {
         logger.log(`[UserProfilePage] Following count changed from ${initialFollowingCount} to ${currentFollowingCount}`);
-        
-        // Помечаем following ленту для обновления при следующей загрузке
         postStore.markFeedForRefresh("following");
-        
-        // Обновляем счетчик
         initialFollowingCount = currentFollowingCount;
-        
         logger.log("[UserProfilePage] Following feed marked for refresh due to subscription changes");
       }
     });
     
-    // Cleanup при размонтировании компонента
     return () => {
       logger.log("[UserProfilePage] Disposing following changes autorun");
       disposer();
     };
-  }, [currentUser]);
+  }, [currentUser, postStore]);
 
   // Мемоизируем вычисления аватара
   const avatarProps = useMemo(() => {
@@ -161,7 +171,7 @@ const UserProfilePage = observer(() => {
     return { letter, color };
   }, [user?.userName]);
 
-  // Обработчик для сохранения аватарки
+  // Обработчики
   const handleAvatarSave = useCallback(async (avatarData: { 
     type: 'upload' | 'initial', 
     value: string, 
@@ -175,20 +185,12 @@ const UserProfilePage = observer(() => {
       message.error('Failed to update avatar');
       console.error(error);
     }
-  }, []);
+  }, [userStore]);
 
+// В компоненте UserProfilePage
   const handleGoBack = useCallback(() => {
-    if (navigationStore.currentState.fromFeed || navigationStore.currentState.fromFollowing) {
-      navigationStore.handleBackNavigation(navigate);
-      setTimeout(() => {
-        navigationStore.clearCurrentState();
-      }, 100);
-    } else {
-      navigate(-1);
-    }
-  }, [navigate]);
-
-  // Оптимизированные обработчики follow/unfollow
+  navigationHelper.goBack();
+}, [navigationHelper]);
   const handleFollow = useCallback(async () => {
     if (!user?.id || followLoading || isOwnProfile) return;
     
@@ -202,7 +204,7 @@ const UserProfilePage = observer(() => {
     } finally {
       setFollowLoading(false);
     }
-  }, [user?.id, user?.userName, followLoading, isOwnProfile]);
+  }, [user?.id, user?.userName, followLoading, isOwnProfile, userStore]);
 
   const handleUnfollow = useCallback(async () => {
     if (!user?.id || followLoading || isOwnProfile) return;
@@ -217,10 +219,10 @@ const UserProfilePage = observer(() => {
     } finally {
       setFollowLoading(false);
     }
-  }, [user?.id, user?.userName, followLoading, isOwnProfile]);
+  }, [user?.id, user?.userName, followLoading, isOwnProfile, userStore]);
 
-  // Показать загрузку только если это не собственный профиль
-  if (isLoading && userIdParam) {
+  // Рендер состояний
+  if (isLoading && !isOwnProfile) {
     return (
       <div className="user-profile__loading">
         <Spin size="large" />
@@ -228,8 +230,7 @@ const UserProfilePage = observer(() => {
     );
   }
 
-  // Показать ошибку только если пользователь не найден И это не собственный профиль
-  if (!user && !isLoading && userIdParam) {
+  if (!user && !isLoading && !isOwnProfile) {
     return (
       <div className="user-profile">
         <div className="user-profile__header">
@@ -242,13 +243,15 @@ const UserProfilePage = observer(() => {
             Back
           </Button>
         </div>
-        <Empty description="User not found" />
+        <Empty 
+          description={`User "${searchParam}" not found`} 
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       </div>
     );
   }
 
-  // Если нет пользователя вообще (не залогинен)
-  if (!user) {
+  if (!user && isOwnProfile) {
     return (
       <div className="user-profile">
         <div className="user-profile__header">
@@ -261,7 +264,10 @@ const UserProfilePage = observer(() => {
             Back
           </Button>
         </div>
-        <Empty description="Please log in to view profile" />
+        <Empty 
+          description="Please log in to view your profile" 
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       </div>
     );
   }
@@ -322,9 +328,12 @@ const UserProfilePage = observer(() => {
           )}
           
           <div className="user-profile__info">
-            <div className="user-profile__info-name">{user?.userName}</div>
+            <div className="user-profile__info-name" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>{user?.userName}</span>
+              <AdminBadge role={user?.role || 'user'} />
+            </div>
             <div className="user-profile__info-email">{user?.email}</div>
-            
+
             <div className="user-profile__buttons">
               {!isOwnProfile && (
                 isFollowing ? (
@@ -394,7 +403,7 @@ const UserProfilePage = observer(() => {
         ))}
       </div>
 
-        {PostsThreadComponent}
+      {PostsThreadComponent}
 
       {/* Модалки */}
       {isEditModalVisible && isOwnProfile && currentUser && (

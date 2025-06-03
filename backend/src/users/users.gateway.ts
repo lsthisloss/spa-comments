@@ -13,8 +13,9 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { Socket, Server } from 'socket.io';
 import { AuthenticatedSocketData } from '../auth/jwt-payload.interface';
-import { isUUID } from 'class-validator';
 import { CommonWsService } from '../common/common-ws.service';
+import { User } from './entities/user.entity';
+import { SessionService } from '../auth/session.service';
 
 interface AvatarUploadData {
   file: {
@@ -33,6 +34,7 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly usersService: UsersService,
     private readonly commonWsService: CommonWsService,
+    private readonly sessionService: SessionService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -41,21 +43,87 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userData = client.data as AuthenticatedSocketData | undefined;
     if (userData?.user?.id) {
       console.log(
-        `Authenticated user connected: ${userData.user.id} (${userData.user.userName})`,
+        `-> Authenticated user connected: ${userData.user.id} (${userData.user.userName})`,
       );
     } else {
-      console.log(`Anonymous user connected: ${client.id}`);
+      console.log(`-> Anonymous user connected: ${client.id}`);
     }
   }
 
   handleDisconnect(client: Socket) {
     console.log('User WS disconnected:', client.id);
+    // Удаляем информацию о сессии при отключении
+    this.sessionService.removeSession(client.id);
+  }
+
+  @SubscribeMessage('login')
+  async handleLogin(
+    @MessageBody() data: { email: string; password: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
+    try {
+      const result = await this.usersService.login(data.email, data.password);
+
+      if (result.success && result.user && result.token) {
+        // Безопасно извлекаем данные пользователя
+        const userResponse = {
+          id: result.user.id,
+          userName: result.user.userName,
+          email: result.user.email,
+          avatarUrl: result.user.avatarUrl || null,
+          avatarShape: result.user.avatarShape || 'circle',
+          slug: result.user.slug,
+          role: result.user.role,
+          createdAt: result.user.createdAt,
+          updatedAt: result.user.updatedAt,
+        };
+
+        console.log(
+          `[LOGIN SUCCESS] User: ${userResponse.userName}, Role: ${userResponse.role}`,
+        );
+
+        // Проверяем, есть ли уже активная сессия
+        const existingSession = this.sessionService.registerSession(
+          result.user.id,
+          result.user.userName,
+          client,
+        );
+
+        // Если была активная сессия, отключаем её
+        if (existingSession) {
+          console.log(
+            `[LOGIN] Terminating previous session for user ${result.user.userName}`,
+          );
+          this.sessionService.disconnectUser(
+            result.user.id,
+            'Ваша учетная запись была открыта на другом устройстве. Если это были не вы, возможно ваша учетная запись была скомпрометирована.',
+          );
+        }
+
+        // Отправляем ответ новому клиенту
+        client.emit('loginResponse', {
+          success: true,
+          token: result.token,
+          user: userResponse,
+        });
+      } else {
+        client.emit('loginResponse', {
+          success: false,
+          message: result.message || 'Login failed',
+        });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      client.emit('loginResponse', {
+        success: false,
+        message: 'Internal server error',
+      });
+    }
   }
 
   @SubscribeMessage('register')
   async handleRegister(@MessageBody() dto: CreateUserDto) {
     try {
-      console.log('REGISTER STACK:', new Error().stack);
       console.log(`
         Registration attempt for email: ${dto.email}, userName: ${dto.userName}`);
       const { token, user } = await this.usersService.createUser(
@@ -325,111 +393,6 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  @SubscribeMessage('getUser')
-  async handleGetUser(@MessageBody() data: { userId: string }) {
-    try {
-      let user;
-      if (isUUID(data.userId)) {
-        user = await this.usersService.getUserById(data.userId);
-      } else {
-        user = await this.usersService.getUserBySlug(data.userId);
-      }
-      console.log(`Getting user data for ID/slug: ${data.userId}`);
-
-      if (user) {
-        const {
-          id,
-          email,
-          userName,
-          slug,
-          avatarUrl,
-          avatarShape,
-          role,
-          following,
-          followers,
-        } = user as {
-          id: string;
-          email: string;
-          userName: string;
-          slug: string;
-          avatarUrl: string;
-          avatarShape: string;
-          role: string;
-          following: Array<{ id: string; userName: string }>;
-          followers: Array<{ id: string; userName: string }>;
-        };
-        console.log(`User data retrieved: ${id} (${userName}) - Role: ${role}`);
-        return {
-          success: true,
-          user: {
-            id,
-            email,
-            userName,
-            slug,
-            avatarUrl,
-            avatarShape,
-            role, // Включаем роль в ответ
-            following: following || [],
-            followers: followers || [],
-          },
-        };
-      }
-      console.log(`User not found: ${data.userId}`);
-      return { success: false, message: 'User not found' };
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Get user failed';
-      console.error('Get user error:', message);
-      return { success: false, message };
-    }
-  }
-
-  @SubscribeMessage('login')
-  async handleLogin(
-    @MessageBody() data: { email: string; password: string },
-    @ConnectedSocket() client: Socket,
-  ): Promise<void> {
-    try {
-      const result = await this.usersService.login(data.email, data.password);
-
-      if (result.success && result.user && result.token) {
-        // Безопасно извлекаем данные пользователя
-        const userResponse = {
-          id: result.user.id,
-          userName: result.user.userName,
-          email: result.user.email,
-          avatarUrl: result.user.avatarUrl || null,
-          avatarShape: result.user.avatarShape || 'circle',
-          slug: result.user.slug,
-          role: result.user.role,
-          createdAt: result.user.createdAt,
-          updatedAt: result.user.updatedAt,
-        };
-
-        console.log(
-          `[LOGIN SUCCESS] User: ${userResponse.userName}, Role: ${userResponse.role}`,
-        );
-
-        client.emit('loginResponse', {
-          success: true,
-          token: result.token,
-          user: userResponse,
-        });
-      } else {
-        client.emit('loginResponse', {
-          success: false,
-          message: result.message || 'Login failed',
-        });
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      client.emit('loginResponse', {
-        success: false,
-        message: 'Internal server error',
-      });
-    }
-  }
-
   private validateAvatarShape(shape: string | undefined): 'circle' | 'square' {
     if (shape === 'circle' || shape === 'square') {
       return shape;
@@ -495,11 +458,10 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // Добавьте обработчик для обновления только формы аватара
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('updateAvatarShape')
   async handleUpdateAvatarShape(
-    @MessageBody() data: { avatarShape: string }, // Изменили тип на string
+    @MessageBody() data: { avatarShape: string },
     @ConnectedSocket() client: Socket,
   ) {
     try {
@@ -544,96 +506,171 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { success: false, message };
     }
   }
-
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('promoteToAdmin')
   async handlePromoteToAdmin(
-    @MessageBody() data: { userId: string },
     @ConnectedSocket() client: Socket,
-  ) {
+    @MessageBody() data: { userId: string }, // userId может быть slug
+  ): Promise<{ success: boolean; user?: User; message?: string }> {
     try {
       const userData = client.data as AuthenticatedSocketData;
       const promoterId = userData.user.id;
 
-      console.log(
-        `Promote to Admin request - Promoter: ${promoterId}, Target: ${data.userId}`,
-      );
-
       if (!promoterId) {
-        console.error('Promote failed: Not authenticated');
-        return { success: false, message: 'Not authenticated' };
+        return { success: false, message: 'User not authenticated' };
       }
 
+      console.log(`Promoting user ${data.userId} to Admin by ${promoterId}`);
+
       const updatedUser = await this.usersService.promoteToAdmin(
-        data.userId,
+        data.userId, // Передаем userIdOrSlug
         promoterId,
       );
 
       if (updatedUser) {
-        console.log(`User ${data.userId} promoted to Admin successfully`);
+        // Уведомляем всех подключенных пользователей об изменении роли
+        this.server.emit('userRoleUpdated', {
+          userId: updatedUser.id,
+          userName: updatedUser.userName,
+          newRole: updatedUser.role,
+          action: 'promoted',
+        });
+
+        console.log(
+          `Successfully promoted ${updatedUser.userName} (${updatedUser.id}) to Admin`,
+        );
+
         return {
           success: true,
-          user: {
-            id: updatedUser.id,
-            email: updatedUser.email,
-            userName: updatedUser.userName,
-            role: updatedUser.role,
-          },
+          user: updatedUser,
+          message: `User ${updatedUser.userName} promoted to Admin`,
         };
+      } else {
+        return { success: false, message: 'Failed to promote user' };
       }
-
-      return { success: false, message: 'Failed to promote user' };
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Promotion failed';
-      console.error('promoteToAdmin: Error =', message);
-      return { success: false, message };
+    } catch (error) {
+      console.error(
+        `promoteToAdmin: ${error instanceof Error ? error.constructor.name : 'Error'} = ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to promote user',
+      };
     }
   }
 
-  @UseGuards(WsJwtGuard)
   @SubscribeMessage('demoteFromAdmin')
   async handleDemoteFromAdmin(
-    @MessageBody() data: { userId: string },
     @ConnectedSocket() client: Socket,
-  ) {
+    @MessageBody() data: { userId: string }, // userId может быть slug
+  ): Promise<{ success: boolean; user?: User; message?: string }> {
     try {
       const userData = client.data as AuthenticatedSocketData;
       const demoterId = userData.user.id;
 
-      console.log(
-        `Demote from Admin request - Demoter: ${demoterId}, Target: ${data.userId}`,
-      );
-
       if (!demoterId) {
-        console.error('Demote failed: Not authenticated');
-        return { success: false, message: 'Not authenticated' };
+        return { success: false, message: 'User not authenticated' };
       }
 
+      console.log(`Demoting user ${data.userId} from Admin by ${demoterId}`);
+
       const updatedUser = await this.usersService.demoteFromAdmin(
-        data.userId,
+        data.userId, // Передаем userIdOrSlug
         demoterId,
       );
 
       if (updatedUser) {
-        console.log(`Admin ${data.userId} demoted to User successfully`);
+        // Уведомляем всех подключенных пользователей об изменении роли
+        this.server.emit('userRoleUpdated', {
+          userId: updatedUser.id,
+          userName: updatedUser.userName,
+          newRole: updatedUser.role,
+          action: 'demoted',
+        });
+
+        console.log(
+          `Successfully demoted ${updatedUser.userName} (${updatedUser.id}) from Admin`,
+        );
+
         return {
           success: true,
-          user: {
-            id: updatedUser.id,
-            email: updatedUser.email,
-            userName: updatedUser.userName,
-            role: updatedUser.role,
-          },
+          user: updatedUser,
+          message: `User ${updatedUser.userName} demoted from Admin`,
         };
+      } else {
+        return { success: false, message: 'Failed to demote user' };
       }
+    } catch (error) {
+      console.error(
+        `demoteFromAdmin: ${error instanceof Error ? error.constructor.name : 'Error'} = ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to demote admin',
+      };
+    }
+  }
 
-      return { success: false, message: 'Failed to demote admin' };
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Demotion failed';
-      console.error('demoteFromAdmin: Error =', message);
-      return { success: false, message };
+  @SubscribeMessage('getUser')
+  async handleGetUser(
+    @MessageBody() data: { userId: string },
+  ): Promise<{ success: boolean; user?: User; message?: string }> {
+    try {
+      console.log(`Getting user: ${data.userId}`);
+
+      const user = await this.usersService.getUserByIdOrSlug(data.userId); // Используем новый метод
+
+      if (user) {
+        return { success: true, user };
+      } else {
+        return { success: false, message: 'User not found' };
+      }
+    } catch (error) {
+      console.error(`Error getting user ${data.userId}:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get user',
+      };
+    }
+  }
+  @SubscribeMessage('getAllUsers')
+  async handleGetAllUsers(): Promise<{
+    success: boolean;
+    users?: User[];
+    message?: string;
+  }> {
+    try {
+      const users = await this.usersService.getAllUsers();
+      return { success: true, users };
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get users',
+      };
+    }
+  }
+
+  @SubscribeMessage('searchUsers')
+  async handleSearchUsers(
+    @MessageBody() data: { query: string },
+  ): Promise<{ success: boolean; users?: User[]; message?: string }> {
+    try {
+      const users = await this.usersService.searchUsers(data.query, 20);
+      console.log(
+        `Search results for "${data.query}":`,
+        users.map((u) => `${u.userName} (${u.slug})`),
+      );
+      return { success: true, users };
+    } catch (error) {
+      console.error('Error searching users:', error);
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to search users',
+      };
     }
   }
 }

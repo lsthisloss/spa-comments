@@ -1,10 +1,10 @@
-import { makeObservable, observable, action, runInAction, computed } from "mobx";
-import { socketStore } from "./SocketStore";
-import { User } from "../../types/interfaces";
-import { IUserStore } from "../../types/stores";
-import authStore from "./AuthStore";
+import { makeObservable, observable, action, computed, runInAction } from "mobx";
 import { logger } from "../../utils/Logger";
-import { postStore } from "./PostStore";
+import { User, UserRole } from "../../types/interfaces";
+import AuthStore from "./AuthStore";
+import SocketStore from "./SocketStore";
+import PostStore from "./PostStore";
+import { IUserStore } from "../../types/stores";
 
 class UserStore implements IUserStore {
   user: User | null = null;
@@ -12,8 +12,16 @@ class UserStore implements IUserStore {
   loadingUsers = observable.set<string>();
   followingUserIds = observable.set<string>();
   loginLoading = false;
+  
+  private authStore: AuthStore;
+  private socketStore: SocketStore;
+  private postStore: PostStore; // PostStore как зависимость
 
-  constructor() {
+  constructor(authStore: AuthStore, socketStore: SocketStore, postStore: PostStore) {
+    this.authStore = authStore;
+    this.socketStore = socketStore;
+    this.postStore = postStore; // Сохраняем ссылку
+
     makeObservable(this, {
       user: observable,
       usersCache: observable,
@@ -40,141 +48,107 @@ class UserStore implements IUserStore {
     this.loadUserFromStorage();
   }
 
-  async login(email: string, password: string): Promise<{
-    success: boolean;
-    message?: string;
-    user?: User;
-  }> {
-    return new Promise((resolve, reject) => {
-      if (!socketStore.users) {
-        reject(new Error("Users socket not available"));
-        return;
+  private validateUserRole(role: string | undefined): UserRole {
+    if (role === 'admin' || role === 'superadmin') {
+      return role;
+    }
+    return 'user'; // По умолчанию
+  }
+
+  /**
+   * Добавляет пользователя в кэш с валидацией типов
+   */
+  addCachedUser(user: Partial<User>) {
+    // Проверяем что у пользователя есть обязательные поля
+    if (user && user.id && user.userName) {
+      // Создаем полный объект User с правильными типами
+      const fullUser: User = {
+        id: user.id,
+        userName: user.userName,
+        email: user.email || '',
+        slug: user.slug || user.userName.toLowerCase(),
+        avatarUrl: user.avatarUrl || null,
+        avatarShape: user.avatarShape || 'circle',
+        role: this.validateUserRole(user.role), // Валидируем роль
+        createdAt: user.createdAt || new Date().toISOString(),
+        updatedAt: user.updatedAt || new Date().toISOString(),
+        followers: user.followers || [],
+        following: user.following || [],
+        settings: user.settings || { debugMode: false },
+        ...user // Копируем все остальные поля
+      };
+
+      this.usersCache.set(user.id, fullUser);
+
+      // Также кэшируем по slug если есть
+      if (fullUser.slug) {
+        this.usersCache.set(fullUser.slug, fullUser);
       }
 
-      runInAction(() => {
-        this.loginLoading = true;
-      });
-
-      // Удаляем старый обработчик если есть
-      if (socketStore.users) {
-        socketStore.users.off('loginResponse');
-      }
-
-      // Устанавливаем обработчик ответа
-      socketStore.users.on('loginResponse', async (response: {
-        success: boolean;
-        token?: string;
-        user?: User;
-        message?: string;
-      }) => {
-        runInAction(() => {
-          this.loginLoading = false;
-        });
-
-        logger.log('[UserStore] Login response received:', response);
-
-        if (response.success && response.token && response.user) {
-          // Устанавливаем пользователя
-          this.setUser(response.user);
-          
-          // Устанавливаем токен в AuthStore
-          authStore.setAuth(response.token);
-          
-          // Инициализируем аутентифицированные сокеты
-          try {
-            logger.log('[UserStore] Initializing authenticated sockets...');
-            await socketStore.initializeAuthenticatedSockets(response.token);
-            logger.log('[UserStore] Authenticated sockets initialized successfully');
-          } catch (error) {
-            logger.error('[UserStore] Failed to initialize authenticated sockets:', error);
-          }
-          
-          // Убираем обработчик после использования
-          if (socketStore.users) {
-            socketStore.users.off('loginResponse');
-          }
-          
-          resolve({
-            success: true,
-            user: response.user
-          });
-        } else {
-          // Убираем обработчик после ошибки
-          if (socketStore.users) {
-           socketStore.users.off('loginResponse');
-          }
-          
-          resolve({
-            success: false,
-            message: response.message || 'Login failed'
-          });
-        }
-      });
-
-      // Отправляем запрос авторизации
-      socketStore.users.emit('login', { email, password });
-    });
+      logger.log(`[UserStore] Cached user ${fullUser.userName} with role: ${fullUser.role}`);
+    } else {
+      logger.warn(`[UserStore] Cannot cache user - missing required fields:`, user);
+    }
   }
 
-  logout() {
-    this.setUser(null);
-    authStore.logout();
-    
-    // Отключаем аутентифицированные сокеты
-    socketStore.disconnectAuthenticatedSockets();
-    
-    // Очищаем localStorage
-    localStorage.removeItem("user");
-    
-    // Очищаем кэш пользователей
-    this.clearUsersCache();
-  }
-
-  // Computed свойства основаны на this.user, а не на authStore
-  get isAuthenticated(): boolean {
-    return !!this.user && !!authStore.token;
-  }
-
-
-
+  /**
+   * Устанавливает пользователя с валидацией типов
+   */
   setUser(userData: User | null) {
     runInAction(() => {
-      this.user = userData;
-      
       if (userData) {
-        console.log(`[UserStore] Setting user with role: ${userData.role}`);
+        // Валидируем роль перед установкой
+        const validatedUser: User = {
+          ...userData,
+          role: this.validateUserRole(userData.role),
+          settings: userData.settings || { debugMode: false }
+        };
+
+        this.user = validatedUser;
+
+        console.log(`[UserStore] Setting user with role: ${validatedUser.role}`);
         console.log(`[UserStore] Is superadmin: ${this.isSuperAdmin}`);
         console.log(`[UserStore] Can manage admins: ${this.canManageAdmins}`);
-        
-        this.addCachedUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
+
+        this.addCachedUser(validatedUser);
+        localStorage.setItem('user', JSON.stringify(validatedUser));
       } else {
+        this.user = null;
         localStorage.removeItem('user');
       }
-      
+
       logger.log(`[UserStore] User set: ${userData ? userData.userName : 'null'}`);
     });
   }
 
+  /**
+   * Загрузка пользователя из localStorage с валидацией
+   */
   private loadUserFromStorage() {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
-        const user = JSON.parse(storedUser) as User;
-        
-        // Инициализируем настройки по умолчанию если их нет
-        if (!user.settings) {
-          user.settings = { debugMode: false };
-        }
-        
-        // Устанавливаем роль по умолчанию если её нет
-        if (!user.role) {
-          user.role = 'user';
-        }
-        
+        const rawUser = JSON.parse(storedUser);
+
+        // Создаем валидного пользователя
+        const user: User = {
+          id: rawUser.id,
+          userName: rawUser.userName,
+          email: rawUser.email || '',
+          role: this.validateUserRole(rawUser.role), // Валидируем роль
+          avatarUrl: rawUser.avatarUrl || null,
+          avatarShape: rawUser.avatarShape || 'circle',
+          slug: rawUser.slug || '',
+          createdAt: rawUser.createdAt || new Date().toISOString(),
+          updatedAt: rawUser.updatedAt || new Date().toISOString(),
+          followers: rawUser.followers || [],
+          following: rawUser.following || [],
+          settings: rawUser.settings || { debugMode: false },
+        };
+
         this.user = user;
         this.usersCache.set(user.id, user);
-        
+
         console.log(`[UserStore] Loaded user from storage with role: ${user.role}`);
       } catch (error) {
         console.error("Failed to parse stored user:", error);
@@ -183,9 +157,28 @@ class UserStore implements IUserStore {
     }
   }
 
+  logout() {
+    this.setUser(null);
+    this.authStore.logout();
+
+    // Отключаем аутентифицированные сокеты
+    this.socketStore.disconnectAuthenticatedSockets();
+
+    // Очищаем localStorage
+    localStorage.removeItem("user");
+
+    // Очищаем кэш пользователей
+    this.clearUsersCache();
+  }
+
+  // Computed свойства основаны на this.user
+  get isAuthenticated(): boolean {
+    return !!this.user && !!this.authStore.token;
+  }
+
   updateUserSettings(settings: Partial<User['settings']>) {
     if (!this.user) return;
-    
+
     const updatedUser = {
       ...this.user,
       settings: {
@@ -193,16 +186,16 @@ class UserStore implements IUserStore {
         ...settings
       }
     };
-    
+
     this.setUser(updatedUser);
   }
 
 
-// Получить пользователя по ID или slug с кэшированием
-async getUserById(userIdOrSlug: string): Promise<User | null> {
+  // Получить пользователя по ID или slug с кэшированием
+  async getUserById(userIdOrSlug: string): Promise<User | null> {
     // Проверяем кэш по всем возможным ключам
-  let cachedUser = this.usersCache.get(userIdOrSlug);
-    
+    let cachedUser = this.usersCache.get(userIdOrSlug);
+
     // Если не нашли по переданному параметру, ищем по всем пользователям в кэше
     if (!cachedUser) {
       for (const [, user] of this.usersCache.entries()) {
@@ -214,7 +207,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
         }
       }
     }
-    
+
     if (cachedUser) {
       return cachedUser;
     }
@@ -237,7 +230,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
     });
 
     return new Promise<User | null>((resolve) => {
-      if (!socketStore.users) {
+      if (!this.socketStore.users) {
         runInAction(() => {
           this.loadingUsers.delete(userIdOrSlug);
         });
@@ -245,89 +238,68 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
         return;
       }
 
-      socketStore.users.emit("getUser", { userId: userIdOrSlug }, (res: { success: boolean; user?: User; message?: string }) => {
+      this.socketStore.users.emit("getUser", { userId: userIdOrSlug }, (res: { success: boolean; user?: Partial<User>; message?: string }) => {
         runInAction(() => {
           this.loadingUsers.delete(userIdOrSlug);
-          
-          if (res?.success && res.user) {
-            // Инициализируем настройки по умолчанию если их нет
-            if (!res.user.settings) {
-              res.user.settings = {
-                debugMode: false,
-              };
-            }
-            
-            // Устанавливаем роль по умолчанию если её нет
-            if (!res.user.role) {
-              res.user.role = 'user';
-            }
-            
+
+          if (res?.success && res.user && res.user.id && res.user.userName) {
+            // Создаем валидного пользователя
+            const validatedUser: User = {
+              id: res.user.id, // Теперь точно string
+              userName: res.user.userName, // Теперь точно string
+              email: res.user.email || '',
+              role: this.validateUserRole(res.user.role), // Валидируем роль
+              avatarUrl: res.user.avatarUrl || null,
+              avatarShape: res.user.avatarShape || 'circle',
+              slug: res.user.slug || '',
+              createdAt: res.user.createdAt || new Date().toISOString(),
+              updatedAt: res.user.updatedAt || new Date().toISOString(),
+              followers: res.user.followers || [],
+              following: res.user.following || [],
+              settings: res.user.settings || { debugMode: false },
+            };
+
             // Кэшируем под всеми возможными ключами
-            this.usersCache.set(res.user.id, res.user);
-            if (res.user.slug) {
-              this.usersCache.set(res.user.slug, res.user);
+            this.usersCache.set(validatedUser.id, validatedUser);
+            if (validatedUser.slug) {
+              this.usersCache.set(validatedUser.slug, validatedUser);
             }
-            this.usersCache.set(userIdOrSlug, res.user);
-            
-            resolve(res.user);
+            this.usersCache.set(userIdOrSlug, validatedUser);
+
+            resolve(validatedUser);
           } else {
-            console.error('Failed to get user:', res?.message);
+            console.error('Failed to get user - missing required fields:', res?.user);
             resolve(null);
           }
         });
       });
-  });
-}
+    });
+  }
 
 
   /**
    * Очищает текущего пользователя
    */
-  clearUser() {
-    runInAction(() => {
-      this.user = null;
-      // Не очищаем usersCache, чтобы сохранить кэшированных пользователей
-      
-      localStorage.removeItem('user');
-      logger.log('[UserStore] User cleared');
-    });
+clearUser = action(() => {
+  logger.log('[UserStore] Clearing current user data');
+  runInAction(() => {
+    this.user = null;
+  });
+  
+  // Clear from localStorage
+  try {
+    localStorage.removeItem('user');
+  } catch (e) {
+    logger.error('[UserStore] Failed to remove user from localStorage', e);
   }
+  
+  // Clear following data
+  this.followingUserIds.clear();
+  
+  
+  logger.log('[UserStore] User data cleared successfully');
+});
 
-  /**
-   * Добавляет пользователя в кэш
-   */
-  addCachedUser(user: Partial<User>) {
-  // Проверяем что у пользователя есть обязательные поля
-  if (user && user.id && user.userName) {
-    // Создаем полный объект User с дефолтными значениями
-    const fullUser: User = {
-      id: user.id,
-      userName: user.userName,
-      email: user.email || '',
-      slug: user.slug || user.userName.toLowerCase(),
-      avatarUrl: user.avatarUrl || null,
-      avatarShape: user.avatarShape || 'circle',
-      role: user.role || 'user', // Добавляем значение по умолчанию
-      createdAt: user.createdAt || new Date().toISOString(),
-      updatedAt: user.updatedAt || new Date().toISOString(),
-      followers: user.followers || [],
-      following: user.following || [],
-      settings: user.settings || { debugMode: false }, // Добавляем настройки по умолчанию
-      ...user // Копируем все остальные поля (перезаписывает дефолты если они есть)
-    };
-    
-    this.usersCache.set(user.id, fullUser);
-    
-    // Также кэшируем по slug если есть
-    if (fullUser.slug) {
-      this.usersCache.set(fullUser.slug, fullUser);
-    }
-    
-    logger.log(`[UserStore] Cached user ${fullUser.userName} with role: ${fullUser.role}`);
-  } else {
-    logger.warn(`[UserStore] Cannot cache user - missing required fields:`, user);
-  }
-}
 
   /**
    * Получает пользователя из кэша по ID или slug
@@ -342,46 +314,46 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
   }
 
 
-    async followUser(userId: string): Promise<void> {
-      return new Promise<void>((resolve, reject) => {
-        if (!socketStore.users) {
-          reject(new Error("Users socket not available"));
-          return;
-        }
-
-        socketStore.users.emit("followUser", { userId }, (res: { success: boolean; error?: string }) => {
-          if (res.success) {
-            // Обновляем локальное состояние
-            runInAction(() => {
-              if (this.user) {
-                this.user.following = [...(this.user.following || []), { id: userId } as User];
-                localStorage.setItem("user", JSON.stringify(this.user));
-              }
-              
-              // Обновляем кэш пользователя
-              const cachedUser = this.usersCache.get(userId);
-              if (cachedUser) {
-                cachedUser.followers = [...(cachedUser.followers || []), this.user!];
-                this.usersCache.set(userId, cachedUser);
-              }
-            });
-            postStore.resetFeedState("following");
-            resolve();
-          } else {
-            reject(new Error(res.error || "Failed to follow user"));
-          }
-        });
-      });
-    }
-
-  async unfollowUser(userId: string): Promise<void> {
+  async followUser(userId: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (!socketStore.users) {
+      if (!this.socketStore.users) {
         reject(new Error("Users socket not available"));
         return;
       }
 
-      socketStore.users.emit("unfollowUser", { userId }, (res: { success: boolean; error?: string }) => {
+      this.socketStore.users.emit("followUser", { userId }, (res: { success: boolean; error?: string }) => {
+        if (res.success) {
+          // Обновляем локальное состояние
+          runInAction(() => {
+            if (this.user) {
+              this.user.following = [...(this.user.following || []), { id: userId } as User];
+              localStorage.setItem("user", JSON.stringify(this.user));
+            }
+
+            // Обновляем кэш пользователя
+            const cachedUser = this.usersCache.get(userId);
+            if (cachedUser) {
+              cachedUser.followers = [...(cachedUser.followers || []), this.user!];
+              this.usersCache.set(userId, cachedUser);
+            }
+          });
+          this.postStore.resetFeedsState("following");
+          resolve();
+        } else {
+          reject(new Error(res.error || "Failed to follow user"));
+        }
+      });
+    });
+  }
+
+  async unfollowUser(userId: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (!this.socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      this.socketStore.users.emit("unfollowUser", { userId }, (res: { success: boolean; error?: string }) => {
         if (res.success) {
           // Обновляем локальное состояние
           runInAction(() => {
@@ -389,7 +361,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
               this.user.following = (this.user.following || []).filter(u => u.id !== userId);
               localStorage.setItem("user", JSON.stringify(this.user));
             }
-            
+
             // Обновляем кэш пользователя
             const cachedUser = this.usersCache.get(userId);
             if (cachedUser) {
@@ -397,7 +369,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
               this.usersCache.set(userId, cachedUser);
             }
           });
-          postStore.resetFeedState("following");
+          this.postStore.resetFeedsState("following");
           resolve();
         } else {
           reject(new Error(res.error || "Failed to unfollow user"));
@@ -421,53 +393,356 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
 
 
 
-  async updateUser(updateData: { userName?: string; email?: string; password?: string }): Promise<User> {
-    return new Promise<User>((resolve, reject) => {
-      if (!this.user?.id || !socketStore.users) {
+  async promoteToAdmin(userIdOrSlug: string): Promise<User | null> {
+    return new Promise<User | null>((resolve, reject) => {
+      if (!this.user?.id || !this.socketStore.users) {
         reject(new Error("User not authenticated or socket not available"));
         return;
       }
 
-      socketStore.users?.emit(
-        "updateUser", 
-        { 
-          userId: this.user.id, 
-          ...updateData 
-        }, 
+      if (this.user.role !== 'superadmin') {
+        reject(new Error("Only SuperAdmin can promote users to Admin"));
+        return;
+      }
+
+      this.socketStore.users.emit(
+        "promoteToAdmin",
+        { userId: userIdOrSlug },
+        (res: { success: boolean; user?: Partial<User>; message?: string }) => {
+          if (res.success && res.user) {
+            // Создаем полного пользователя или обновляем существующего
+            let updatedUser: User;
+            const cachedUser = this.getCachedUser(userIdOrSlug);
+
+            if (cachedUser) {
+              // Обновляем существующего пользователя
+              updatedUser = {
+                ...cachedUser,
+                role: 'admin' as UserRole
+              };
+            } else if (res.user.id && res.user.userName) {
+              // Создаем нового пользователя
+              updatedUser = {
+                id: res.user.id,
+                userName: res.user.userName,
+                email: res.user.email || '',
+                role: 'admin' as UserRole,
+                avatarUrl: res.user.avatarUrl || null,
+                avatarShape: res.user.avatarShape || 'circle',
+                slug: res.user.slug || '',
+                createdAt: res.user.createdAt || new Date().toISOString(),
+                updatedAt: res.user.updatedAt || new Date().toISOString(),
+                followers: res.user.followers || [],
+                following: res.user.following || [],
+                settings: res.user.settings || { debugMode: false },
+              };
+            } else {
+              reject(new Error("Invalid user data received"));
+              return;
+            }
+
+            runInAction(() => {
+              // Кэшируем обновленного пользователя
+              this.usersCache.set(updatedUser.id, updatedUser);
+              if (updatedUser.slug) {
+                this.usersCache.set(updatedUser.slug, updatedUser);
+              }
+              this.usersCache.set(userIdOrSlug, updatedUser);
+            });
+
+            logger.log(`[UserStore] User ${userIdOrSlug} promoted to Admin`);
+            resolve(updatedUser);
+          } else {
+            reject(new Error(res.message || "Failed to promote user"));
+          }
+        }
+      );
+    });
+  }
+
+  async demoteFromAdmin(userIdOrSlug: string): Promise<User | null> {
+    return new Promise<User | null>((resolve, reject) => {
+      if (!this.user?.id || !this.socketStore.users) {
+        reject(new Error("User not authenticated or socket not available"));
+        return;
+      }
+
+      if (this.user.role !== 'superadmin') {
+        reject(new Error("Only SuperAdmin can demote Admins"));
+        return;
+      }
+
+      this.socketStore.users.emit(
+        "demoteFromAdmin",
+        { userId: userIdOrSlug },
+        (res: { success: boolean; user?: Partial<User>; message?: string }) => {
+          if (res.success && res.user) {
+            // Создаем полного пользователя или обновляем существующего
+            let updatedUser: User;
+            const cachedUser = this.getCachedUser(userIdOrSlug);
+
+            if (cachedUser) {
+              // Обновляем существующего пользователя
+              updatedUser = {
+                ...cachedUser,
+                role: 'user' as UserRole
+              };
+            } else if (res.user.id && res.user.userName) {
+              // Создаем нового пользователя
+              updatedUser = {
+                id: res.user.id,
+                userName: res.user.userName,
+                email: res.user.email || '',
+                role: 'user' as UserRole,
+                avatarUrl: res.user.avatarUrl || null,
+                avatarShape: res.user.avatarShape || 'circle',
+                slug: res.user.slug || '',
+                createdAt: res.user.createdAt || new Date().toISOString(),
+                updatedAt: res.user.updatedAt || new Date().toISOString(),
+                followers: res.user.followers || [],
+                following: res.user.following || [],
+                settings: res.user.settings || { debugMode: false },
+              };
+            } else {
+              reject(new Error("Invalid user data received"));
+              return;
+            }
+
+            runInAction(() => {
+              // Кэшируем обновленного пользователя
+              this.usersCache.set(updatedUser.id, updatedUser);
+              if (updatedUser.slug) {
+                this.usersCache.set(updatedUser.slug, updatedUser);
+              }
+              this.usersCache.set(userIdOrSlug, updatedUser);
+            });
+
+            logger.log(`[UserStore] User ${userIdOrSlug} demoted from Admin`);
+            resolve(updatedUser);
+          } else {
+            reject(new Error(res.message || "Failed to demote admin"));
+          }
+        }
+      );
+    });
+  }
+
+  async login(email: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      runInAction(() => {
+        this.loginLoading = true;
+      });
+
+      // Удаляем старый обработчик если есть
+      if (this.socketStore.users) {
+        this.socketStore.users.off('loginResponse');
+      }
+
+      // Устанавливаем обработчик ответа
+      this.socketStore.users.on('loginResponse', async (response: {
+        success: boolean;
+        token?: string;
+        user?: Partial<User>;
+        message?: string;
+      }) => {
+        runInAction(() => {
+          this.loginLoading = false;
+        });
+
+        logger.log('[UserStore] Login response received:', response);
+
+        if (response.success && response.token && response.user && response.user.id && response.user.userName) {
+          // Создаем валидного пользователя
+          const validatedUser: User = {
+            id: response.user.id,
+            userName: response.user.userName,
+            email: response.user.email || '',
+            role: this.validateUserRole(response.user.role),
+            avatarUrl: response.user.avatarUrl || null,
+            avatarShape: response.user.avatarShape || 'circle',
+            slug: response.user.slug || '',
+            createdAt: response.user.createdAt || new Date().toISOString(),
+            updatedAt: response.user.updatedAt || new Date().toISOString(),
+            followers: response.user.followers || [],
+            following: response.user.following || [],
+            settings: response.user.settings || { debugMode: false },
+          };
+
+          // Устанавливаем пользователя
+          this.setUser(validatedUser);
+
+          // Устанавливаем токен в AuthStore с дополнительными данными
+         this.authStore.setAuth(response.token, validatedUser.id, validatedUser.userName);
+
+          // Инициализируем аутентифицированные сокеты
+          try {
+            logger.log('[UserStore] Initializing authenticated sockets...');
+            await this.socketStore.initializeAuthenticatedSockets(response.token);
+            logger.log('[UserStore] Authenticated sockets initialized successfully');
+          } catch (error) {
+            logger.error('[UserStore] Failed to initialize authenticated sockets:', error);
+          }
+
+          // Убираем обработчик после использования
+          if (this.socketStore.users) {
+            this.socketStore.users.off('loginResponse');
+          }
+
+          resolve({
+            success: true,
+            user: validatedUser
+          });
+        } else {
+          // Убираем обработчик после ошибки
+          if (this.socketStore.users) {
+            this.socketStore.users.off('loginResponse');
+          }
+
+          resolve({
+            success: false,
+            message: response.message || 'Login failed - invalid user data'
+          });
+        }
+      });
+
+      // Отправляем запрос авторизации
+      this.socketStore.users.emit('login', { email, password });
+    });
+  }
+
+  async register(email: string, userName: string, password: string): Promise<{
+    success: boolean;
+    message?: string;
+    user?: User;
+  }> {
+    return new Promise((resolve, reject) => {
+      if (!this.socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      runInAction(() => {
+        this.loginLoading = true;
+      });
+
+      this.socketStore.users.emit('register',
+        { email, userName, password },
+        async (response: {
+          success: boolean;
+          token?: string;
+          user?: Partial<User>;
+          message?: string;
+        }) => {
+          runInAction(() => {
+            this.loginLoading = false;
+          });
+
+          logger.log('[UserStore] Register response:', response);
+
+          if (response.success && response.token && response.user && response.user.id && response.user.userName) {
+            // Создаем валидного пользователя
+            const validatedUser: User = {
+              id: response.user.id,
+              userName: response.user.userName,
+              email: response.user.email || '',
+              role: this.validateUserRole(response.user.role),
+              avatarUrl: response.user.avatarUrl || null,
+              avatarShape: response.user.avatarShape || 'circle',
+              slug: response.user.slug || '',
+              createdAt: response.user.createdAt || new Date().toISOString(),
+              updatedAt: response.user.updatedAt || new Date().toISOString(),
+              followers: response.user.followers || [],
+              following: response.user.following || [],
+              settings: response.user.settings || { debugMode: false },
+            };
+
+            // Устанавливаем пользователя
+            this.setUser(validatedUser);
+
+            // Устанавливаем токен в AuthStore с дополнительными данными
+            this.authStore.setAuth(response.token, validatedUser.id, validatedUser.userName);
+
+            // Инициализируем аутентифицированные сокеты
+            try {
+              logger.log('[UserStore] Initializing authenticated sockets after registration...');
+              await this.socketStore.initializeAuthenticatedSockets(response.token);
+              logger.log('[UserStore] Authenticated sockets initialized successfully after registration');
+            } catch (error) {
+              logger.error('[UserStore] Failed to initialize authenticated sockets after registration:', error);
+            }
+
+            resolve({
+              success: true,
+              user: validatedUser
+            });
+          } else {
+            resolve({
+              success: false,
+              message: response.message || 'Registration failed - invalid user data'
+            });
+          }
+        }
+      );
+    });
+  }
+
+
+  async updateUser(updateData: { userName?: string; email?: string; password?: string }): Promise<User> {
+    return new Promise<User>((resolve, reject) => {
+      if (!this.user?.id || !this.socketStore.users) {
+        reject(new Error("User not authenticated or socket not available"));
+        return;
+      }
+
+      this.socketStore.users?.emit(
+        "updateUser",
+        {
+          userId: this.user.id,
+          ...updateData
+        },
         (res: { success: boolean; user?: User; message?: string }) => {
           if (res.success && res.user) {
             // Создаем updatedUser сразу с правильными данными
             const preservedSettings = this.user?.settings;
             const preservedAvatarUrl = this.user?.avatarUrl;
             const preservedAvatarShape = this.user?.avatarShape;
-            
+
             const updatedUser: User = {
               ...res.user!,
               settings: preservedSettings || { debugMode: false },
               avatarUrl: res.user!.avatarUrl !== undefined ? res.user!.avatarUrl : preservedAvatarUrl,
               avatarShape: res.user!.avatarShape !== undefined ? res.user!.avatarShape : preservedAvatarShape
             };
-            
+
             runInAction(() => {
               // Обновляем основного пользователя
               this.setUser(updatedUser);
-              
+
               // Обновляем кэш ПРИНУДИТЕЛЬНО со всеми данными
               this.usersCache.set(updatedUser.id, { ...updatedUser });
               if (updatedUser.slug) {
                 this.usersCache.set(updatedUser.slug, { ...updatedUser });
               }
-              
-              // Синхронизируем AuthStore
-              if (updateData.userName && authStore.token) {
-                authStore.setAuth(authStore.token);
+
+              // Синхронизируем AuthStore с обновленными данными пользователя
+              if (this.authStore.token) {
+                this.authStore.setAuth(this.authStore.token, updatedUser.id, updatedUser.userName);
               }
             });
-            
+
             if (updateData.userName) {
               setTimeout(() => {
                 // Обновить userName в постах всех лент асинхронно
-                Object.values(postStore.feeds).forEach(feed => {
+                Object.values(this.postStore.feeds).forEach(feed => {
                   feed.list.forEach(post => {
                     if (post.userId === updatedUser.id) {
                       runInAction(() => {
@@ -481,7 +756,7 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
                 });
               }, 0);
             }
-            
+
             resolve(updatedUser);
           } else {
             reject(new Error(res.message || "Failed to update user"));
@@ -493,17 +768,17 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
 
   async deleteUser(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (!this.user?.id || !socketStore.users) {
+      if (!this.user?.id || !this.socketStore.users) {
         reject(new Error("User not authenticated or socket not available"));
         return;
       }
 
-      if (!socketStore.users) {
+      if (!this.socketStore.users) {
         throw new Error("Users socket not available");
       }
-      socketStore.users.emit(
-        "deleteUser", 
-        { userId: this.user.id }, 
+      this.socketStore.users.emit(
+        "deleteUser",
+        { userId: this.user.id },
         (res: { success: boolean; message?: string }) => {
           if (res.success) {
             // Очищаем пользователя
@@ -521,22 +796,46 @@ async getUserById(userIdOrSlug: string): Promise<User | null> {
   }
 
 
-private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?: string) {
-  setTimeout(() => {
-    // Обновляем аватары в постах всех лент асинхронно
-    Object.values(postStore.feeds).forEach(feed => {
-      feed.list.forEach(post => {
+  private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?: string) {
+    setTimeout(() => {
+      // Обновляем аватары в постах всех лент асинхронно
+      Object.values(this.postStore.feeds).forEach(feed => {
+        feed.list.forEach(post => {
+          if (post.userId === userId) {
+            runInAction(() => {
+              // Обновляем аватар в самом посте
+              if (avatarUrl !== undefined) {
+                post.avatarUrl = avatarUrl;
+              }
+              if (avatarShape !== undefined) {
+                post.avatarShape = avatarShape;
+              }
+
+              // Обновляем аватар в объекте user если он есть
+              if (post.user && typeof post.user === 'object') {
+                if (avatarUrl !== undefined) {
+                  post.user.avatarUrl = avatarUrl;
+                }
+                if (avatarShape !== undefined) {
+                  post.user.avatarShape = avatarShape as 'circle' | 'square';
+                }
+              }
+            });
+          }
+        });
+      });
+
+      // Также обновляем в сохраненных постах feed
+      this.postStore.feedSavedPosts.forEach(post => {
         if (post.userId === userId) {
           runInAction(() => {
-            // Обновляем аватар в самом посте
             if (avatarUrl !== undefined) {
               post.avatarUrl = avatarUrl;
             }
             if (avatarShape !== undefined) {
               post.avatarShape = avatarShape;
             }
-            
-            // Обновляем аватар в объекте user если он есть
+
             if (post.user && typeof post.user === 'object') {
               if (avatarUrl !== undefined) {
                 post.user.avatarUrl = avatarUrl;
@@ -548,53 +847,29 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
           });
         }
       });
-    });
-    
-    // Также обновляем в сохраненных постах feed
-    postStore.feedSavedPosts.forEach(post => {
-      if (post.userId === userId) {
-        runInAction(() => {
-          if (avatarUrl !== undefined) {
-            post.avatarUrl = avatarUrl;
-          }
-          if (avatarShape !== undefined) {
-            post.avatarShape = avatarShape;
-          }
-          
-          if (post.user && typeof post.user === 'object') {
-            if (avatarUrl !== undefined) {
-              post.user.avatarUrl = avatarUrl;
-            }
-            if (avatarShape !== undefined) {
-              post.user.avatarShape = avatarShape as 'circle' | 'square';
-            }
-          }
-        });
-      }
-    });
-  }, 0);
-}
+    }, 0);
+  }
 
 
-  async updateAvatar(avatarData: { 
-    type: 'upload' | 'initial', 
-    value: string, 
+  async updateAvatar(avatarData: {
+    type: 'upload' | 'initial',
+    value: string,
     file?: File,
-    shape: 'circle' | 'square' 
+    shape: 'circle' | 'square'
   }): Promise<User | null> {
-    if (!this.user?.id || !socketStore.users) {
+    if (!this.user?.id || !this.socketStore.users) {
       throw new Error("User not authenticated or socket not available");
     }
 
     // Для initial или если нужно только обновить форму аватара
     if (avatarData.type === 'initial' || (avatarData.type === 'upload' && !avatarData.file)) {
-      return new Promise<User | null>((resolve, reject) => {      
-        if (!socketStore.users) {
+      return new Promise<User | null>((resolve, reject) => {
+        if (!this.socketStore.users) {
           throw new Error("Users socket not available");
         }
-        socketStore.users.emit(
-          "updateAvatarShape", 
-          { avatarShape: avatarData.shape }, 
+        this.socketStore.users.emit(
+          "updateAvatarShape",
+          { avatarShape: avatarData.shape },
           (res: { success: boolean; user?: User; message?: string }) => {
             if (res.success && res.user) {
               const updatedUser: User = {
@@ -602,18 +877,18 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
                 avatarUrl: avatarData.type === 'initial' ? undefined : this.user!.avatarUrl,
                 avatarShape: res.user ? res.user.avatarShape : this.user!.avatarShape
               };
-              
+
               runInAction(() => {
                 this.setUser(updatedUser);
                 this.usersCache.set(updatedUser.id, updatedUser);
               });
-              
+
               this.updateUserAvatarInPosts(
-                this.user!.id, 
+                this.user!.id,
                 updatedUser.avatarUrl || undefined, // null становится undefined
                 updatedUser.avatarShape
               );
-              
+
               resolve(res.user);
             } else {
               reject(new Error(res.message || "Failed to update avatar shape"));
@@ -622,80 +897,78 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
         );
       });
     }
-    
+
     // Для загрузки нового файла аватара
     if (avatarData.type === 'upload' && avatarData.file) {
       return new Promise<User | null>((resolve, reject) => {
         if (avatarData.file) {
           this.fileToBase64(avatarData.file)
             .then(base64 => {
-          if (!socketStore.users) {
-              throw new Error("Users socket not available");
-            }
-            socketStore.users.emit(
-              "uploadAvatar", 
-              { 
-                file: {
-                  name: avatarData.file!.name,
-                  type: avatarData.file!.type,
-                  base64
-                },
-                avatarShape: avatarData.shape
-              }, 
-              (res: { success: boolean; user?: User; message?: string }) => {
-                if (res.success && res.user) {
-                  const updatedUser: User = {
-                    ...this.user!,
-                    avatarUrl: res.user?.avatarUrl ?? this.user!.avatarUrl,
-                    avatarShape: res.user?.avatarShape ?? this.user!.avatarShape
-                  };
-                  
-                  runInAction(() => {
-                    this.setUser(updatedUser);
-                    this.usersCache.set(updatedUser.id, updatedUser);
-                  });
-                  
-                  this.updateUserAvatarInPosts(
-                    this.user!.id, 
-                    res.user.avatarUrl || undefined, // null становится undefined
-                    res.user.avatarShape
-                  );
-                  
-                  resolve(res.user);
-                } else {
-                  reject(new Error(res.message || "Failed to upload avatar"));
-                }
+              if (!this.socketStore.users) {
+                throw new Error("Users socket not available");
               }
-            );
-          })
-          .catch(error => {
-            reject(new Error(`Failed to process image: ${error.message}`));
-          });
-      }
+              this.socketStore.users.emit(
+                "uploadAvatar",
+                {
+                  file: {
+                    name: avatarData.file!.name,
+                    type: avatarData.file!.type,
+                    base64
+                  },
+                  avatarShape: avatarData.shape
+                },
+                (res: { success: boolean; user?: User; message?: string }) => {
+                  if (res.success && res.user) {
+                    const updatedUser: User = {
+                      ...this.user!,
+                      avatarUrl: res.user?.avatarUrl ?? this.user!.avatarUrl,
+                      avatarShape: res.user?.avatarShape ?? this.user!.avatarShape
+                    };
+
+                    runInAction(() => {
+                      this.setUser(updatedUser);
+                      this.usersCache.set(updatedUser.id, updatedUser);
+                    });
+
+                    this.updateUserAvatarInPosts(
+                      this.user!.id,
+                      res.user.avatarUrl || undefined, // null становится undefined
+                      res.user.avatarShape
+                    );
+
+                    resolve(res.user);
+                  } else {
+                    reject(new Error(res.message || "Failed to upload avatar"));
+                  }
+                }
+              );
+            })
+            .catch(error => {
+              reject(new Error(`Failed to process image: ${error.message}`));
+            });
+        }
       });
-    }
-    
-    return Promise.reject(new Error("Invalid avatar data"));
-  }
-  
-  /**
-     * Проверяет, подписан ли текущий пользователь на указанного пользователя
-     * @param userId ID пользователя для проверки
-     * @returns true, если подписан, иначе false
-     */
-    isFollowedByCurrentUser(userId: string): boolean {
-      return this.followingUserIds.has(userId);
     }
 
-    /**
-     * Обновляет список подписок текущего пользователя
+    return Promise.reject(new Error("Invalid avatar data"));
+  }
+
+  /**
+     * Проверяет, подписан ли текущий пользователь на указанного пользователя
      */
-    updateFollowing(userIds: string[]) {
-      runInAction(() => {
-        this.followingUserIds.replace(userIds);
-      });
-      logger.log(`[UserStore] Updated following list: ${userIds.length} users`);
-    }
+  isFollowedByCurrentUser(userId: string): boolean {
+    return this.followingUserIds.has(userId);
+  }
+
+  /**
+   * Обновляет список подписок текущего пользователя
+   */
+  updateFollowing(userIds: string[]) {
+    runInAction(() => {
+      this.followingUserIds.replace(userIds);
+    });
+    logger.log(`[UserStore] Updated following list: ${userIds.length} users`);
+  }
 
   // Вспомогательный метод для конвертации файла в base64
   private fileToBase64(file: File): Promise<string> {
@@ -710,131 +983,8 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
       reader.onerror = error => reject(error);
     });
   }
-  async promoteToAdmin(userId: string): Promise<User | null> {
-  return new Promise<User | null>((resolve, reject) => {
-    if (!this.user?.id || !socketStore.users) {
-      reject(new Error("User not authenticated or socket not available"));
-      return;
-    }
 
-    if (this.user.role !== 'superadmin') {
-      reject(new Error("Only SuperAdmin can promote users to Admin"));
-      return;
-    }
 
-    socketStore.users.emit(
-      "promoteToAdmin", 
-      { userId }, 
-      (res: { success: boolean; user?: User; message?: string }) => {
-        if (res.success && res.user) {
-          runInAction(() => {
-            // Обновляем кэш пользователя
-            const cachedUser = this.usersCache.get(userId);
-            if (cachedUser) {
-              this.usersCache.set(userId, { ...cachedUser, role: 'admin' });
-            }
-          });
-          resolve(res.user);
-        } else {
-          reject(new Error(res.message || "Failed to promote user"));
-        }
-      }
-    );
-  });
-}
-
-  async demoteFromAdmin(userId: string): Promise<User | null> {
-    return new Promise<User | null>((resolve, reject) => {
-      if (!this.user?.id || !socketStore.users) {
-        reject(new Error("User not authenticated or socket not available"));
-        return;
-      }
-
-      if (this.user.role !== 'superadmin') {
-        reject(new Error("Only SuperAdmin can demote Admins"));
-        return;
-      }
-
-      socketStore.users.emit(
-        "demoteFromAdmin", 
-        { userId }, 
-        (res: { success: boolean; user?: User; message?: string }) => {
-          if (res.success && res.user) {
-            runInAction(() => {
-              // Обновляем кэш пользователя
-              const cachedUser = this.usersCache.get(userId);
-              if (cachedUser) {
-                this.usersCache.set(userId, { ...cachedUser, role: 'user' });
-              }
-            });
-            resolve(res.user);
-          } else {
-            reject(new Error(res.message || "Failed to demote admin"));
-          }
-        }
-      );
-    });
-  }
-  
-  async register(email: string, userName: string, password: string): Promise<{
-    success: boolean;
-    message?: string;
-    user?: User;
-  }> {
-    return new Promise((resolve, reject) => {
-      if (!socketStore.users) {
-        reject(new Error("Users socket not available"));
-        return;
-      }
-
-      runInAction(() => {
-        this.loginLoading = true;
-      });
-
-      socketStore.users.emit('register', 
-        { email, userName, password }, 
-        async (response: {
-          success: boolean;
-          token?: string;
-          user?: User;
-          message?: string;
-        }) => {
-          runInAction(() => {
-            this.loginLoading = false;
-          });
-
-          logger.log('[UserStore] Register response:', response);
-
-          if (response.success && response.token && response.user) {
-            // Устанавливаем пользователя
-            this.setUser(response.user);
-            
-            // Устанавливаем токен в AuthStore
-            authStore.setAuth(response.token);
-            
-            // Инициализируем аутентифицированные сокеты
-            try {
-              logger.log('[UserStore] Initializing authenticated sockets after registration...');
-              await socketStore.initializeAuthenticatedSockets(response.token);
-              logger.log('[UserStore] Authenticated sockets initialized successfully after registration');
-            } catch (error) {
-              logger.error('[UserStore] Failed to initialize authenticated sockets after registration:', error);
-            }
-            
-            resolve({
-              success: true,
-              user: response.user
-            });
-          } else {
-            resolve({
-              success: false,
-              message: response.message || 'Registration failed'
-            });
-          }
-        }
-      );
-    });
-  }
   get isAdmin(): boolean {
     return this.user?.role === 'admin' || this.user?.role === 'superadmin';
   }
@@ -850,7 +1000,44 @@ private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?
   get canExecuteDebugTests(): boolean {
     return this.user?.role === 'admin' || this.user?.role === 'superadmin';
   }
+  async getAllUsers(): Promise<User[]> {
+    return new Promise<User[]>((resolve, reject) => {
+      if (!this.socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      this.socketStore.users.emit("getAllUsers", {}, (res: { success: boolean; users?: User[]; message?: string }) => {
+        if (res.success && res.users) {
+          logger.log(`[UserStore] Found ${res.users.length} users:`, res.users.map(u => `${u.userName} (${u.slug})`));
+          resolve(res.users);
+        } else {
+          reject(new Error(res.message || "Failed to get users"));
+        }
+      });
+    });
+  }
+
+  /**
+   * Ищет пользователей по запросу
+   */
+  async searchUsers(query: string): Promise<User[]> {
+    return new Promise<User[]>((resolve, reject) => {
+      if (!this.socketStore.users) {
+        reject(new Error("Users socket not available"));
+        return;
+      }
+
+      this.socketStore.users.emit("searchUsers", { query }, (res: { success: boolean; users?: User[]; message?: string }) => {
+        if (res.success && res.users) {
+          logger.log(`[UserStore] Search results for "${query}":`, res.users.map(u => `${u.userName} (${u.slug})`));
+          resolve(res.users);
+        } else {
+          reject(new Error(res.message || "Failed to search users"));
+        }
+      });
+    });
+  }
 }
 
-const userStoreInstance = new UserStore();
-export default userStoreInstance;
+export default UserStore;

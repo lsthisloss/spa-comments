@@ -1,4 +1,4 @@
-import { action, makeObservable, observable } from "mobx";
+import { action, AnnotationMapEntry, makeObservable, observable } from "mobx";
 import { logger } from '../../utils/Logger';
 
 /**
@@ -14,6 +14,15 @@ export interface BaseItem {
 }
 
 /**
+ * Ключевые методы и свойства BaseStore, которые нужно исключать в дочерних классах
+ */
+export type BaseStoreKeys = 'sort' | 'loadingMap' | 'totalItemsMap' | 'currentPageMap' | 
+  'loadedMap' | 'itemSizes' | 'applySorting' | 'setSort' | 'setLoaded' | 'setLoading' | 
+  'setTotalItems' | 'setCurrentPage' | 'hasLoaded' | 'isLoading' | 'getCurrentPage' | 
+  'getTotalItems' | 'updateItemSize' | 'getItemSize' | 'isItemLikedByUser' | 
+  'emitLikeEvent' | 'dispose' | 'applySortToAllCollections'; 
+
+/**
  * Абстрактный базовый класс для хранилищ данных
  */
 export abstract class BaseStore<T extends BaseItem> {
@@ -21,26 +30,63 @@ export abstract class BaseStore<T extends BaseItem> {
   sort: 'date' | 'likes' = 'date';
   
   // Карты для хранения служебных данных
-  loadingMap = observable.map<string, boolean>();
-  totalItemsMap = observable.map<string, number>();
-  currentPageMap = observable.map<string, number>();
-  loadedMap = observable.map<string, boolean>();
+  loadingMap = new Map<string, boolean>();
+  totalItemsMap = new Map<string, number>();
+  currentPageMap = new Map<string, number>();
+  loadedMap = new Map<string, boolean>();
   
   // Размеры элементов для виртуализации
   itemSizes: Map<string, number> = new Map();
 
-  constructor() {
-    // Используем makeObservable вместо makeAutoObservable для поддержки наследования
-    makeObservable(this, {
+      constructor() {
+    // Используем правильные типы вместо any
+    const annotations: {
+      // Observable properties
+      sort: AnnotationMapEntry;
+      loadingMap: AnnotationMapEntry;
+      totalItemsMap: AnnotationMapEntry;
+      currentPageMap: AnnotationMapEntry;
+      loadedMap: AnnotationMapEntry;
+      itemSizes: AnnotationMapEntry;
+      
+      // Actions
+      applySorting: AnnotationMapEntry;
+      setSort: AnnotationMapEntry;
+      setLoaded: AnnotationMapEntry;
+      setLoading: AnnotationMapEntry;
+      setTotalItems: AnnotationMapEntry;
+      setCurrentPage: AnnotationMapEntry;
+      hasLoaded: AnnotationMapEntry;
+      isLoading: AnnotationMapEntry;
+      getCurrentPage: AnnotationMapEntry;
+      getTotalItems: AnnotationMapEntry;
+      updateItemSize: AnnotationMapEntry;
+      getItemSize: AnnotationMapEntry;
+    } = {
+      // Observable properties
       sort: observable,
+      loadingMap: observable,
+      totalItemsMap: observable,
+      currentPageMap: observable,
+      loadedMap: observable,
       itemSizes: observable,
+      
+      // Actions
+      applySorting: action,
       setSort: action,
       setLoaded: action,
       setLoading: action,
       setTotalItems: action,
       setCurrentPage: action,
-      updateItemSize: action
-    });
+      hasLoaded: action,
+      isLoading: action,
+      getCurrentPage: action,
+      getTotalItems: action,
+      updateItemSize: action,
+      getItemSize: action,
+    };
+
+    makeObservable(this, annotations);
   }
 
   /**
@@ -158,19 +204,19 @@ export abstract class BaseStore<T extends BaseItem> {
   /**
    * Общий метод отправки событий лайка/анлайка на сервер
    */
-protected emitLikeEvent(socket: { emit: (event: string, payload: unknown, callback?: (response: unknown) => void) => void }, event: string, payload: unknown): void {
-  try {
-    socket.emit(event, payload, (response: unknown) => {
-      if (response && typeof response === 'object' && 'error' in response) {
-        logger.error(`Failed to ${event}:`, (response as { error: unknown }).error);
-      } else {
-        logger.log(`${event} event sent successfully`);
-      }
-    });
-  } catch (error) {
-    logger.error(`Error sending ${event} event:`, error);
+  protected emitLikeEvent(socket: { emit: (event: string, payload: unknown, callback?: (response: unknown) => void) => void }, event: string, payload: unknown): void {
+    try {
+      socket.emit(event, payload, (response: unknown) => {
+        if (response && typeof response === 'object' && 'error' in response) {
+          logger.error(`Failed to ${event}:`, (response as { error: unknown }).error);
+        } else {
+          logger.log(`${event} event sent successfully`);
+        }
+      });
+    } catch (error) {
+      logger.error(`Error sending ${event} event:`, error);
+    }
   }
-}
   
   /**
    * Абстрактные методы, которые должны быть реализованы в наследниках

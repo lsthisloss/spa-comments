@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Modal, Button, Input, Form, message, Popconfirm } from "antd";
 import { observer } from "mobx-react";
-import userStore from "../../../services/stores/UserStore";
 import { User } from "../../../types/interfaces";
+import { useUserStore } from "../../../hooks/useStore";
 
 interface EditProfileModalProps {
   visible: boolean;
@@ -14,7 +14,7 @@ const EditProfileModal = observer(({ visible, onClose, user }: EditProfileModalP
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const uniqueId = `${user.id}-${Date.now()}`; // Ensure unique ID for each render
-
+  const userStore = useUserStore();
   useEffect(() => {
     if (visible) {
       form.setFieldsValue({

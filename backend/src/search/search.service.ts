@@ -9,14 +9,12 @@ export class SearchService {
   private isHealthy = false;
 
   constructor(private readonly es: ElasticsearchService) {
-    // Use retry logic for initial index creation
     void this.ensureIndicesWithRetry();
   }
-
+  // Метод для инициализации индексов с повторными попытками
   private async ensureIndicesWithRetry(maxRetries = 15, delay = 5000) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // First check if Elasticsearch is healthy
         await this.checkHealth();
         if (!this.isHealthy) {
           throw new Error('Elasticsearch is not healthy');
@@ -40,12 +38,11 @@ export class SearchService {
           return;
         }
 
-        // Wait before retrying
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
-
+  // Метод для проверки состояния Elasticsearch
   private async checkHealth(): Promise<boolean> {
     try {
       const health = await this.es.cluster.health({ timeout: '10s' });
@@ -65,7 +62,9 @@ export class SearchService {
       return false;
     }
   }
-
+  // Метод для создания индексов, если они не существуют
+  // Этот метод вызывается внутри ensureIndicesWithRetry
+  // и должен быть устойчив к ошибкам, чтобы не блокировать инициализацию
   private async ensureIndices() {
     const indices = [
       {
@@ -118,17 +117,18 @@ export class SearchService {
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : 'Unknown error';
         this.logger.error(`Error ensuring index ${idx.name}: ${errorMessage}`);
-        throw e; // Re-throw to trigger retry
+        throw e; // Тут выбрасываем ошибку, чтобы retry мог повторить попытку
       }
     }
   }
-
+  // Метод для поиска по всем индексам
+  // Возвращает пользователей, посты и комментарии, соответствующие запросу
+  // Если индексы не готовы или Elasticsearch не здоров, возвращает пустые массивы
   async searchAll(query: string) {
     if (!query || query.length < 1) {
       return { users: [], posts: [], comments: [] };
     }
 
-    // If indices aren't ensured yet or ES is not healthy, return empty results
     if (!this.indicesEnsured || !this.isHealthy) {
       this.logger.warn('Elasticsearch not ready, returning empty results');
       return { users: [], posts: [], comments: [] };
@@ -182,7 +182,8 @@ export class SearchService {
       return { users: [], posts: [], comments: [] };
     }
   }
-
+  // Метод для поиска в конкретном индексе
+  // Используется внутри searchAll для поиска по всем индексам
   private async searchIndex(index: string, should: any[]) {
     try {
       return await this.es.search({
@@ -192,7 +193,7 @@ export class SearchService {
       });
     } catch (error) {
       this.logger.warn(`Search failed for index ${index}:`, error);
-      return { hits: { hits: [] } }; // Return empty result structure
+      return { hits: { hits: [] } };
     }
   }
 

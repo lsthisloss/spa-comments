@@ -5,4 +5,5 @@ export class UserBasicDto {
   avatarShape?: string;
   slug?: string;
   email?: string;
+  role?: string;
 }

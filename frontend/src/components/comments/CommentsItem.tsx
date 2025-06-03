@@ -1,11 +1,10 @@
 import FeedItem from '../common/FeedItem';
 import { Comment } from '../../types/interfaces';
-import userStore from '../../services/stores/UserStore';
-import { commentStore } from '../../services/stores/CommentStore';
 import { logger } from "../../utils/Logger";
 import { useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useNavigationHelper } from '../../hooks/useNavigationHelper';
+import { useUserStore, useCommentStore } from '../../hooks/useStore';
 
 interface CommentItemProps {
   item: Comment; 
@@ -19,6 +18,8 @@ interface CommentItemProps {
 const CommentItem = observer((props: CommentItemProps) => {
   const { item, disableShowMore, onNavigate, onShowMore, hideCommentButton = false } = props;
   const { navigateToEntity } = useNavigationHelper();
+  const userStore = useUserStore();
+  const commentStore = useCommentStore();
 
   // Handle like click
   const handleLikeClick = useCallback(() => {
@@ -29,7 +30,7 @@ const CommentItem = observer((props: CommentItemProps) => {
     
     logger.log(`Comment ${item.id} like clicked by user ${userStore.user.id}`);
     commentStore.toggleLike(item.id, userStore.user.id);
-  }, [item.id]);
+  }, [item.id, userStore.user, commentStore]);
   
   // Handle navigation
   const handleNavigate = useCallback((slug: string) => {

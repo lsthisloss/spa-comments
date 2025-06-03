@@ -1,9 +1,8 @@
 import { observer } from 'mobx-react-lite';
 import { Card, Switch, Divider, Typography, Space, Tooltip } from 'antd';
 import { BugOutlined, EyeOutlined, AlertOutlined } from '@ant-design/icons';
-import userStore from '../../services/stores/UserStore';
 import AdminPanel from '../admin/AdminPanel';
-
+import { useUserStore } from '../../hooks/useStore';
 const { Title, Text } = Typography;
 
 interface UserSettingsProps {
@@ -11,6 +10,8 @@ interface UserSettingsProps {
 }
 
 const UserSettings = observer(({ onDebugModeChange }: UserSettingsProps) => {
+
+  const userStore = useUserStore();
   const user = userStore.user;
   
   if (!user) return null;

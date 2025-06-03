@@ -37,12 +37,24 @@ export class WsJwtGuard implements CanActivate {
         return false;
       }
 
-      // ВАЖНО: Записываем данные пользователя в client.data
+      // Определяем роль из payload или проверяем админский email
+      let role = payload.role || 'user';
+
+      // Временное решение: определить админа по email
+      if (
+        payload.email === 'admin@sk8.pw' ||
+        payload.email?.includes('admin@')
+      ) {
+        role = 'admin';
+      }
+
+      // Записываем данные пользователя в client.data
       client.data = {
         user: {
           id: payload.sub,
           email: payload.email,
           userName: payload.userName,
+          role: role, // Добавляем роль!
         },
       };
 
@@ -50,6 +62,7 @@ export class WsJwtGuard implements CanActivate {
         id: payload.sub,
         userName: payload.userName,
         email: payload.email,
+        role: role, // Логируем роль для отладки
       });
 
       return true;

@@ -1,0 +1,75 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.errorBox {
+  text-align: center;
+  max-width: 400px;
+}
+
+.errorTitle {
+  font-size: 18px;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.appErrorTitle {
+  font-size: 16px;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.errorText {
+  font-size: 14px;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.primaryButton {
+  padding: 10px 20px;
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: #096dd9;
+  }
+
+  &:active {
+    background-color: #0958d9;
+  }
+}
+
+.secondaryButton {
+  padding: 8px 16px;
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: #096dd9;
+  }
+
+  &:active {
+    background-color: #0958d9;
+  }
+}
+
+.loadingContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

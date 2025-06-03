@@ -4,10 +4,9 @@ import { observer } from "mobx-react-lite";
 import SendFormFooter from "./SendFormFooter";
 import CaptchaModal from "../ui/modals/CaptchaModal";
 import { getAvatarColor } from "../ui/particles/avatarColor";
-import { sendFormStore } from "../../services/stores/SendFormStore";
-import userStore from '../../services/stores/UserStore';
 import { SendFormProps } from "../../types/interfaces";
 import { reaction } from "mobx";
+import { useSendFormStore, useUserStore } from '../../hooks/useStore';
 
 const SendForm = observer(({ 
   type, 
@@ -20,9 +19,11 @@ const SendForm = observer(({
 }: SendFormProps) => {
   const maxLength = 600;
   const dragCounterRef = useRef(0);
+  const sendFormStore = useSendFormStore();
+  const userStore = useUserStore();
   const isFormDisabled = sendFormStore.loading;
 
-useEffect(() => {
+  useEffect(() => {
     const disposer = reaction(
       // Что отслеживаем
       () => ({
@@ -61,9 +62,8 @@ useEffect(() => {
 
     // Очистка при размонтировании
     return () => disposer();
-  }, []); 
+  }, [sendFormStore, userStore ]); 
 
-  
   // Unified drag-and-drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -72,7 +72,7 @@ useEffect(() => {
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       sendFormStore.setDragActive(true);
     }
-  }, []);
+  }, [sendFormStore]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -81,7 +81,7 @@ useEffect(() => {
     if (dragCounterRef.current === 0) {
       sendFormStore.setDragActive(false);
     }
-  }, []);
+  }, [ sendFormStore ]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -99,7 +99,7 @@ useEffect(() => {
 
     const file = files[0];
     sendFormStore.handleDragDrop(file);
-  }, []);
+  }, [sendFormStore]);
 
   // Clean handler for submitting form
   const handleSubmit = useCallback(() => {
@@ -111,7 +111,21 @@ useEffect(() => {
       parentSlug,
       postSlug
     );
-  }, [type, parentId, postId, onSuccess, parentSlug, postSlug]);
+  }, [sendFormStore, type, parentId, postId, onSuccess, parentSlug, postSlug]);
+
+
+  // Обработчик клика на кнопку отправки
+  const handlePostClick = useCallback(() => {
+  // Отправляем форму напрямую, логика проверки роли теперь в сторе
+  sendFormStore.send(
+    type, 
+    parentId, 
+    postId, 
+    onSuccess,
+    parentSlug,
+    postSlug
+  );
+}, [type, parentId, postId, onSuccess, parentSlug, postSlug, sendFormStore]);
 
   return (
     <>
@@ -149,7 +163,6 @@ useEffect(() => {
             </Avatar>
           )}
           
-          {/* Text input */}
           <div style={{ flex: 1 }}>
             <Input.TextArea
               id="item-input"
@@ -171,12 +184,10 @@ useEffect(() => {
           </div>
         </div>
         
-        
-        {/* Form footer with actions */}
         <SendFormFooter
           text={sendFormStore.text}
           maxLength={600}
-          onPostClick={() => sendFormStore.setCaptchaVisible(true)}
+          onPostClick={handlePostClick}
           onInsertTag={(tag) => {
             const tagTemplate = `<${tag}></${tag}>`;
             const prev = sendFormStore.text;
@@ -190,7 +201,7 @@ useEffect(() => {
           loading={sendFormStore.loading}
         />
         
-        {/* Attachments indicator */}
+        {/* Отображение вложений */}
         {(sendFormStore.imagePreview || sendFormStore.selectedFile) && (
           <div style={{
             marginBottom: '8px',
@@ -208,7 +219,7 @@ useEffect(() => {
           </div>
         )}
         
-        {/* Image preview */}
+        {/* Превью изображения */}
         {sendFormStore.imagePreview && (
           <div className="image-preview" style={{ marginTop: "0", textAlign: "start", marginBottom: "8px" }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -242,7 +253,7 @@ useEffect(() => {
           </div>
         )}
 
-        {/* File preview */}
+        {/* Превью файла */}
         {sendFormStore.selectedFile && (
           <div className="file-preview" style={{ marginBottom: 12, color: "#888", padding: "8px", background: "#f5f5f5", borderRadius: "4px", border: "1px solid #d9d9d9" }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -272,7 +283,7 @@ useEffect(() => {
         )}
       </Form>
       
-      {/* Status messages */}
+      {/* Тосты с сообщениями */}
       {sendFormStore.errorMessage && (
         <div className="error-toast show">{sendFormStore.errorMessage}</div>
       )}
@@ -280,18 +291,13 @@ useEffect(() => {
         <div className="success-toast show">{sendFormStore.successMessage}</div>
       )}
       
-      {/* Captcha modal */}
+      {/* Модальное окно капчи */}
       <CaptchaModal
         visible={sendFormStore.captchaVisible}
         onClose={() => sendFormStore.setCaptchaVisible(false)}
         onSubmit={handleSubmit}
-        text={sendFormStore.text}
-        userInfo={{
-          id: sendFormStore.userId,
-          userName: sendFormStore.userName,
-          email: "",
-          token: "",
-        }}
+        userRole={userStore.user?.role || "user"}
+        socketType={type === "post" ? "posts" : "comments"}
       />
     </>
   );

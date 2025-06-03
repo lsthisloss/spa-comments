@@ -1,25 +1,29 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { postStore } from '../services/stores/PostStore';
-import { commentStore } from '../services/stores/CommentStore';
+import { usePostStore, useCommentStore, useUserStore } from '../hooks/useStore';
 import { Empty, Button, Spin } from 'antd';
 import PostItem from '../components/posts/PostItem';
 import CommentsThread from '../components/comments/CommentsThread';
 import SendForm from '../components/common/SendForm';
-import userStore from '../services/stores/UserStore';
 import { Post } from '../types/interfaces';
 import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
 import { logger } from "../utils/Logger";
-import { navigationStore } from '../services/stores/NavigationStore';
+import { useNavigationHelper } from "../hooks/useNavigationHelper";
 
 const PostPage = observer(() => {
+  // Используем хуки для получения сторов
+  const postStore = usePostStore();
+  const commentStore = useCommentStore();
+  const userStore = useUserStore();
+  const navigationHelper = useNavigationHelper();
+
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   
   // Refs for tracking state
-  const mountedRef = useRef(false); // Начинаем с false
+  const mountedRef = useRef(false);
   const commentsLoadedRef = useRef(false);
   const navigationRef = useRef(false);
   const postFetchedRef = useRef<string | null>(null);
@@ -31,7 +35,7 @@ const PostPage = observer(() => {
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Инициализация компонента - ПРАВИЛЬНАЯ установка mountedRef
+  // Инициализация компонента - становка mountedRef
   useEffect(() => {
     mountedRef.current = true; // Устанавливаем в true при монтировании
     logger.log(`[PostPage] Component mounted for slug: ${slug}`);
@@ -76,7 +80,7 @@ const PostPage = observer(() => {
     }
     
     return Promise.resolve();
-  }, [commentsSort]);
+  }, [commentsSort, commentStore]);
   
   // Load post and comments - исправляем логику
   useEffect(() => {
@@ -141,7 +145,7 @@ const PostPage = observer(() => {
           setLoading(false);
         }
       });
-  }, [slug, location.state, loadComments]);
+  }, [slug, location.state, loadComments, postStore]);
 
   // Handle comment sort change
   const handleSortChange = useCallback((sort: 'date' | 'likes') => {
@@ -163,7 +167,7 @@ const PostPage = observer(() => {
           }
         });
     }
-  }, [post]);
+  }, [post, commentStore]);
 
   // Load more comments
   const handleLoadMoreComments = useCallback(() => {
@@ -181,7 +185,7 @@ const PostPage = observer(() => {
           setCommentsLoading(false);
         }
       });
-  }, [post, commentsLoading]);
+  }, [post, commentsLoading, commentStore]);
 
   // Handle successful comment creation
   const handleCommentSuccess = useCallback(() => {
@@ -194,26 +198,12 @@ const PostPage = observer(() => {
     // Update post comment count in all feeds
     const newCount = (post.commentCount || 0) + 1;
     postStore.updatePostCommentCountBySlug(post.slug, newCount);
-  }, [post, loadComments]);
+  }, [post, loadComments, postStore]);
 
   // Handle back navigation
-  const handleBackClick = useCallback(() => {
-    if (!slug) return;
-    
-    logger.log(`[PostPage] Back navigation from post ${slug}`);
-    
-    const currentState = navigationStore.currentState;
-    
-    if (currentState && (currentState.fromFeed || currentState.fromFollowing || currentState.fromUserProfile)) {
-      // Save current scroll position of post
-      navigationStore.currentState.scrollPosition = window.scrollY;
-      
-      navigationStore.handleBackNavigation(navigate);
-    } else {
-      navigate(-1);
-    }
-  }, [slug, navigate]);
-  
+  const handleGoBack = useCallback(() => {
+  navigationHelper.goBack();
+}, [navigationHelper]);
   // Retry loading post
   const handleRetry = useCallback(() => {
     if (!slug || !mountedRef.current) return;
@@ -247,7 +237,7 @@ const PostPage = observer(() => {
           setLoading(false);
         }
       });
-  }, [slug, loadComments]);
+  }, [slug, loadComments, postStore]);
 
   // Не рендерим пока компонент не смонтирован
   if (!mountedRef.current) {
@@ -265,7 +255,7 @@ const PostPage = observer(() => {
         <Button
           type="text"
           icon={<LeftOutlined />}
-          onClick={handleBackClick}
+          onClick={handleGoBack}
           style={{ marginRight: 8 }}
         />
         <span className="post-span">Post</span>

@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppGateway } from './app.gateway';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
@@ -39,6 +40,7 @@ import { CommonModule } from './common/common.module';
     AuthModule,
     SearchModule,
     CommonModule,
+    MonitoringModule,
   ],
   providers: [AppGateway],
 })

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
+import { message } from 'antd';
 import { VirtualListItem } from '../../common/VirtualList';
-import userStore from '../../../services/stores/UserStore';
 import { generateTestData } from "../../../utils/test-data-generator";
+import { useUserStore, } from '../../../hooks/useStore';
 
 interface DebugInfoProps {
   itemsCount: number;
@@ -41,11 +42,61 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   const [testGenExpanded, setTestGenExpanded] = useState(false);
   const [usersCount, setUsersCount] = useState(5);
   const [postsPerUser, setPostsPerUser] = useState(20);
+  const userStore = useUserStore();
   const canExecuteTests = userStore.canExecuteDebugTests;
-
+  // Валидация и генерация тестовых данных
   const handleGenerateTestData = () => {
+    // Проверяем лимиты
+    if (usersCount < 1 || usersCount > 100) {
+      message.error('Количество пользователей должно быть от 1 до 100');
+      return;
+    }
+
+    if (postsPerUser < 1 || postsPerUser > 1000) {
+      message.error('Количество постов на пользователя должно быть от 1 до 1000');
+      return;
+    }
+
+    const totalMessages = usersCount * postsPerUser;
+    
+    // Предупреждение о большом количестве сообщений
+    if (totalMessages > 100000) {
+      message.warning({
+        content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100,000 и не имеет смысла для тестирования. Рекомендуется использовать меньшие значения.`,
+        duration: 8,
+      });
+      return;
+    }
+
+    // Предупреждение о среднем количестве
+    if (totalMessages > 10000) {
+      message.warning({
+        content: `Будет создано ${totalMessages.toLocaleString()} сообщений. Это может занять некоторое время.`,
+        duration: 4,
+      });
+    }
+
+    // Показываем информационное сообщение о начале генерации
+    message.info({
+      content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений)...`,
+      duration: 3,
+    });
+
     generateTestData(usersCount, postsPerUser);
   };
+
+  // Обработчики изменения значений с валидацией
+  const handleUsersCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || 0;
+    setUsersCount(Math.max(1, Math.min(100, value)));
+  };
+
+  const handlePostsPerUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || 0;
+    setPostsPerUser(Math.max(1, Math.min(1000, value)));
+  };
+
+  // ... весь остальной код остается точно таким же до строки с testGenExpanded ...
 
   // Состояние для раскрытия формы
   const [isExpanded, setIsExpanded] = useState(() => {
@@ -338,7 +389,6 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
 
       {isExpanded && (
         <div className="debug-info__content">  
-          {/* content remains the same */}
           <div className="debug-info__info-row">
             <span className="debug-info__label">Items:</span>
             <span className="debug-info__value">{itemsCount}</span>
@@ -401,6 +451,8 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
             <span className="debug-info__label">Height:</span>
             <span className="debug-info__value">{totalHeight}px</span>
           </div>
+          
+          {/* Обновленная секция генерации тестовых данных */}
           <div className="debug-info__test-data">
             <button
               className="debug-info__button"
@@ -413,29 +465,70 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
               <div style={{ marginTop: 8 }}>
                 {canExecuteTests ? (
                   <>
-                    <div>
-                      <label htmlFor="usersCount">Users:</label>
+                    <div style={{ marginBottom: 8 }}>
+                      <label htmlFor="usersCount" style={{ display: 'block', fontSize: '12px', marginBottom: 2 }}>
+                        Users (1-100):
+                      </label>
                       <input
                         id="usersCount"
                         type="number"
                         value={usersCount}
-                        onChange={(e) => setUsersCount(Number(e.target.value))}
+                        onChange={handleUsersCountChange}
                         min={1}
                         max={100}
+                        style={{ 
+                          width: '100%', 
+                          padding: '2px 4px',
+                          border: usersCount < 1 || usersCount > 100 ? '1px solid #ff4d4f' : '1px solid #d9d9d9',
+                          borderRadius: '4px'
+                        }}
                       />
+                      {(usersCount < 1 || usersCount > 100) && (
+                        <div style={{ fontSize: '10px', color: '#ff4d4f', marginTop: 2 }}>
+                          Должно быть от 1 до 100
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label htmlFor="postsPerUser">Posts per User:</label>
+                    <div style={{ marginBottom: 8 }}>
+                      <label htmlFor="postsPerUser" style={{ display: 'block', fontSize: '12px', marginBottom: 2 }}>
+                        Posts per User (1-1000):
+                      </label>
                       <input
                         id="postsPerUser"
                         type="number"
                         value={postsPerUser}
-                        onChange={(e) => setPostsPerUser(Number(e.target.value))}
+                        onChange={handlePostsPerUserChange}
                         min={1}
-                        max={50}
+                        max={1000}
+                        style={{ 
+                          width: '100%', 
+                          padding: '2px 4px',
+                          border: postsPerUser < 1 || postsPerUser > 1000 ? '1px solid #ff4d4f' : '1px solid #d9d9d9',
+                          borderRadius: '4px'
+                        }}
                       />
+                      {(postsPerUser < 1 || postsPerUser > 1000) && (
+                        <div style={{ fontSize: '10px', color: '#ff4d4f', marginTop: 2 }}>
+                          Должно быть от 1 до 1000
+                        </div>
+                      )}
                     </div>
-                    <button onClick={handleGenerateTestData} style={{ marginTop: 8 }}>
+                    <div style={{ marginBottom: 8, fontSize: '11px', color: '#666' }}>
+                      Всего сообщений: {(usersCount * postsPerUser).toLocaleString()}
+                    </div>
+                    <button 
+                      onClick={handleGenerateTestData} 
+                      style={{ 
+                        marginTop: 4,
+                        padding: '4px 8px',
+                        backgroundColor: usersCount >= 1 && usersCount <= 100 && postsPerUser >= 1 && postsPerUser <= 1000 ? '#1890ff' : '#d9d9d9',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: usersCount >= 1 && usersCount <= 100 && postsPerUser >= 1 && postsPerUser <= 1000 ? 'pointer' : 'not-allowed'
+                      }}
+                      disabled={usersCount < 1 || usersCount > 100 || postsPerUser < 1 || postsPerUser > 1000}
+                    >
                       Generate
                     </button>
                   </>
@@ -452,7 +545,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
                 )}
               </div>
             )}
-</div>
+          </div>
         </div>
       )}
     </div>

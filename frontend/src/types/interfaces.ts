@@ -1,20 +1,22 @@
+// Интерфейс  и типы пользователя
+export type UserRole = 'user' | 'admin' | 'superadmin';
 export interface User {
   id: string;
   userName: string;
   email: string;
-  token?: string;
+  role: UserRole;
   following?: User[];
   followers?: User[];
   avatarUrl?: string | null;
   avatarShape?: 'circle' | 'square';
-  role?: 'user' | 'admin' | 'superadmin'; 
   settings?: {
     debugMode?: boolean;
     notifications?: boolean;
-  }
+  };
   slug?: string;
-  createdAt?: string; 
+  createdAt?: string;
   updatedAt?: string;
+  token?: string;
 }
 
 // Базовый интерфейс только с общими свойствами

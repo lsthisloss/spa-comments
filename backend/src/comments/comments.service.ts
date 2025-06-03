@@ -60,6 +60,7 @@ export class CommentsService {
           'user.avatarShape',
           'user.slug',
           'user.email',
+          'user.role',
         ]);
 
       if (isPostId) {
@@ -102,6 +103,7 @@ export class CommentsService {
             avatarShape: comment.user?.avatarShape,
             slug: comment.user?.slug,
             email: comment.user?.email,
+            role: comment.user?.role,
           };
 
           return response;
@@ -207,7 +209,15 @@ export class CommentsService {
 
     const user = await this.userRepository.findOne({
       where: { id: createCommentDto.userId },
-      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
+      select: [
+        'id',
+        'userName',
+        'avatarUrl',
+        'avatarShape',
+        'slug',
+        'email',
+        'role',
+      ],
     });
 
     // --- Индексация в Elasticsearch ---
@@ -226,6 +236,7 @@ export class CommentsService {
               avatarShape: user.avatarShape,
               slug: user.slug,
               email: user.email,
+              role: user.role,
             }
           : null,
       },

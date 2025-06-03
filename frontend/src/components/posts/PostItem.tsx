@@ -2,11 +2,9 @@ import { observer } from "mobx-react-lite";
 import { useRef, useCallback, memo } from "react";
 import FeedItem from '../common/FeedItem';
 import { Post } from '../../types/interfaces';
-import userStore from '../../services/stores/UserStore';
-import { postStore } from '../../services/stores/PostStore';
-import { navigationStore } from '../../services/stores/NavigationStore';
 import { useNavigate } from 'react-router-dom';
 import { logger } from "../../utils/Logger";
+import { usePostStore, useUserStore, useNavigationStore } from '../../hooks/useStore';
 
 interface PostItemProps {
   post: Post;
@@ -21,6 +19,9 @@ const PostItem = memo(observer(function PostItem({
   onShowMore,
   hideCommentButton,
 }: PostItemProps) {
+  const postStore = usePostStore();
+  const userStore = useUserStore();
+  const navigationStore = useNavigationStore();
   
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const PostItem = memo(observer(function PostItem({
     if (userStore.user?.id && postStore) {
       postStore.toggleLike(post.id, userStore.user.id);
     }
-  }, [post.id]);
+  }, [post.id, userStore.user, postStore]);
 
   const handleNavigate = useCallback((slug: string) => {
     logger.log(`PostItem: handling navigation for post ${slug}`);
@@ -43,7 +44,7 @@ const PostItem = memo(observer(function PostItem({
     logger.log(`PostItem: direct navigation to post ${slug}`);
     const navigationState = navigationStore.saveNavigationState("post", post.slug);
     navigate(`/post/${slug}`, { state: navigationState });
-  }, [onClick, navigate, post.slug]);
+  }, [onClick, navigate, post.slug, navigationStore]);
 
   return (
     <div ref={containerRef} className="post-item">

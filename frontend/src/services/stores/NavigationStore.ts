@@ -1,359 +1,381 @@
 import { action, makeAutoObservable, toJS } from "mobx";
 import { logger } from "../../utils/Logger";
-import { postStore } from "./PostStore";
 import { NavigateFunction } from "react-router-dom";
 
-export interface NavigationState {
-  scrollPosition: number;
-  fromFeed?: boolean;
-  fromFollowing?: boolean;
-  fromUserProfile?: boolean;
+/**
+ * Типы значений, которые могут храниться в контексте навигации
+ */
+export type NavigationContextValue = 
+  | string 
+  | number 
+  | boolean 
+  | null 
+  | undefined
+  | { [key: string]: NavigationContextValue }
+  | NavigationContextValue[];
+
+/**
+ * Тип для контекста навигации
+ */
+export interface NavigationContext {
+  pageType?: 'feed' | 'post' | 'comment' | 'profile';
+  feedType?: 'main' | 'following' | 'user';
+  entityId?: string;
   userId?: string;
-  fromPost?: boolean;
-  postId?: string;
+  postId?: string;       // ID связанного поста
+  postSlug?: string;     // Слаг связанного поста
+  commentId?: string;    // ID связанного комментария
+  isPostParent?: boolean; // Флаг, указывающий что это родительский пост
+  scrollPosition?: number;
   timestamp?: number;
-  navigationType?: string;
-  slug?: string;
-  preserveFeeds?: boolean;
-  commentId?: string;
-  fromComment?: boolean;
+  [key: string]: NavigationContextValue | undefined;
 }
 
+/**
+ * Представляет точку в истории навигации
+ */
+export interface NavigationPoint {
+  path: string;               // Полный путь
+  timestamp: number;          // Время создания
+  scrollPosition: number;     // Позиция скролла
+  context?: NavigationContext; // Типизированный контекст
+}
 
+/**
+ * Современное хранилище навигации без жесткой привязки к типам страниц
+ */
 class NavigationStore {
-  currentState: NavigationState = { scrollPosition: 0, timestamp: Date.now() };
+  // История навигации как стек
+  private navigationStack: NavigationPoint[] = [];
   
-  // Позиции скролла
+ // Карта позиций скролла по путям
+  private scrollPositions = new Map<string, number>();
+  
+  // Добавляем карту для позиций скролла вкладок
+  private tabScrollPositions = new Map<string, number>();
+  
+  // Публичные свойства для прямого доступа (для обратной совместимости)
   feedScrollPosition: number = 0;
   followingScrollPosition: number = 0;
   
-  // Отслеживание активной вкладки
-  currentActiveTab: 'all' | 'my' = 'all';
-  
+  // Публичные свойства для внутренних компонентов
+  activeTab: 'all' | 'my' = 'all';
+
   constructor() {
     makeAutoObservable(this);
-    logger.log("[NAV] Initialized");
+    logger.log("[NAV] Initialized universal navigation system");
   }
 
-
   /**
-   * Сохраняет состояние перед навигацией
+   * Получает предыдущую точку навигации
    */
-/**
- * Сохраняет состояние перед навигацией
- */
-saveNavigationState(navigationType?: string, targetId?: string, previousState?: NavigationState): NavigationState {
-  const scrollPosition = window.scrollY;
-  const currentPath = window.location.pathname;
-  const searchParams = new URLSearchParams(window.location.search);
-  const tab = searchParams.get('tab');
-  
-  const state: NavigationState = {
-    scrollPosition,
-    timestamp: Date.now(),
-    // Сохраняем предыдущее состояние если есть
-    ...(previousState || {})
+  getPreviousPoint = (): NavigationPoint | undefined => {
+    if (this.navigationStack.length <= 1) return undefined;
+    return this.navigationStack[this.navigationStack.length - 2];
   };
-  
-  // Определяем откуда переходим
-  if (currentPath === '/' || currentPath === '') {
-    if (tab === 'following') {
-      state.fromFollowing = true;
-      this.followingScrollPosition = scrollPosition;
-    } else {
-      state.fromFeed = true;
-      this.feedScrollPosition = scrollPosition;
-    }
-  } else if (currentPath.includes('/profile/')) {
-    state.fromUserProfile = true;
-    state.userId = currentPath.split('/').pop();
-  } else if (currentPath.includes('/post/')) {
-    state.fromPost = true;
-    // Берем slug из URL
-    const urlSlug = currentPath.split('/').pop();
-    state.postId = urlSlug;
-    // Также сохраняем slug отдельно
-    state.slug = urlSlug;
-  } else if (currentPath.includes('/comment/')) {
-    // поддержка для комментариев
-    state.fromComment = true; //
-    const urlSlug = currentPath.split('/').pop();
-    state.commentId = urlSlug;
-  }
-  
-  // Сохраняем переданный targetId и тип навигации
-  if (navigationType === 'post') {
-    state.postId = targetId;
-    state.slug = targetId;
-  } else if (navigationType === 'comment') {
-    state.commentId = targetId;
-    state.slug = targetId;
-  } else if (targetId) {
-    state.slug = targetId;
-  }
-  
-  // Сохраняем тип навигации
-  if (navigationType) {
-    state.navigationType = navigationType;
-  }
-  
-  this.currentState = state;
-  logger.log(`[NAV] Saved state for ${navigationType || 'navigation'} to ${targetId}:`, toJS(state));
-  
-  return toJS(state);
-}
-
   /**
-   * Получить сериализованное состояние для передачи в navigate
-   */
-  getSerializedState(): NavigationState {
-    return toJS(this.currentState);
-  }
-
-  saveTabScrollPosition = action((tab: 'all' | 'my', scrollPosition?: number) => {
-    const position = scrollPosition ?? window.scrollY;
-    
-    if (tab === 'all') {
-      this.feedScrollPosition = position;
-      logger.log(`[NAV] Saved feed scroll position: ${position}`);
-    } else {
-      this.followingScrollPosition = position;
-      logger.log(`[NAV] Saved following scroll position: ${position}`);
-    }
-  });
-
-  /**
-   * Обновление активной вкладки
+   * Устанавливает активную вкладку
    */
   setActiveTab = action((tab: 'all' | 'my') => {
-    if (this.currentActiveTab !== tab) {
-      logger.log(`[NAV] Active tab changed from ${this.currentActiveTab} to ${tab}`);
-      this.currentActiveTab = tab;
-    }
+    logger.log(`[NAV] Setting active tab: ${tab}`);
+    this.activeTab = tab;
   });
 
   /**
-   * Очистка позиций скролла вкладок
+   * Сохраняет позицию скролла для вкладки
    */
-  clearTabScrollPositions = action(() => {
-    logger.log("[NAV] Clearing all tab scroll positions");
-    this.feedScrollPosition = 0;
-    this.followingScrollPosition = 0;
-  });
-
-  // Обновляем существующий метод navigateToFreshHome
-  navigateToFreshHome(navigate: NavigateFunction) {
-    logger.log("[NAV] Navigating to fresh home - clearing all saved state");
-    
-    // Очищаем все сохраненные данные ленты
-    postStore.feedSavedPosts.clear();
-    postStore.feedScrollPosition = 0;
-    
-    // Очищаем состояние навигации И позиции вкладок
-    this.feedScrollPosition = 0;
-    this.followingScrollPosition = 0;
-    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
-    
-    // Переходим на главную
-    navigate('/', { replace: true });
-    
-    // Загружаем свежую ленту
-    setTimeout(() => {
-      logger.log("[NAV] Loading fresh feed");
-      postStore.fetchPosts('feed', 1);
-    }, 100);
-  }
-
-  // Обновляем handleBackNavigation для поддержки вкладок
-  handleBackNavigation(navigate: NavigateFunction) {
-    const state = this.currentState;
-    
-    logger.log("[NAV] Handling back navigation with state:", toJS(state));
-
-      // Если пришли с комментария и есть postId, переходим на пост
-    if (state.fromComment && state.postId) {
-      logger.log(`[NAV] Returning from comment to post ${state.postId}`);
-      
-      // Создаем новое состояние для страницы поста, сохраняя исходный контекст
-      const postState = {
-        ...state,
-        fromComment: false, // Обнуляем флаг, что пришли с комментария
-        commentId: undefined // Очищаем ID комментария
-      };
-      
-      navigate(`/post/${state.postId}`, { 
-        replace: true,
-        state: postState // Передаем обновленное состояние
-      });
-      return;
-    }
-    // Если пришли с главной ленты
-    if (state.fromFeed) {
-      logger.log("[NAV] Returning to main feed");
-      navigate('/', { replace: true });
-      
-      if (state.preserveFeeds) {
-        logger.log("[NAV] Preserving feed state - not loading fresh data");
-        setTimeout(() => {
-          this.restoreTabScrollPosition('all');
-        }, 100);
-      } else {
-        // Проверяем, есть ли сохраненные посты (значит пришли с ленты)
-        const hasSavedPosts = postStore.feedSavedPosts.length > 0;
-        
-        if (hasSavedPosts) {
-          // Есть сохраненные посты - восстанавливаем позицию скролла
-          logger.log("[NAV] Restoring saved feed state and scroll position");
-          setTimeout(() => {
-            this.restoreTabScrollPosition('all');
-          }, 100);
-        } else {
-          // Нет сохраненных постов - значит пришли по прямому URL, загружаем свежую ленту
-          logger.log("[NAV] No saved posts found, loading fresh feed");
-          setTimeout(() => {
-            postStore.fetchPosts('feed', 1);
-          }, 100);
-        }
-      }
-      return;
-    }
-    
-    // Если пришли с ленты подписок
-    if (state.fromFollowing) {
-      logger.log("[NAV] Returning to following feed");
-      navigate('/?tab=following', { replace: true });
-      
-      if (!state.preserveFeeds) {
-        setTimeout(() => {
-          this.restoreTabScrollPosition('my');
-        }, 100);
-      }
-      return;
-    }
-    
-    
-    if (state.fromUserProfile) {
-      logger.log("[NAV] Returning from profile to main feed - loading fresh");
-      this.navigateToFreshHome(navigate);
-      return;
-    }
-    
-    if (state.fromPost && state.postId) {
-      logger.log(`[NAV] Returning to post ${state.slug}`);
-      navigate(`/post/${state.slug}`, { replace: true });
-      return;
-    }
-    
-    // По умолчанию - назад
-    navigate(-1);
-  }
-
-  saveStateFromLocation(locationState: Partial<NavigationState>) {
-    if (locationState && typeof locationState === 'object') {
-      this.currentState = {
-        ...this.currentState,
-        ...locationState,
-        timestamp: Date.now()
-      };
-      logger.log("[NAV] State saved from location:", toJS(this.currentState));
-    }
-  }
-
-  clearCurrentState() {
-    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
-  }
-
-  /**
-   * Получает состояние для прямого URL (если пользователь перешел по прямой ссылке)
-   */
-  getStateForDirectUrl(pathname: string): NavigationState | null {
-    // Для прямых переходов создаем базовое состояние
-    if (pathname.includes('/post/')) {
-      return {
-        scrollPosition: 0,
-        fromFeed: true, // По умолчанию считаем что пришли с главной ленты
-        timestamp: Date.now()
-      };
-    }
-    
-    if (pathname.includes('/profile/')) {
-      return {
-        scrollPosition: 0,
-        fromFeed: true,
-        timestamp: Date.now()
-      };
-    }
-    
-    return null;
-  }
-
-  /**
-   * Восстанавливает позицию скролла
-   */
-restoreTabScrollPosition = action((tab: 'all' | 'my') => {
-  const position = tab === 'all' ? this.feedScrollPosition : this.followingScrollPosition;
+  saveTabScrollPosition = action((tab: 'all' | 'my', position?: number) => {
+  const scrollPosition = position !== undefined ? position : window.scrollY;
+  logger.log(`[NAV] Saving scroll position for tab ${tab}: ${scrollPosition}px`);
+  this.tabScrollPositions.set(tab, scrollPosition);
   
-  if (position > 0) {
-    logger.log(`[NAV] Restoring ${tab} scroll position: ${position}`);
-    
-    // Более надежное восстановление с повторными попытками
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    const attemptRestore = () => {
-      attempts++;
-      
-      // Проверяем, что страница достаточно прогрузилась
-      const hasContent = document.body.scrollHeight > position;
-      
-      if (hasContent || attempts >= maxAttempts) {
-        this.restoreScrollPosition(position);
-        return true;
-      } else {
-        // Если контент еще не прогрузился, пробуем еще раз через 100ms
-        setTimeout(attemptRestore, 100);
-        return false;
-      }
-    };
-    
-    return attemptRestore();
+  // Обновляем также свойства для прямого доступа
+  if (tab === 'all') {
+    this.feedScrollPosition = scrollPosition;
+  } else if (tab === 'my') {
+    this.followingScrollPosition = scrollPosition;
   }
-  return false;
+});
+  
+  /**
+   * Восстанавливает позицию скролла для вкладки
+   * @returns true если позиция была восстановлена, false если нет сохраненной позиции
+   */
+  restoreTabScrollPosition = action((tab: 'all' | 'my'): boolean => {
+    const position = this.tabScrollPositions.get(tab);
+    
+    if (position !== undefined) {
+      logger.log(`[NAV] Restoring scroll position for tab ${tab}: ${position}px`);
+      window.scrollTo({ top: position, behavior: 'auto' });
+      
+      // Обновляем свойства для прямого доступа (обратная совместимость)
+      if (tab === 'all') {
+        this.feedScrollPosition = position;
+      } else if (tab === 'my') {
+        this.followingScrollPosition = position;
+      }
+      
+      return true;
+    }
+    
+    logger.log(`[NAV] No saved scroll position for tab ${tab}`);
+    return false;
+  });
+
+  /**
+   * Восстанавливает позицию скролла для пути
+   */
+  restoreScrollPosition = action((path: string): boolean => {
+    const position = this.scrollPositions.get(path);
+    
+    if (position !== undefined) {
+      logger.log(`[NAV] Restoring scroll for ${path}: ${position}px`);
+      setTimeout(() => window.scrollTo({ top: position, behavior: 'auto' }), 50);
+      return true;
+    }
+    
+    logger.log(`[NAV] No saved scroll for ${path}`);
+    return false;
+  });
+
+
+pushNavigationPoint = action((
+  path: string, 
+  context?: NavigationContext,
+  scrollPosition?: number
+): NavigationPoint => {
+  // Используем переданную или текущую позицию скролла
+  const position = scrollPosition ?? window.scrollY;
+  
+  // Создаем точку навигации
+  const point: NavigationPoint = {
+    path,
+    timestamp: Date.now(),
+    scrollPosition: position,
+    context
+  };
+  
+  // Сохраняем позицию скролла
+  this.scrollPositions.set(path, position);
+  
+  // Проверяем последнюю точку
+  const lastPoint = this.navigationStack.length > 0 
+    ? this.navigationStack[this.navigationStack.length - 1] 
+    : null;
+    
+  // : НЕ заменяем посты и комментарии, только одинаковые пути
+  const shouldReplace = lastPoint && 
+    lastPoint.path === path && 
+    !path.startsWith('/post/') && 
+    !path.startsWith('/comment/') &&
+    !path.startsWith('/profile/');
+    
+  if (shouldReplace) {
+    this.navigationStack[this.navigationStack.length - 1] = point;
+    logger.log(`[NAV] Updated navigation point for ${path}`, toJS(point));
+  } else {
+    // Добавляем в стек
+    this.navigationStack.push(point);
+    logger.log(`[NAV] Added navigation point for ${path}`, toJS(point));
+  }
+  
+  // Ограничиваем размер стека
+  if (this.navigationStack.length > 20) {
+    this.navigationStack.shift();
+  }
+  
+  logger.log(`[NAV] Stack now has ${this.navigationStack.length} items:`, 
+    this.navigationStack.map(p => p.path));
+  
+  return point;
 });
 
 /**
- * Восстанавливает позицию скролла
+ * Возвращает назад, с контекстным пониманием навигации
  */
-private restoreScrollPosition(position: number) {
-  if (position <= 0) return;
+goBack = action((navigate: NavigateFunction): void => {
+  // Распечатаем весь стек для отладки
+  logger.log("[NAV] Current navigation stack:", toJS(this.navigationStack));
+  logger.log("[NAV] Stack paths:", this.navigationStack.map(p => p.path));
+  logger.log("[NAV] Current path:", window.location.pathname);
   
-  // Более надежное восстановление
-  const restore = () => {
-    window.scrollTo({ top: position, behavior: 'auto' });
-    logger.log(`[NAV] Restored scroll position: ${position}`);
+  // Если в стеке меньше 2 точек, просто идем назад
+  if (this.navigationStack.length < 2) {
+    logger.log("[NAV] No history, using browser back");
+    navigate(-1);
+    return;
+  }
+  
+  const currentPath = window.location.pathname;
+  const isCurrentComment = currentPath.startsWith('/comment/');
+  const isCurrentProfile = currentPath.startsWith('/profile/') || currentPath.startsWith('/user/');
+  
+  // ИСПРАВЛЕНИЕ: Обрабатываем комментарии И профили
+  if (isCurrentComment) {
+    logger.log("[NAV] Current page is comment, searching for parent post");
     
-    // Проверяем, что скролл действительно установился
-    setTimeout(() => {
-      const currentScroll = window.scrollY;
-      const tolerance = 50; // Допускаем погрешность в 50px
+    // Ищем родительский пост среди всех точек в стеке (БЕЗ удаления)
+    for (let i = this.navigationStack.length - 1; i >= 0; i--) {
+      const point = this.navigationStack[i];
       
-      if (Math.abs(currentScroll - position) > tolerance) {
-        logger.log(`[NAV] Scroll position not accurate (${currentScroll} vs ${position}), retrying...`);
-        window.scrollTo({ top: position, behavior: 'auto' });
+      logger.log(`[NAV] Checking point ${i}:`, {
+        path: point.path,
+        pageType: point.context?.pageType,
+        isPostParent: point.context?.isPostParent
+      });
+      
+      // Если точка - это пост или помечена как родительский пост
+      if (point.path.startsWith('/post/') || 
+          (point.context && point.context.pageType === 'post') ||
+          (point.context && point.context.isPostParent)) {
+        
+        logger.log(`[NAV] Found parent post in history, returning to: ${point.path}`);
+        
+        // ТЕПЕРЬ удаляем все точки после найденного поста
+        this.navigationStack.splice(i + 1);
+        
+        // Создаем безопасный сериализуемый контекст
+        const safeState = {
+          path: point.path,
+          scrollPosition: point.scrollPosition,
+          isBackNavigation: true,
+          fromPath: currentPath
+        };
+        
+        // Навигация к посту
+        navigate(point.path, {
+          replace: true,
+          state: safeState
+        });
+        
+        // Восстанавливаем позицию скролла
+        setTimeout(() => {
+          this.restoreScrollPosition(point.path);
+        }, 100);
+        
+        return;
       }
-    }, 50);
+    }
+    
+    logger.log("[NAV] No parent post found in history, using standard navigation");
+  }
+  
+  // ДОБАВЛЯЕМ: Если мы на странице профиля, ищем родительский пост или комментарий
+  if (isCurrentProfile) {
+    logger.log("[NAV] Current page is profile, searching for parent post/comment");
+    
+    // Ищем родительский пост или комментарий
+    for (let i = this.navigationStack.length - 1; i >= 0; i--) {
+      const point = this.navigationStack[i];
+      
+      logger.log(`[NAV] Checking point ${i}:`, {
+        path: point.path,
+        pageType: point.context?.pageType,
+        isPostParent: point.context?.isPostParent
+      });
+      
+      // Если точка - это пост, комментарий или помечена как родительский элемент
+      if (point.path.startsWith('/post/') || 
+          point.path.startsWith('/comment/') ||
+          (point.context && (point.context.pageType === 'post' || point.context.pageType === 'comment')) ||
+          (point.context && point.context.isPostParent)) {
+        
+        logger.log(`[NAV] Found parent ${point.context?.pageType || 'page'} in history, returning to: ${point.path}`);
+        
+        // Удаляем все точки после найденного родителя
+        this.navigationStack.splice(i + 1);
+        
+        const safeState = {
+          path: point.path,
+          scrollPosition: point.scrollPosition,
+          isBackNavigation: true,
+          fromPath: currentPath
+        };
+        
+        navigate(point.path, {
+          replace: true,
+          state: safeState
+        });
+        
+        setTimeout(() => {
+          this.restoreScrollPosition(point.path);
+        }, 100);
+        
+        return;
+      }
+    }
+    
+    logger.log("[NAV] No parent post/comment found for profile, using standard navigation");
+  }
+  
+  // Стандартная навигация для других случаев
+  // Удаляем текущую точку из стека
+  const removedPoint = this.navigationStack.pop();
+  logger.log("[NAV] Removed point:", removedPoint?.path);
+  
+  // Получаем предыдущую точку для возврата
+  const previousPoint = this.navigationStack[this.navigationStack.length - 1];
+  
+  logger.log(`[NAV] Standard navigation back to: ${previousPoint.path}`);
+  
+  const safeState = {
+    path: previousPoint.path,
+    scrollPosition: previousPoint.scrollPosition,
+    isBackNavigation: true,
+    fromPath: currentPath
   };
   
-  // Небольшая задержка для завершения рендера
-  setTimeout(restore, 10);
-}
+  navigate(previousPoint.path, { 
+    replace: true,
+    state: safeState
+  });
+  
+  // Восстанавливаем позицию скролла
+  setTimeout(() => {
+    this.restoreScrollPosition(previousPoint.path);
+  }, 100);
+});
+  /**
+   * Создает контекст пути для текущего URL
+   */
+  getPathContext(): NavigationContext {
+    const path = window.location.pathname;
+    const segments = path.split('/').filter(Boolean);
+    
+    // Базовый контекст
+    const context: NavigationContext = {};
+    
+    // Определение типа страницы из пути
+    if (path === '/' || path === '') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tab = searchParams.get('tab');
+      
+      context.pageType = 'feed';
+      context.feedType = tab === 'following' ? 'following' : 'main';
+    } 
+    else if (segments[0] === 'post' && segments[1]) {
+      context.pageType = 'post';
+      context.entityId = segments[1];
+    }
+    else if (segments[0] === 'comment' && segments[1]) {
+      context.pageType = 'comment';
+      context.entityId = segments[1];
+    }
+    else if (segments[0] === 'profile' && segments[1]) {
+      context.pageType = 'profile';
+      context.userId = segments[1];
+    }
+    
+    return context;
+  }
 
   /**
-   * Очищает состояние
+   * Очищает историю навигации
    */
-  clearState() {
-    this.currentState = { scrollPosition: 0, timestamp: Date.now() };
-  }
+  clearHistory = action(() => {
+    this.navigationStack = [];
+    logger.log("[NAV] Navigation history cleared");
+  });
 }
 
-export const navigationStore = new NavigationStore();
+export default NavigationStore;

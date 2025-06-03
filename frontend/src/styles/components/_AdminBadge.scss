@@ -1,0 +1,78 @@
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  
+  &--super {
+    color: #ff6b35;
+    
+    .anticon {
+      filter: drop-shadow(0 0 2px rgba(255, 107, 53, 0.3));
+    }
+  }
+  
+  &--admin {
+    color: #1890ff;
+    
+    .anticon {
+      filter: drop-shadow(0 0 2px rgba(24, 144, 255, 0.3));
+    }
+  }
+  
+  // Для превью комментариев
+  &.preview-admin-badge {
+    font-size: 0.75em;
+    margin-left: 2px;
+  }
+}
+
+// Анимация появления бейджа
+.admin-badge .anticon {
+  transition: all 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+  }
+}
+
+
+/* Admin Badge Styles */
+
+
+.admin-badge--admin {
+  background: linear-gradient(45deg, #1890ff, #52c41a);
+  color: white;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.3);
+}
+
+.admin-badge--superadmin {
+  background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+  color: #333;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+  }
+  to {
+    box-shadow: 0 4px 16px rgba(255, 107, 107, 0.8);
+  }
+}
+
+.admin-badge--super {
+  color: #ff6b35;
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.admin-badge:hover {
+  transform: scale(1.1);
+}

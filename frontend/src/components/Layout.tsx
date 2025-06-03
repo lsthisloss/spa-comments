@@ -3,8 +3,7 @@ import Sidebar from './SideBar';
 import '../styles/main.scss';
 import { useState, useEffect } from 'react';
 import { logger } from '../utils/Logger';
-import { navigationStore } from '../services/stores/NavigationStore';
-
+import { useNavigationStore } from '../hooks/useStore';
 interface LayoutProps {
   children: (props: { activeTab: 'all' | 'my' }) => React.ReactNode;
 }
@@ -12,6 +11,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<'all' | 'my'>('all');
+  const navigationStore = useNavigationStore();
 
   // Инициализация вкладки из URL
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function Layout({ children }: LayoutProps) {
       setActiveTab('all');
       navigationStore.setActiveTab('all');
     }
-  }, [location.search]);
+  }, [location.search, navigationStore]);
 
   const handleTabClick = (tab: 'all' | 'my') => {
   if (tab === activeTab) {
@@ -58,38 +58,34 @@ export default function Layout({ children }: LayoutProps) {
   }, 100);
 };
 
-  const hideTabs =
-    /^\/post\/\w+/.test(location.pathname) ||
-    /^\/profile/.test(location.pathname) ||
-    /^\/auth\/\w+/.test(location.pathname) ||
-    /^\/comment\/\w+/.test(location.pathname);
+const showTabs = location.pathname === '/';
 
-  return (
-    <div className="main-page">
-      <div className="main-sidebar">
-        <Sidebar />
-      </div>
-      <div className="main-area">
-        {!hideTabs && (
-          <div className="tabs">
-            <div
-              className={`tab ${activeTab === 'all' ? 'active-tab' : ''}`}
-              onClick={() => handleTabClick('all')}
-            >
-              Feed
-            </div>
-            <div
-              className={`tab ${activeTab === 'my' ? 'active-tab' : ''}`}
-              onClick={() => handleTabClick('my')}
-            >
-              Following
-            </div>
-          </div>
-        )}
-        <main className="main-content">
-          {children({ activeTab })}
-        </main>
-      </div>
+return (
+  <div className="main-page">
+    <div className="main-sidebar">
+      <Sidebar />
     </div>
-  );
+    <div className="main-area">
+      {showTabs && (
+        <div className="tabs">
+          <div
+            className={`tab ${activeTab === 'all' ? 'active-tab' : ''}`}
+            onClick={() => handleTabClick('all')}
+          >
+            Feed
+          </div>
+          <div
+            className={`tab ${activeTab === 'my' ? 'active-tab' : ''}`}
+            onClick={() => handleTabClick('my')}
+          >
+            Following
+          </div>
+        </div>
+      )}
+      <main className="main-content">
+        {children({ activeTab })}
+      </main>
+    </div>
+  </div>
+);
 }

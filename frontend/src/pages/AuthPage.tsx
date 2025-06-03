@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Modal, Form, Input, Button, message, Progress } from 'antd';
 import { observer } from "mobx-react";
-import userStore from '../services/stores/UserStore';
-import { socketStore } from '../services/stores/SocketStore';
+import { useUserStore, useSocketStore } from '../hooks/useStore';
 import { LoginFormValues, RegisterFormValues } from '../types/interfaces';
 import { useNavigate } from 'react-router-dom';
 
 const AuthPage = observer(() => {
+  // Получаем сторы через хуки
+  const userStore = useUserStore();
+  const socketStore = useSocketStore();
+  
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [isSocketReady, setIsSocketReady] = useState(false);
@@ -14,20 +17,19 @@ const AuthPage = observer(() => {
   const navigate = useNavigate();
 
   const handleAuthSuccess = async () => {
-  try {
-    // Небольшая задержка для завершения инициализации сокетов
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Переходим на главную
-    navigate('/');
-    setShowRegister(false);
-    setShowLogin(false);
-  } catch (error) {
-    console.error('Error during auth success handling:', error);
-  }
-};
+    try {
+      // Небольшая задержка для завершения инициализации сокетов
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Переходим на главную
+      navigate('/');
+      setShowRegister(false);
+      setShowLogin(false);
+    } catch (error) {
+      console.error('Error during auth success handling:', error);
+    }
+  };
 
-  // Упрощенный метод логина - теперь вся логика в UserStore
   const onLogin = async (values: LoginFormValues) => {
     if (!socketStore.users || !isSocketReady) {
       message.error('No connection to server. Please try again later.');
@@ -49,7 +51,6 @@ const AuthPage = observer(() => {
     }
   };
 
-  // Упрощенный метод регистрации
   const onRegister = async (values: RegisterFormValues) => {
     if (!socketStore.users || !isSocketReady) {
       message.error('No connection to server. Please try again later.');
@@ -113,7 +114,7 @@ const AuthPage = observer(() => {
         socketStore.users?.off('disconnect', onDisconnect);
       };
     }
-  }, []);
+  }, [socketStore]);  
 
   return (
     <div className="auth-page">

@@ -9,11 +9,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext) {
-    // Базовая проверка через AuthGuard('jwt')
+    // Проверка через AuthGuard('jwt')
     return super.canActivate(context);
   }
 
-  // Исправляем типизацию метода handleRequest
   handleRequest<TUser = any>(err: any, user: TUser): TUser {
     if (err || !user) {
       throw err || new Error('Unauthorized');

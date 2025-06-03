@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Modal, Input, Tabs, List, Avatar, Spin, Typography } from "antd";
 import { UserOutlined, MessageOutlined, InboxOutlined } from "@ant-design/icons";
 import { observer } from "mobx-react-lite";
-import { socketStore } from "../../../services/stores/SocketStore";
 import { useNavigate } from "react-router-dom";
+import { useSocketStore } from "../../../hooks/useStore";
+
 
 const { Text } = Typography;
 
@@ -19,7 +20,7 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
   const [activeTab, setActiveTab] = useState("users");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
-
+  const socketStore = useSocketStore();
   useEffect(() => {
     if (!visible) {
       setQuery("");
@@ -42,7 +43,7 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
         setLoading(false);
       });
     }, query.length === 3 ? 0 : 150);
-  }, [query, visible]);
+  }, [query, visible, socketStore.search]);
 
   // Универсальный рендер аватарки
   const renderAvatar = (avatarUrl?: string) =>

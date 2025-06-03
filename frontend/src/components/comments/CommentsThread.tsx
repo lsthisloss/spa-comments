@@ -2,14 +2,13 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Empty, Spin, Button, Dropdown, Badge } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
-import { commentStore } from '../../services/stores/CommentStore';
-import { postStore } from '../../services/stores/PostStore';
 import { useCommentsFeed } from '../../hooks/useFeedItems';
 import { useVirtualItems } from '../../hooks/useVirtualItems';
 import VirtualList from '../common/VirtualList';
 import CommentItem from './CommentsItem';
 import { Comment } from '../../types/interfaces';
 import { logger } from '../../utils/Logger';
+import { useCommentStore, usePostStore } from '../../hooks/useStore';
 
 interface CommentsThreadProps {
   postId?: string;
@@ -34,6 +33,8 @@ const CommentsThread = observer(({
   autoLoad = true,
   enableNestedReplies = false,
 }: CommentsThreadProps) => {
+  const commentStore = useCommentStore();
+  const postStore = usePostStore();
   // Helper to resolve entity IDs from slugs
   const resolveEntityIds = useMemo(() => {
     // First try direct IDs
@@ -56,7 +57,7 @@ const CommentsThread = observer(({
     const isPost = !!effectivePostId;
     
     return { targetId, isPost, effectivePostId, effectiveParentId };
-  }, [postId, postSlug, parentId, parentSlug]);
+  }, [postId, postSlug, parentId, parentSlug, postStore, commentStore]);
   
   const { targetId, isPost } = resolveEntityIds;
   
@@ -110,7 +111,7 @@ const CommentsThread = observer(({
         }
       }
     }
-  }, [autoLoad, targetId, resolveEntityIds.effectiveParentId, resolveEntityIds.effectivePostId, onLoadMore]);
+  }, [autoLoad, targetId, resolveEntityIds.effectiveParentId, resolveEntityIds.effectivePostId, onLoadMore, commentStore]);
 
   // Comment rendering
   const renderComment = useCallback((virtualItem: { item: Comment; index: number }, measureRef: (el: HTMLElement | null) => void) => {

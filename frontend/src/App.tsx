@@ -5,33 +5,46 @@ import MainPage from './pages/MainPage';
 import UserProfilePage from './pages/UserProfilePage';
 import AuthPage from './pages/AuthPage';
 import { observer } from 'mobx-react';
-import userStore from './services/stores/UserStore';
 import PostPage from './pages/PostPage';
 import CommentPage from './pages/CommentPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { logger } from "./utils/Logger";
-import authStore from './services/stores/AuthStore';
 import { appInitializer } from './services/AppInitializer';
 import { Spin } from 'antd';
+import { useUserStore, useAuthStore } from './hooks/useStore';
+import { StoresProvider } from './contexts/StoresContext';
+import ConnectionMonitor from './components/ConnectionMonitor';
 
+// Компонент проверки авторизации с использованием хуков
 const RequireAuth = observer(({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const userStore = useUserStore();
+  
   logger.log('[App] Current user in mobx:', userStore.user);
+  
   if (!userStore.user) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
+  
   return <>{children}</>;
 });
 
+// Компонент для гостей с использованием хуков
 const OnlyGuest = observer(({ children }: { children: React.ReactNode }) => {
+  const userStore = useUserStore();
+  
   if (userStore.user) {
     return <Navigate to="/" replace />;
   }
+  
   return <>{children}</>;
 });
 
-const App = observer(() => {
+// Основной компонент приложения
+const AppContent = observer(() => {
   const [, setInitChecked] = useState(false);
+  const userStore = useUserStore();
+  const authStore = useAuthStore();
 
   useEffect(() => {
     const initApp = async () => {
@@ -54,7 +67,7 @@ const App = observer(() => {
       setInitChecked(true);
     };
     initApp();
-  }, []);
+  }, [authStore, userStore]);
 
   // Показываем сообщение об ошибке, если инициализация не удалась
   if (appInitializer.error) {
@@ -103,7 +116,7 @@ const App = observer(() => {
                   <Routes>
                     <Route path="/" element={<MainPage {...props} />} />
                     <Route path="/profile" element={<UserProfilePage />} />
-                    <Route path="/profile/:userId" element={<UserProfilePage />} />
+                    <Route path="/user/:username" element={<UserProfilePage />} />
                     <Route path="/post/:slug" element={<PostPage />} />
                     <Route path="/comment/:slug" element={<CommentPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
@@ -117,5 +130,15 @@ const App = observer(() => {
     </ErrorBoundary>
   );
 });
+
+// Корневой компонент с провайдером хранилищ
+const App = () => {
+  return (
+    <StoresProvider>
+      <ConnectionMonitor />
+      <AppContent />
+    </StoresProvider>
+  );
+};
 
 export default App;

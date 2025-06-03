@@ -1,21 +1,21 @@
-import { action, makeObservable, observable, runInAction, computed, reaction } from "mobx";
-import { socketStore } from "./SocketStore";
+import { action, observable, runInAction, reaction, makeObservable, computed, AnnotationMapEntry } from "mobx";
 import { Comment as CommentType, FetchCommentsResponse, FetchCommentBySlugResponse, User } from "../../types/interfaces";
 import { logger } from '../../utils/Logger';
 import { BaseStore } from "./BaseStore";
 import io from "socket.io-client";
-import userStore from "./UserStore";
-import { postStore } from "./PostStore";
+import type SocketStore from "./SocketStore";
+import type UserStore from "./UserStore";
+import { ICommentStore } from "../../types/stores";
 
 /**
  * Хранилище для управления комментариями
  */
-class CommentStore extends BaseStore<CommentType> {
+class CommentStore extends BaseStore<CommentType> implements ICommentStore {
   // Карты для хранения данных
-  commentsMap = observable.map<string, CommentType[]>();
-  repliesMap = observable.map<string, CommentType[]>();
-  repliesShownMap = observable.map<string, boolean>();
-  loadingRepliesMap = observable.map<string, boolean>();
+  commentsMap = new Map<string, CommentType[]>();
+  repliesMap = new Map<string, CommentType[]>();
+  repliesShownMap = new Map<string, boolean>();
+  loadingRepliesMap = new Map<string, boolean>();
   
   // Кэширование запросов и времени
   private lastUpdateTimeMap = new Map<string, number>();
@@ -27,52 +27,72 @@ class CommentStore extends BaseStore<CommentType> {
   commentScrollPosition: number = 0;
   commentStateRestored: boolean = false;
   savedCommentReplies: Array<CommentType> = [];
+  
+  // Инъектированные сторы
+  private socketStore: SocketStore;
+  private userStore: UserStore;
 
-  constructor() {
-    super();
-    makeObservable(this, {
-      commentsMap: observable,
-      repliesMap: observable,
-      repliesShownMap: observable,
-      loadingRepliesMap: observable,
-      commentScrollPosition: observable,
-      commentStateRestored: observable,
-      savedCommentReplies: observable,
-      
-      sortedComments: computed,
-      
-      // Действия
-      setupSocketListeners: action,
-      handleNewComment: action,
-      loadComments: action,
-      loadMoreComments: action,
-      toggleRepliesShown: action,
-      createComment: action,
-      reSortComments: action,
-      addComment: action,
-      setReplies: action,
-      setRepliesShown: action,
-      setLoadingReplies: action,
-      setComments: action,
-      toggleLike: action,
-      fetchCommentBySlug: action,
-      saveCommentState: action,
-      restoreCommentState: action
-    });
+constructor(socketStore: SocketStore, userStore: UserStore) {
+  super(); // Вызываем конструктор базового класса
+  
+  // Сохраняем ссылки на инъектированные сторы
+  this.socketStore = socketStore;
+  this.userStore = userStore;
+
+  const annotations: Record<string, AnnotationMapEntry> = {
+    commentsMap: observable,
+    repliesMap: observable,
+    repliesShownMap: observable,
+    loadingRepliesMap: observable,
+    commentScrollPosition: observable,
+    commentStateRestored: observable,
+    savedCommentReplies: observable,
     
-    this.setupSocketListeners();
-  }
+    // Computed свойства
+    sortedComments: computed,
+    
+    // Actions
+    setupSocketListeners: action,
+    handleNewComment: action,
+    loadComments: action,
+    loadMoreComments: action,
+    toggleRepliesShown: action,
+    createComment: action,
+    reSortComments: action,
+    addComment: action,
+    setReplies: action,
+    setRepliesShown: action,
+    setLoadingReplies: action,
+    setComments: action,
+    toggleLike: action,
+    fetchCommentBySlug: action,
+    saveCommentState: action,
+    restoreCommentState: action,
+    
+    // Реализации абстрактных методов
+    getItemById: action,
+    applySortToAllCollections: action
+};
+
+// Добавляем после создания объекта
+  annotations['applySortToAllCollections'] = action;
+
+  makeObservable(this, annotations);
+  
+  // Инициализируем после makeObservable
+  this.setupSocketListeners();
+}
 
   /**
    * Настраивает слушателей socket-событий
    */
   setupSocketListeners = () => {
-    if (!socketStore.comments) {
+    if (!this.socketStore.comments) {
       logger.log("[CommentStore] Socket not available, will set up listeners when connection is established");
       
       // Наблюдаем за изменением socketStore.comments и устанавливаем обработчики, когда он станет доступен
       const disposer = reaction(
-        () => socketStore.comments,
+        () => this.socketStore.comments,
         (commentsSocket) => {
           if (commentsSocket) {
             this.setupSocketHandlers(commentsSocket);
@@ -84,7 +104,7 @@ class CommentStore extends BaseStore<CommentType> {
       return;
     }
     
-    this.setupSocketHandlers(socketStore.comments);
+    this.setupSocketHandlers(this.socketStore.comments);
   }
 
   setupSocketHandlers = (commentsSocket: ReturnType<typeof io>) => {
@@ -118,7 +138,7 @@ class CommentStore extends BaseStore<CommentType> {
    * Реализация абстрактного метода из BaseStore
    * Пересортировывает все коллекции комментариев
    */
-  protected applySortToAllCollections(): void {
+  protected override applySortToAllCollections(): void {
     runInAction(() => {
       this.commentsMap.forEach((comments, postId) => {
         if (comments.length > 0) {
@@ -153,12 +173,12 @@ class CommentStore extends BaseStore<CommentType> {
       slug: comment.user.slug || comment.user.userName.toLowerCase(),
     };
     
-    userStore.addCachedUser(userForCache);
+    this.userStore.addCachedUser(userForCache);
   }
   
   // Если нет user объекта, но есть userId, пробуем восстановить из кэша
   if (!comment.user && comment.userId) {
-    const cachedUser = userStore.getCachedUser(comment.userId);
+    const cachedUser = this.userStore.getCachedUser(comment.userId);
     if (cachedUser) {
       comment.user = cachedUser;
     }
@@ -236,7 +256,7 @@ class CommentStore extends BaseStore<CommentType> {
     
     // Кэшируем пользователей в UserStore
     uniqueUsers.forEach(user => {
-      userStore.addCachedUser(user);
+      this.userStore.addCachedUser(user);
     });
     
     if (uniqueUsers.size > 0) {
@@ -294,7 +314,7 @@ class CommentStore extends BaseStore<CommentType> {
     }
 
     const promise = new Promise<void>((resolve, reject) => {
-      const socketClient = socketStore.comments;
+      const socketClient = this.socketStore.comments;
       if (!socketClient) {
         this.setLoadingReplies(parentId, false);
         reject(new Error('Comments socket not available'));
@@ -473,14 +493,14 @@ class CommentStore extends BaseStore<CommentType> {
 
   // Проверка и восстановление данных пользователя из кэша
   if (processedComment.userId && (!processedComment.user || !processedComment.user.userName)) {
-    const cachedUser = userStore.getCachedUser(processedComment.userId);
+    const cachedUser = this.userStore.getCachedUser(processedComment.userId);
     if (cachedUser) {
       processedComment.user = cachedUser;
       processedComment.userName = cachedUser.userName;
       logger.log(`[CommentStore] Restored user data for comment ${processedComment.id} from cache: ${cachedUser.userName}`);
     } else {
       // Если пользователя нет в кэше, запрашиваем его данные
-      userStore.getUserById(processedComment.userId).then(user => {
+      this.userStore.getUserById(processedComment.userId).then(user => {
         if (user) {
           // Находим комментарий во всех коллекциях и обновляем данные пользователя
           this.updateCommentUserData(processedComment.id, user);
@@ -656,13 +676,13 @@ updateCommentUserData = (commentId: string, user: User) => {
     this.updateCommentLikeState(commentId, newLikes, newLikedUserIds, true);
     
     // Отправляем событие на сервер
-    if (!socketStore.comments) {
+    if (!this.socketStore.comments) {
       logger.log("[CommentStore] Cannot emit like event: socket not available");
       return;
     }
 
     const event = isLiked ? "unlikeComment" : "likeComment";
-    socketStore.comments.emit(event, { commentId });
+    this.socketStore.comments.emit(event, { commentId });
   });
   
   /**
@@ -670,7 +690,7 @@ updateCommentUserData = (commentId: string, user: User) => {
    */
   createComment = (postId: string, content: string, parentId?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
-      const socketClient = socketStore.comments;
+      const socketClient = this.socketStore.comments;
       if (!socketClient) {
         resolve(false);
         return;
@@ -855,14 +875,14 @@ updateCommentUserData = (commentId: string, user: User) => {
 
     try {
       // Проверяем доступность сокета
-      if (!socketStore.comments || !socketStore.comments.connected) {
+      if (!this.socketStore.comments || !this.socketStore.comments.connected) {
         logger.warn('[CommentStore] Comments socket not connected, waiting...');
         await this.waitForSocketConnection();
       }
 
       // Создаем промис для запроса
       const fetchPromise = new Promise<CommentType | null>((resolve) => {
-        socketStore.comments!.emit(
+        this.socketStore.comments!.emit(
           "fetchCommentBySlug",
           { slug },
           (response: FetchCommentBySlugResponse) => {
@@ -908,7 +928,7 @@ updateCommentUserData = (commentId: string, user: User) => {
       
       const checkSocketInterval = setInterval(() => {
         attempts++;
-        if (socketStore.comments && socketStore.comments.connected) {
+        if (this.socketStore.comments && this.socketStore.comments.connected) {
           clearInterval(checkSocketInterval);
           resolve();
         } else if (attempts >= maxAttempts) {
@@ -950,72 +970,18 @@ updateCommentUserData = (commentId: string, user: User) => {
    * Получает комментарии для поста по его slug
    */
   loadCommentsBySlug = action(async (entitySlug: string, limit: number = 10, page: number = 1, 
-                                    sort?: 'date' | 'likes', isComment?: boolean): Promise<void> => {
-    logger.log(`[CommentStore] Loading comments by slug: ${entitySlug}, isComment: ${isComment}`);
-    
-    // Определяем тип автоматически если не указан
-    if (isComment === undefined) {
-      const post = postStore.getPostBySlug(entitySlug);
-      const comment = this.getCommentBySlug(entitySlug);
-      
-      if (post) {
-        isComment = false;
-      } else if (comment) {
-        isComment = true;  
-      } else {
-        // Если не нашли ни поста, ни комментария, пробуем запросить напрямую
-        try {
-          if (entitySlug.length > 10) { // Если похоже на slug комментария
-            const comment = await this.fetchCommentBySlug(entitySlug);
-            if (comment) {
-              isComment = true;
-              return this.loadComments(comment.id, limit, page, sort, true);
-            }
-          }
-          
-          // Если не нашли комментарий, пробуем запросить пост
-          const post = await postStore.fetchPostBySlug(entitySlug);
-          if (post) {
-            isComment = false;
-            return this.loadComments(post.id, limit, page, sort, false);
-          }
-          
-          // Если ничего не нашли, выходим с ошибкой
-          throw new Error(`Entity with slug ${entitySlug} not found`);
-        } catch (error) {
-          logger.error(`[CommentStore] Error resolving entity by slug:`, error);
-          throw error;
-        }
-      }
-    }
-    
-    // Получаем ID из slug
-    let entityId: string;
-    
-    if (isComment) {
-      const comment = this.getCommentBySlug(entitySlug);
-      if (!comment) {
-        return this.fetchCommentsBySlug(entitySlug, limit, page, sort, true);
-      }
-      entityId = comment.id;
-    } else {
-      const post = postStore.getPostBySlug(entitySlug);
-      if (!post) {
-        return this.fetchCommentsBySlug(entitySlug, limit, page, sort, false);
-      }
-      entityId = post.id;
-    }
-    
-    // Загружаем комментарии по ID
-    return this.loadComments(entityId, limit, page, sort, isComment);
+                                  sort?: 'date' | 'likes', isComment?: boolean): Promise<void> => {
+  logger.log(`[CommentStore] Loading comments by slug: ${entitySlug}, isComment: ${isComment}`);
+  
+    return this.fetchCommentsBySlug(entitySlug, limit, page, sort, isComment ?? false);
   });
 
   /**
    * Метод для прямого запроса комментариев по slug
    */
   private async fetchCommentsBySlug(slug: string, limit: number = 10, page: number = 1, 
-                                  sort?: 'date' | 'likes', isComment: boolean = false): Promise<void> {
-    if (!socketStore.comments?.connected) {
+     sort?: 'date' | 'likes', isComment: boolean = false): Promise<void> {
+    if (!this.socketStore.comments?.connected) {
       throw new Error('Comments socket not connected');
     }
     
@@ -1034,7 +1000,7 @@ updateCommentUserData = (commentId: string, user: User) => {
         reject(new Error(`Timeout waiting for ${event} response`));
       }, 10000);
       
-      socketStore.comments!.emit(event, payload, (response: FetchCommentsResponse) => {
+      this.socketStore.comments!.emit(event, payload, (response: FetchCommentsResponse) => {
         clearTimeout(timeout);
         
         if (!response) {
@@ -1133,17 +1099,65 @@ updateCommentUserData = (commentId: string, user: User) => {
     }
     this.setRepliesShown(comment.id, shown);
   }
+  /**
+   * Реализация метода fetchComments из интерфейса ICommentStore
+   * Этот метод - обертка над существующим loadComments
+   */
+  fetchComments = async (postId: string, page: number = 1): Promise<void> => {
+    logger.log(`[CommentStore] fetchComments for post ${postId}, page ${page}`);
+    
+    // Делегируем выполнение существующему методу loadComments
+    // loadComments(parentId, limit, page, sort, isComment)
+    return this.loadComments(postId, 10, page, this.sort, false);
+  };
+
+  /**
+   * Проверяет, загружены ли комментарии для поста
+   */
+  hasLoaded = (postId: string): boolean => {
+    return this.commentsMap.has(postId);
+  };
+
+  /**
+   * Получает текущую страницу комментариев для поста
+   */
+  getCurrentPage = (postId: string): number => {
+    const comments = this.getComments(postId);
+    return Math.ceil(comments.length / 10); // Используем стандартный размер страницы
+  };
+
+  /**
+   * Проверяет, загружаются ли комментарии для поста
+   */
+  isLoading = (postId: string): boolean => {
+    return this.loadingRepliesMap.get(postId) || false;
+  };
+
+  
+
+  /**
+   * Устанавливает способ сортировки комментариев
+   */
+  setSort = action((newSort: 'date' | 'likes') => {
+    if (this.sort === newSort) return;
+    
+    logger.log(`[CommentStore] Changing sort from ${this.sort} to ${newSort}`);
+    this.sort = newSort;
+    
+    // Пересортируем все коллекции
+    this.applySortToAllCollections();
+  });
 
   /**
    * Освобождает ресурсы при уничтожении
    */
   override dispose() {
-    if (socketStore.comments) {
-      socketStore.comments.off("newComment", this.handleNewComment);
-      socketStore.comments.off("commentLiked");
-      socketStore.comments.off("commentUnliked");
+    if (this.socketStore.comments) {
+      this.socketStore.comments.off("newComment", this.handleNewComment);
+      this.socketStore.comments.off("commentLiked");
+      this.socketStore.comments.off("commentUnliked");
     }
   }
 }
 
-export const commentStore = new CommentStore();
+export default CommentStore;

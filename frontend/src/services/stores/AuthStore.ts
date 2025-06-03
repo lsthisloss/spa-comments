@@ -3,6 +3,8 @@ import { logger } from "../../utils/Logger";
 
 class AuthStore {
   token: string | null = null;
+  userId: string | null = null;
+  userName: string | null = null;
   initialLoadComplete = false;
 
   constructor() {
@@ -15,10 +17,16 @@ class AuthStore {
   async initFromLocalStorage() {
     try {
       const token = localStorage.getItem('token');
+      const userId = localStorage.getItem('userId');
+      const userName = localStorage.getItem('userName');
       
       if (token) {
         logger.log('[AuthStore] Found token in localStorage');
-        this.token = token;
+        runInAction(() => {
+          this.token = token;
+          this.userId = userId;
+          this.userName = userName;
+        });
       } else {
         logger.log('[AuthStore] No token found in localStorage');
       }
@@ -26,22 +34,46 @@ class AuthStore {
       logger.error('[AuthStore] Failed to init auth from localStorage', error);
       this.clearAuthData();
     } finally {
-      this.initialLoadComplete = true;
+      runInAction(() => {
+        this.initialLoadComplete = true;
+      });
     }
   }
 
-  setAuth(token: string) {
+  setAuth(token: string, userId?: string, userName?: string) {
     logger.log(`[AuthStore] Setting auth token`);
     
     runInAction(() => {
       this.token = token;
+      if (userId) this.userId = userId;
+      if (userName) this.userName = userName;
     });
     
     try {
       localStorage.setItem('token', token);
-      logger.log('[AuthStore] Token saved to localStorage');
+      if (userId) localStorage.setItem('userId', userId);
+      if (userName) localStorage.setItem('userName', userName);
+      logger.log('[AuthStore] Auth data saved to localStorage');
     } catch (error) {
-      logger.error('[AuthStore] Failed to save token to localStorage', error);
+      logger.error('[AuthStore] Failed to save auth data to localStorage', error);
+    }
+  }
+
+  syncWithUserStore(userData: { id: string; token: string; userName: string }) {
+    logger.log('[AuthStore] Syncing with UserStore');
+    
+    runInAction(() => {
+      this.token = userData.token;
+      this.userId = userData.id;
+      this.userName = userData.userName;
+    });
+    
+    try {
+      localStorage.setItem('token', userData.token);
+      localStorage.setItem('userId', userData.id);
+      localStorage.setItem('userName', userData.userName);
+    } catch (error) {
+      logger.error('[AuthStore] Failed to sync with UserStore', error);
     }
   }
 
@@ -50,10 +82,14 @@ class AuthStore {
     
     runInAction(() => {
       this.token = null;
+      this.userId = null;
+      this.userName = null;
     });
     
     try {
       localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userName');
     } catch (e) {
       logger.error('[AuthStore] Failed to clear localStorage', e);
     }
@@ -73,5 +109,4 @@ class AuthStore {
   }
 }
 
-const authStoreInstance = new AuthStore();
-export default authStoreInstance;
+export default AuthStore;

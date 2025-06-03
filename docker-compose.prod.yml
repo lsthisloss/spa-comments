@@ -17,6 +17,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
@@ -53,16 +59,29 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      # Настройки памяти
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.6
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK_PAGING_RATIO: 0.5
+      # Ограничения очередей
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit vm_memory_high_watermark 0.6"
     ports:
       - "5672:5672"
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 10s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+        reservations:
+          memory: 400M
+    restart: unless-stopped
 
   backend:
     build: ./backend
@@ -103,6 +122,11 @@ services:
       RABBITMQ_DEFAULT_HOST: rabbitmq
       RABBITMQ_DEFAULT_PORT: 5672
       
+      # RabbitMQ Queue Limits
+      RABBITMQ_QUEUE_MAX_LENGTH: 5000
+      RABBITMQ_QUEUE_MAX_BYTES: 50000000
+      RABBITMQ_MESSAGE_TTL: 300000
+      
       # JWT
       JWT_SECRET: ${JWT_SECRET}
       
@@ -110,6 +134,12 @@ services:
       NODE_ENV: production
     command: npm run dev
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+        reservations:
+          memory: 400M
 
 volumes:
   postgres_data:

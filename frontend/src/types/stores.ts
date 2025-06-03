@@ -1,5 +1,6 @@
-// Файл для управления ссылками на store-объекты и предотвращения циклических зависимостей
+// Файл для типизации store-объектов
 import { User, Post, Comment } from "./interfaces";
+import type { Socket } from "socket.io-client";
 
 export interface IAuthStore {
   token: string | null;
@@ -15,9 +16,10 @@ export interface IAuthStore {
 }
 
 export interface ISocketStore {
-  users: ReturnType<typeof io> | null;
-  posts: ReturnType<typeof io> | null;
-  comments: ReturnType<typeof io> | null;
+  users: typeof Socket | null;
+  posts: typeof Socket | null;
+  comments: typeof Socket | null;
+  search: typeof Socket | null;
   connected: boolean;
   postsReady: boolean;
   commentsReady: boolean;
@@ -27,9 +29,11 @@ export interface ISocketStore {
   disconnectAllSockets(): void;
   waitForPostsSocket(timeoutMs?: number): Promise<boolean>;
   waitForCommentsSocket(timeoutMs?: number): Promise<boolean>;
-  isSocketReady(socket:  ReturnType<typeof io> | null): boolean;
+  isSocketReady(socket: typeof Socket | null): boolean;
   isPostsSocketReady(): boolean;
   isCommentsSocketReady(): boolean;
+  isSocketConnected(type: 'posts' | 'comments' | 'users' | 'search'): boolean;
+  checkConnections(): void;
 }
 
 export interface IUserStore {
@@ -77,7 +81,7 @@ export interface IPostStore {
   feedTotal: number;
   fetchFeedPosts(page?: number): Promise<void>;
   loadMoreFeedPosts(): void;
-  resetFeedState(): void;
+  resetFeedsState(): void;
   hasFeedItems: boolean;
   hasFollowingItems: boolean;
   getPostById(postId: string): Post | undefined;
@@ -98,30 +102,3 @@ export interface ICommentStore {
   setSort(sort: 'date' | 'likes'): void;
   updateItemSize(itemId: string, height: number): void;
 }
-
-export let authStore: IAuthStore | null = null;
-export let socketStore: ISocketStore | null = null;
-export let userStore: IUserStore | null = null;
-export let postStore: IPostStore | null = null;
-export let commentStore: ICommentStore | null = null;
-
-// Регистрации store-объектов 
-export const registerAuthStore = (store: IAuthStore): void => {
-  authStore = store;
-};
-
-export const registerSocketStore = (store: ISocketStore): void => {
-  socketStore = store;
-};
-
-export const registerUserStore = (store: IUserStore): void => {
-  userStore = store;
-};
-
-export const registerPostStore = (store: IPostStore): void => {
-  postStore = store;
-};
-
-export const registerCommentStore = (store: ICommentStore): void => {
-  commentStore = store;
-};

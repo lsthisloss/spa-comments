@@ -3,41 +3,71 @@ import { RabbitMQService } from '../rabbitmq.service';
 import { CommentsService } from '../../comments/comments.service';
 import type { CreateCommentDto } from '../../comments/dto/create-comment.dto';
 import { CommentsGateway } from '../../comments/comments.gateway';
+import { UsersService } from '../../users/users.service';
 
 @Injectable()
 export class CommentsConsumer implements OnModuleInit {
   private readonly logger = new Logger(CommentsConsumer.name);
   private readonly queueName = 'add_comment_queue';
-  private processedCommentIds = new Set<string>(); // Кэш для предотвращения дублирования
+
+  private processedCommentIds = new Set<string>(); // Хранит хэши обработанных комментариев
+  private userCommentCounts = new Map<
+    string,
+    { count: number; resetTime: number }
+  >();
+  private readonly MAX_COMMENTS_PER_MINUTE = 20; // Максимум комментариев в минуту
+  private readonly RATE_LIMIT_WINDOW = 60 * 1000; // Окно для rate limiting в миллисекундах
+  private readonly CACHE_TTL = 10 * 60 * 1000; // TTL для кэша в миллисекундах
+
+  // Метрики для мониторинга
+  private stats = {
+    totalProcessed: 0,
+    rateLimitedDropped: 0,
+    duplicatesDropped: 0,
+    errorsCount: 0,
+  };
 
   constructor(
     private readonly rabbitMQService: RabbitMQService,
     private readonly commentsService: CommentsService,
     private readonly commentsGateway: CommentsGateway,
+    private readonly usersService: UsersService,
   ) {}
-
+  /**
+   * Инициализация потребителя сообщений RabbitMQ
+   * Подписывается на очередь и обрабатывает сообщения
+   */
   async onModuleInit() {
     try {
       await this.rabbitMQService.consume(this.queueName, (msg) => {
         void this.handleMessage(msg);
       });
 
-      this.logger.log(
-        `Consumer successfully subscribed to queue: ${this.queueName}`,
+      // Периодическая очистка кэша
+      setInterval(
+        () => {
+          this.cleanupCaches();
+        },
+        5 * 60 * 1000,
       );
+
+      this.logger.log(`Consumer subscribed to queue: ${this.queueName}`);
     } catch (error) {
       this.logger.error(
-        `Error initializing consumer for queue "${this.queueName}": ${(error as Error).message}`,
-        (error as Error).stack,
+        `Error initializing consumer: ${(error as Error).message}`,
       );
     }
   }
-
+  /**
+   * Обрабатывает входящие сообщения из RabbitMQ
+   * @param msg - Сообщение, полученное из RabbitMQ
+   */
   private async handleMessage(msg: any) {
     try {
-      // Валидация сообщения
+      this.stats.totalProcessed++;
+
       if (!this.isValidMessage(msg)) {
-        this.logger.error('Received invalid message format', msg);
+        this.logger.error('Invalid message format');
         this.rabbitMQService.nackMessage(msg);
         return;
       }
@@ -50,126 +80,262 @@ export class CommentsConsumer implements OnModuleInit {
         return;
       }
 
-      // Проверка на дублирование
-      const messageHash = this.generateMessageHash(createCommentDto);
-      if (this.processedCommentIds.has(messageHash)) {
+      // ПРОВЕРЯЕМ RATE LIMITING
+      if (
+        !createCommentDto.userId ||
+        !this.checkRateLimit(createCommentDto.userId)
+      ) {
+        this.stats.rateLimitedDropped++;
         this.logger.warn(
-          `Duplicate comment detected, skipping: ${messageHash}`,
+          `Rate limit exceeded or missing userId for user ${createCommentDto.userId}`,
         );
         this.rabbitMQService.ackMessage(msg);
         return;
       }
 
-      // Сохраняем комментарий в базе
+      // Проверка на дублирование
+      const messageHash = this.generateMessageHash(createCommentDto);
+      if (this.processedCommentIds.has(messageHash)) {
+        this.stats.duplicatesDropped++;
+        this.logger.warn(`Duplicate comment detected: ${messageHash}`);
+        this.rabbitMQService.ackMessage(msg);
+        return;
+      }
+
+      // Сохраняем комментарий
       const comment =
         await this.commentsService.saveCommentFromQueue(createCommentDto);
-      this.logger.log(`Comment created successfully: ${comment.id}`);
 
-      // Эмитим событие нового комментария
-      this.emitNewCommentEvent(comment);
+      // Обогащаем данными пользователя с ROLE
+      const commentWithUser: Awaited<
+        ReturnType<typeof this.enrichCommentWithUserData>
+      > = await this.enrichCommentWithUserData(
+        comment,
+        createCommentDto.userId,
+      );
 
-      // Добавляем в кэш обработанных
+      // Эмитим событие
+      this.emitNewCommentEvent(commentWithUser);
+
+      // Обновляем счетчики
+      this.updateRateLimit(createCommentDto.userId);
       this.processedCommentIds.add(messageHash);
-      this.cleanupProcessedCache();
 
-      // Подтверждаем обработку
       this.rabbitMQService.ackMessage(msg);
     } catch (error) {
-      this.logger.error('Error processing comment message:', error);
+      this.stats.errorsCount++;
+      this.logger.error('Error processing comment:', error);
       this.rabbitMQService.nackMessage(msg);
     }
   }
+  /**
+   * Проверяет, не превышает ли пользователь лимит комментариев в минуту
+   * @param userId - ID пользователя
+   * @returns true, если лимит не превышен, иначе false
+   */
+  private checkRateLimit(userId: string): boolean {
+    const now = Date.now();
+    const userLimit = this.userCommentCounts.get(userId);
 
+    if (!userLimit || now > userLimit.resetTime) {
+      this.userCommentCounts.set(userId, {
+        count: 0,
+        resetTime: now + this.RATE_LIMIT_WINDOW,
+      });
+      return true;
+    }
+
+    return userLimit.count < this.MAX_COMMENTS_PER_MINUTE;
+  }
+  /**
+   * Обновляет счетчик комментариев для пользователя
+   * @param userId - ID пользователя
+   */
+  private updateRateLimit(userId: string): void {
+    const userLimit = this.userCommentCounts.get(userId);
+    if (userLimit) {
+      userLimit.count++;
+    }
+  }
+  /**
+   * Обогащает комментарий данными пользователя
+   * @param comment - Комментарий, полученный из RabbitMQ
+   * @param userId - ID пользователя
+   * @returns Обогащенный комментарий с данными пользователя
+   */
+  private async enrichCommentWithUserData(
+    comment: Record<string, any>,
+    userId: string,
+  ): Promise<
+    Record<string, any> & {
+      postId: string;
+      user: {
+        id: string;
+        userName: string;
+        avatarUrl: string | null;
+        avatarShape: string;
+        slug?: string;
+        role: string;
+      };
+    }
+  > {
+    try {
+      const user = await this.usersService.findById(userId);
+
+      return {
+        ...comment,
+        postId: comment.postId as string,
+        user: {
+          id: userId,
+          userName: user?.userName || 'Anonymous',
+          avatarUrl: user?.avatarUrl || null,
+          avatarShape: user?.avatarShape || 'circle',
+          slug: user?.slug,
+          role: user?.role || 'user',
+        },
+      };
+    } catch {
+      this.logger.warn(`Failed to get user data for ${userId}`);
+      return {
+        ...comment,
+        postId: comment.postId as string,
+        user: {
+          id: userId,
+          userName: 'Anonymous',
+          avatarUrl: null,
+          avatarShape: 'circle',
+          role: 'user',
+        },
+      };
+    }
+  }
+  /**
+   * Эмитит событие о новом комментарии
+   * @param commentWithUser - Комментарий с данными пользователя
+   */
+  private emitNewCommentEvent(commentWithUser: {
+    [key: string]: any;
+    postId: string;
+  }) {
+    try {
+      if (this.commentsGateway) {
+        this.commentsGateway.emitNewComment(commentWithUser);
+      }
+    } catch (error) {
+      this.logger.error('Failed to emit new comment event:', error);
+    }
+  }
+  /**
+   * Очищает кэши и счетчики
+   * Вызывается периодически для предотвращения переполнения памяти
+   */
+  private cleanupCaches() {
+    const now = Date.now();
+
+    // Очищаем rate limit кэш
+    for (const [userId, limit] of this.userCommentCounts.entries()) {
+      if (now > limit.resetTime) {
+        this.userCommentCounts.delete(userId);
+      }
+    }
+
+    // Очищаем processed comments кэш
+    if (this.processedCommentIds.size > 1000) {
+      this.processedCommentIds.clear();
+      this.logger.log('Processed comments cache cleared');
+    }
+  }
+
+  // Метод для сброса статистики
+  resetStats() {
+    this.stats = {
+      totalProcessed: 0,
+      rateLimitedDropped: 0,
+      duplicatesDropped: 0,
+      errorsCount: 0,
+    };
+    this.logger.log('CommentsConsumer stats reset');
+  }
+
+  // Метод для emergency cleanup
+  emergencyCleanup() {
+    this.processedCommentIds.clear();
+    this.userCommentCounts.clear();
+    this.resetStats();
+    this.logger.warn('CommentsConsumer emergency cleanup performed');
+  }
+
+  // Геттеры для размеров кэшей (для внешнего мониторинга)
+  getProcessedCacheSize(): number {
+    return this.processedCommentIds.size;
+  }
+
+  getRateLimitEntries(): number {
+    return this.userCommentCounts.size;
+  }
+
+  // Дополняем существующий getStats() метод
+  getStats() {
+    return {
+      ...this.stats,
+      processedCacheSize: this.processedCommentIds.size,
+      rateLimitEntries: this.userCommentCounts.size,
+      maxCommentsPerMinute: this.MAX_COMMENTS_PER_MINUTE,
+      timestamp: new Date().toISOString(),
+    };
+  }
+  /*  * Проверяет, является ли сообщение валидным
+   * @param msg - Сообщение, полученное из RabbitMQ
+   * @returns true, если сообщение валидно, иначе false
+   */
   private isValidMessage(
     msg: unknown,
   ): msg is { content: { toString: () => string } } {
     return (
       typeof msg === 'object' &&
       msg !== null &&
-      !(msg instanceof Error) &&
       'content' in msg &&
-      typeof (msg as { content?: unknown })?.content === 'object' &&
-      (msg as { content?: unknown })?.content !== null &&
-      typeof (
-        (msg as { content?: { toString?: unknown } })?.content as {
-          toString?: unknown;
-        }
-      )?.toString === 'function'
+      typeof (msg as { content?: unknown }).content === 'object' &&
+      msg.content !== null &&
+      typeof (msg as { content: { toString?: unknown } }).content.toString ===
+        'function'
     );
   }
-
+  /**
+   * Парсит содержимое сообщения и возвращает CreateCommentDto
+   * @param content - Содержимое сообщения в виде строки
+   * @returns CreateCommentDto или null, если парсинг не удался
+   */
   private parseMessageContent(content: string): CreateCommentDto | null {
     try {
-      const parsed = JSON.parse(content) as {
-        createCommentDto: CreateCommentDto;
-      };
-
+      const parsed = JSON.parse(content) as unknown;
       if (
-        !parsed.createCommentDto ||
-        !parsed.createCommentDto.userId ||
-        !parsed.createCommentDto.content
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'createCommentDto' in parsed &&
+        typeof (parsed as { createCommentDto?: unknown }).createCommentDto ===
+          'object' &&
+        (parsed as { createCommentDto?: unknown }).createCommentDto !== null &&
+        'userId' in
+          ((parsed as { createCommentDto: any }).createCommentDto ?? {}) &&
+        'content' in
+          ((parsed as { createCommentDto: any }).createCommentDto ?? {})
       ) {
-        this.logger.error('Invalid comment data structure', parsed);
-        return null;
+        return (parsed as { createCommentDto: CreateCommentDto })
+          .createCommentDto;
       }
-
-      return parsed.createCommentDto;
-    } catch (parseError) {
-      this.logger.error('Failed to parse message content as JSON', parseError);
+      return null;
+    } catch {
       return null;
     }
   }
-
+  /**
+   * Генерирует хэш сообщения для предотвращения дублирования
+   * @param createCommentDto - DTO комментария
+   * @returns Хэш сообщения
+   */
   private generateMessageHash(createCommentDto: CreateCommentDto): string {
-    const now = Date.now();
-    const timeWindow = Math.floor(now / 3000); // 3-секундные окна для комментариев
+    const timeWindow = Math.floor(Date.now() / 3000); // 3-секундные окна
     return `${createCommentDto.userId}-${createCommentDto.postId}-${timeWindow}-${createCommentDto.content.substring(0, 30)}`;
-  }
-
-  private emitNewCommentEvent(comment: any) {
-    try {
-      // Проверяем, что gateway доступен
-      if (!this.commentsGateway) {
-        this.logger.error('CommentsGateway not available');
-        return;
-      }
-
-      // Проверяем наличие необходимого свойства postId
-      if (
-        !comment ||
-        typeof comment !== 'object' ||
-        comment === null ||
-        !('postId' in comment) ||
-        typeof (comment as { postId?: unknown }).postId !== 'string'
-      ) {
-        this.logger.error(
-          'Comment is missing required postId property',
-          comment,
-        );
-        return;
-      }
-
-      // Эмитим событие нового комментария (без await, т.к. метод не возвращает Promise)
-      this.commentsGateway.emitNewComment(
-        comment as { [key: string]: any; postId: string },
-      );
-      const typedComment = comment as { id: string; postId: string };
-      this.logger.log(
-        'New comment event emitted for comment:',
-        typedComment.id,
-        'on post:',
-        typedComment.postId,
-      );
-    } catch (error) {
-      this.logger.error('Failed to emit new comment event:', error);
-    }
-  }
-
-  private cleanupProcessedCache() {
-    // Очищаем кэш каждые 500 сообщений
-    if (this.processedCommentIds.size > 500) {
-      this.processedCommentIds.clear();
-      this.logger.log('Processed comments cache cleared');
-    }
   }
 }

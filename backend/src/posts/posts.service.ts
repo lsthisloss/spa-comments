@@ -81,6 +81,9 @@ export class PostsService {
           userName: true,
           avatarUrl: true,
           avatarShape: true,
+          slug: true,
+          email: true,
+          role: true,
         },
       },
     });
@@ -95,6 +98,9 @@ export class PostsService {
       userName: post.user?.userName,
       avatarUrl: post.user?.avatarUrl,
       avatarShape: post.user?.avatarShape,
+      slug: post.user?.slug,
+      email: post.user?.email,
+      role: post.user?.role,
     };
 
     return response;
@@ -104,7 +110,15 @@ export class PostsService {
     const userIds = [...new Set(posts.map((post) => post.userId))];
     const users = await this.userRepository.find({
       where: { id: In(userIds) },
-      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
+      select: [
+        'id',
+        'userName',
+        'avatarUrl',
+        'avatarShape',
+        'slug',
+        'email',
+        'role',
+      ],
     });
 
     const userMap = new Map<string, UserBasicDto>();
@@ -116,6 +130,7 @@ export class PostsService {
         avatarShape: user.avatarShape,
         slug: user.slug,
         email: user.email,
+        role: user.role,
       }),
     );
 
@@ -126,6 +141,41 @@ export class PostsService {
       response.user = userMap.get(post.userId);
       return response;
     });
+  }
+
+  async getPostBySlug(slug: string): Promise<PostResponseDto | undefined> {
+    const post = await this.postRepository.findOne({
+      where: { slug },
+      relations: ['user'],
+      select: {
+        user: {
+          id: true,
+          userName: true,
+          avatarUrl: true,
+          avatarShape: true,
+          slug: true,
+          email: true,
+          role: true,
+        },
+      },
+    });
+
+    if (!post) return undefined;
+
+    const response = new PostResponseDto();
+    Object.assign(response, post);
+    response.userName = post.user?.userName || 'Unknown';
+    response.user = {
+      id: post.user?.id,
+      userName: post.user?.userName,
+      avatarUrl: post.user?.avatarUrl,
+      avatarShape: post.user?.avatarShape,
+      slug: post.user?.slug,
+      email: post.user?.email,
+      role: post.user?.role,
+    };
+
+    return response;
   }
 
   async getAllPosts(): Promise<PostResponseDto[]> {
@@ -241,35 +291,6 @@ export class PostsService {
       console.error('Error getting user posts count:', error);
       return 0;
     }
-  }
-
-  async getPostBySlug(slug: string): Promise<PostResponseDto | undefined> {
-    const post = await this.postRepository.findOne({
-      where: { slug },
-      relations: ['user'],
-      select: {
-        user: {
-          id: true,
-          userName: true,
-          avatarUrl: true,
-          avatarShape: true,
-        },
-      },
-    });
-
-    if (!post) return undefined;
-
-    const response = new PostResponseDto();
-    Object.assign(response, post);
-    response.userName = post.user?.userName || 'Unknown';
-    response.user = {
-      id: post.user?.id,
-      userName: post.user?.userName,
-      avatarUrl: post.user?.avatarUrl,
-      avatarShape: post.user?.avatarShape,
-    };
-
-    return response;
   }
 
   async getFollowingPostsCount(userId: string): Promise<number> {

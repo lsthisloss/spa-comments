@@ -60,12 +60,25 @@ export class CommentsGateway
     @MessageBody() createCommentDto: CreateCommentDto,
     @ConnectedSocket() client: Socket,
   ) {
-    const userData = client.data as { user?: { id?: string } };
+    const userData = client.data as { user?: { id?: string; role?: string } };
     const userId = userData.user?.id;
+    const userRole = userData.user?.role || 'user';
 
     if (!userId) {
       console.error('No userId found in socket data');
       return { success: false, message: 'User not authenticated' };
+    }
+
+    // Проверка капчи только для обычных пользователей
+    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+
+    // Если пользователь НЕ админ, проверяем капчу
+    if (!isAdmin) {
+      // Используем новый метод для проверки верификации капчи
+      const captchaVerified = this.commonWsService.isCaptchaVerified(client);
+      if (!captchaVerified) {
+        return { success: false, message: 'CAPTCHA verification required' };
+      }
     }
 
     // Устанавливаем ID авторизованного пользователя

@@ -1,15 +1,13 @@
-import React, { useState, useEffect, memo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, memo, useCallback, useRef, useMemo } from 'react';
 import { Dropdown, Typography, Avatar, Space, Card, Button, Spin, Empty } from 'antd';
 import { LikeOutlined, LikeFilled, MessageOutlined } from '@ant-design/icons';
 import { Comment } from '../../types/interfaces';
-import userStore from '../../services/stores/UserStore';
-import { commentStore } from '../../services/stores/CommentStore';
 import { getAvatarColor } from '../ui/particles/avatarColor';
 import { observer } from 'mobx-react-lite';
 import { logger } from '../../utils/Logger';
-import { postStore } from '../../services/stores/PostStore';
 import { useNavigationHelper } from '../../hooks/useNavigationHelper';
-
+import AdminBadge from '../ui/particles/AdminBadge';
+import { useCommentStore, usePostStore, useUserStore, } from '../../hooks/useStore';
 // Simplified comment preview component
 const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
   comment: Comment;
@@ -17,15 +15,27 @@ const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
   onLike: (commentId: string) => void;
   isLiked: boolean;
 }) => {
+   const userStore = useUserStore();
+ 
   const avatarLetter = (comment.user?.userName?.[0] || comment.userName?.[0] || '?').toUpperCase();
   const avatarUrl = comment.user?.avatarUrl;
   const avatarShape = comment.user?.avatarShape || 'circle';
-  
+  const userRole = useMemo(() => {
+      // Сначала из comment.user
+      if (comment.user?.role) return comment.user.role;
+      
+      // Потом из кэша
+      if (comment.user?.id) {
+        const cachedUser = userStore.getCachedUser(comment.user.id);
+        if (cachedUser?.role) return cachedUser.role;
+      }
+      
+      return 'user';
+    }, [comment.user?.role, comment.user?.id, userStore]);
   // Truncate content for preview
   const content = comment.content.length > 60 
     ? `${comment.content.substring(0, 60)}...` 
     : comment.content;
-  
   // Event handlers with memoization
   const handleClick = useCallback(() => onClick(comment.id), [comment.id, onClick]);
   
@@ -59,10 +69,13 @@ const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
         )}
         
         {/* Content */}
-        <div className="comment-preview-content">
-          <Typography.Text strong className="comment-preview-username">
-            {comment.user?.userName || comment.userName || 'Anonymous'}
-          </Typography.Text>
+               <div className="comment-preview-content">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+            <Typography.Text strong className="comment-preview-username">
+              {comment.user?.userName || comment.userName || 'Anonymous'}
+            </Typography.Text>
+            <AdminBadge role={userRole} className="preview-admin-badge" />
+          </div>
           <Typography.Paragraph 
             ellipsis={{ rows: 2 }} 
             className="comment-preview-text"
@@ -99,7 +112,9 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isMountedRef = useRef(true);
-  
+  const userStore = useUserStore();
+  const postStore = usePostStore();
+  const commentStore = useCommentStore();
   const userId = userStore.user?.id;
   const { navigateToEntity } = useNavigationHelper();
   
@@ -140,7 +155,7 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
   const handleLike = useCallback((commentId: string) => {
     if (!userId || !isMountedRef.current) return;
     commentStore.toggleLike(commentId, userId);
-  }, [userId]);
+  }, [userId, commentStore]);
   
   // Load comments when dropdown opens
   const loadCommentsOnOpen = useCallback(async () => {
@@ -167,7 +182,7 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
         setLoading(false);
       }
     }
-  }, [postSlug, hasLoaded, loading, entityType, entity]);
+  }, [postSlug, hasLoaded, loading, entityType, entity, commentStore]);
   
   // Handle dropdown visibility change
   const handleVisibleChange = useCallback((newVisible: boolean) => {
@@ -189,7 +204,7 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
     
     setVisible(false);
     navigateToEntity('comment', comment.slug);
-  }, [navigateToEntity]);
+  }, [navigateToEntity, commentStore]);
   
   // Handle "View all" click
   const handleViewAll = useCallback(() => {

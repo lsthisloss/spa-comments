@@ -1,10 +1,14 @@
 import { makeObservable, observable, action, runInAction } from 'mobx';
 import { message } from 'antd';
-import { socketStore } from './SocketStore';
 import { logger } from "../../utils/Logger";
 import { SendData } from '../../types/interfaces';
-import { postStore } from './PostStore';
-import { commentStore } from './CommentStore';
+import { FileUtils } from '../../utils/FileUtils';
+import { ContentSanitizer } from '../../utils/ContentSanitizer';
+import { IdResolver } from '../../utils/IdResolver';
+
+// Импортируем типы сторов
+import type SocketStore from './SocketStore';
+import type UserStore from './UserStore';
 
 class SendFormStore {
   text = "";
@@ -17,15 +21,16 @@ class SendFormStore {
   loading = false;
   userId = "";
   userName = "";
-  MAX_TEXT_LENGTH = 1000;
   dragActive = false;
   avatarUrl: string | null = null;
   avatarShape: 'circle' | 'square' = 'circle';
+  captchaVerified = false;
+  private socketStore: SocketStore;
+  private userStore: UserStore;
 
-  // Разрешенные HTML теги
-  private readonly ALLOWED_TAGS = ['b', 'i', 'u', 'br'];
-
-  constructor() {
+  constructor(socketStore: SocketStore, userStore: UserStore) {
+    this.socketStore = socketStore;
+    this.userStore = userStore;
     makeObservable(this, {
       text: observable,
       imagePreview: observable,
@@ -38,6 +43,7 @@ class SendFormStore {
       dragActive: observable,
       avatarUrl: observable,
       avatarShape: observable,
+      captchaVerified: observable,
       setText: action,
       setImagePreview: action,
       setSelectedFile: action,
@@ -53,9 +59,11 @@ class SendFormStore {
       handleFileUpload: action,
       handleDragDrop: action,
       initializeUser: action,
+      setCaptchaVerified: action,
     });
   }
 
+  // Методы инициализации и установки
   initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
     // Проверяем, нужно ли обновлять данные
     const needsUpdate = 
@@ -82,6 +90,11 @@ class SendFormStore {
       avatarShape: this.avatarShape
     });
   });
+
+  // Сеттеры
+  setCaptchaVerified = (value: boolean) => {
+    this.captchaVerified = value;
+  };
 
   setText = action((value: string) => {
     this.text = value;
@@ -140,92 +153,13 @@ class SendFormStore {
     this.dragActive = false;
   });
 
-  // Валидация изображения
-  validateImageFile(file: File): boolean {
-    const fileName = file.name.toLowerCase();
-    const fileExtension = fileName.split('.').pop();
-    
-    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-    if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
-      message.error(`Invalid image format. Only JPG, PNG, and GIF files are allowed.`);
-      return false;
-    }
-
-    const maxImageSize = 10 * 1024 * 1024;
-    if (file.size > maxImageSize) {
-      message.error('Image file size must be less than 10MB.');
-      return false;
-    }
-
-    return true;
-  }
-
-  // Валидация текстового файла
-  validateTextFile(file: File): boolean {
-    if (file.type !== 'text/plain') {
-      message.error('Only .txt files are allowed.');
-      return false;
-    }
-
-    const maxTextFileSize = 100 * 1024; // 100KB
-    if (file.size > maxTextFileSize) {
-      message.error('Text file size must not exceed 100KB.');
-      return false;
-    }
-
-    return true;
-  }
-
-  // Ресайз изображения
-  resizeImageToFit(file: File, callback: (resizedDataUrl: string) => void) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    
-    img.onload = () => {
-      const maxWidth = 320;
-      const maxHeight = 240;
-      
-      let { width, height } = img;
-      
-      if (width > maxWidth || height > maxHeight) {
-        const widthRatio = maxWidth / width;
-        const heightRatio = maxHeight / height;
-        const ratio = Math.min(widthRatio, heightRatio);
-        
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height);
-        const resizedDataUrl = canvas.toDataURL(file.type, 0.9);
-        callback(resizedDataUrl);
-      }
-    };
-    
-    img.onerror = () => {
-      message.error('Failed to process image file.');
-    };
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result) {
-        img.src = e.target.result as string;
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-
+  // Обработчики файлов - теперь используют вынесенные методы
   handleImageUpload = action((file: File) => {
-    if (!this.validateImageFile(file)) {
+    if (!FileUtils.validateImageFile(file)) {
       return;
     }
 
-    this.resizeImageToFit(file, (resizedDataUrl) => {
+    FileUtils.resizeImageToFit(file, (resizedDataUrl) => {
       runInAction(() => {
         this.selectedImageFile = file;
         this.imagePreview = resizedDataUrl;
@@ -236,7 +170,7 @@ class SendFormStore {
   });
 
   handleFileUpload = action((file: File) => {
-    if (!this.validateTextFile(file)) {
+    if (!FileUtils.validateTextFile(file)) {
       return;
     }
 
@@ -248,19 +182,14 @@ class SendFormStore {
   });
 
   handleDragDrop = action((file: File) => {
-    const fileName = file.name.toLowerCase();
-    const fileExtension = fileName.split('.').pop();
+    const fileType = FileUtils.getFileType(file);
     
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-    const isImageByExtension = fileExtension && imageExtensions.includes(fileExtension);
-    const isImageByMimeType = file.type.startsWith('image/');
-    
-    if (isImageByExtension || isImageByMimeType) {
+    if (fileType === 'image') {
       if (this.selectedImageFile) {
         message.warning('Replacing existing image');
       }
       this.handleImageUpload(file);
-    } else if (fileExtension === 'txt' || file.type === 'text/plain') {
+    } else if (fileType === 'text') {
       if (this.selectedFile) {
         message.warning('Replacing existing file');
       }
@@ -270,326 +199,243 @@ class SendFormStore {
     }
   });
 
-  private sanitizeContent(text: string): { valid: boolean; sanitized: string; error?: string } {
-    // Base checks
-    if (!text || typeof text !== 'string') {
-      return { valid: true, sanitized: '' };
-    }
-
-    const trimmedText = text.trim();
-    if (trimmedText.length === 0) {
-      return { valid: true, sanitized: '' };
-    }
-
-    // Length check
-    if (trimmedText.length > this.MAX_TEXT_LENGTH) {
-      return { 
-        valid: false, 
-        sanitized: '', 
-        error: `Content exceeds maximum length of ${this.MAX_TEXT_LENGTH} characters` 
-      };
-    }
-
-    // Security check for dangerous patterns
-    const dangerousPatterns = [
-      /<script\b/gi,
-      /javascript:/gi,
-      /on\w+\s*=/gi,
-      /<iframe\b/gi,
-      /<object\b/gi,
-      /<embed\b/gi,
-      /<form\b/gi
-    ];
-
-    if (dangerousPatterns.some(pattern => pattern.test(trimmedText))) {
-      return { 
-        valid: false, 
-        sanitized: '', 
-        error: 'Content contains unsafe elements' 
-      };
-    }
-
-    // Process HTML tags
-    const allowedTagsRegex = new RegExp(`</?(?:${this.ALLOWED_TAGS.join('|')})(?:\\s[^>]*)?>`, 'gi');
-    const allTagsRegex = /<[^>]*>/g;
+  // Методы отправки данных
+  private shouldShowCaptcha(): boolean {
+    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') || 
+                    (this.userStore && this.userStore.user?.role === 'superadmin');
     
-    // Find all tags
-    const allTags = trimmedText.match(allTagsRegex) || [];
-    const allowedTags = trimmedText.match(allowedTagsRegex) || [];
-    
-    // If there are disallowed tags - sanitize by removing all HTML
-    if (allTags.length !== allowedTags.length) {
-      return { 
-        valid: false, 
-        sanitized: trimmedText.replace(allTagsRegex, ''), 
-        error: 'Content contains disallowed HTML tags. Only <b>, <i>, <u>, <br> are allowed.'
-      };
-    }
-
-    // Check tag pairs (except <br>)
-    const tagStack: string[] = [];
-    const tagRegex = /<\/?([a-zA-Z]+)(?:\s[^>]*)?>?/g;
-    let match;
-    let invalidPairs = false;
-    
-    while ((match = tagRegex.exec(trimmedText)) !== null) {
-      const fullTag = match[0];
-      const tagName = match[1].toLowerCase();
-      
-      // <br> is self-closing
-      if (tagName === 'br') continue;
-      
-      if (fullTag.startsWith('</')) {
-        // Closing tag
-        if (tagStack.length === 0 || tagStack.pop() !== tagName) {
-          invalidPairs = true;
-          break;
-        }
-      } else {
-        // Opening tag
-        tagStack.push(tagName);
-      }
-    }
-    
-    if (invalidPairs || tagStack.length > 0) {
-      return { 
-        valid: false, 
-        sanitized: trimmedText.replace(allTagsRegex, ''), 
-        error: 'HTML tags are not properly paired'
-      };
-    }
-
-    return { valid: true, sanitized: trimmedText };
+    return !isAdmin && !this.captchaVerified;
   }
 
-  /**
-   * Helper to resolve IDs from slugs
-   */
-  private resolveIds(
-    type: "post" | "comment", 
-    parentIdOrPostId?: string, 
-    postIdForNestedComment?: string, 
-    parentSlug?: string, 
-    postSlug?: string
-  ): { parentId?: string; postId?: string; error?: string } {
-    let effectiveParentId = parentIdOrPostId;
-    let effectivePostId = postIdForNestedComment;
+  private prepareBaseData(
+    type: "post" | "comment",
+    resolvedIds: { parentId?: string; postId?: string }
+  ): SendData {
+    const { sanitized } = ContentSanitizer.sanitizeContent(this.text);
     
-    // Resolve parent comment from slug if needed
-    if (type === "comment" && !effectiveParentId && parentSlug) {
-      const comment = commentStore.getCommentBySlug(parentSlug);
-      if (comment) {
-        effectiveParentId = comment.id;
-        
-        // If comment has postId, use it
-        if (!effectivePostId && comment.postId) {
-          logger.log(`[SendFormStore] Using postId from parent comment: ${comment.postId}`);
-          effectivePostId = comment.postId;
-        }
-      } else {
-        return { error: "Parent comment not found" };
-      }
-    }
-    
-    // Resolve post from slug if needed
-    if (!effectivePostId && postSlug) {
-      // Check if postSlug is actually a UUID
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(postSlug);
-      
-      if (isUUID) {
-        // If UUID, use directly as ID
-        logger.log(`[SendFormStore] Using postSlug as postId directly: ${postSlug}`);
-        effectivePostId = postSlug;
-      } else {
-        // If slug, lookup post in store
-        const post = postStore.getPostBySlug(postSlug);
-        if (post) {
-          effectivePostId = post.id;
-          logger.log(`[SendFormStore] Resolved postSlug ${postSlug} to ID ${effectivePostId}`);
-        } else {
-          logger.error(`[SendFormStore] Post not found for slug: ${postSlug}`);
-          return { error: "Post not found" };
-        }
-      }
-    }
-    
-    // Validation: comments must have a post ID
-    if (type === "comment" && !effectivePostId) {
-      logger.error("[SendFormStore] Failed to determine postId for comment");
-      return { error: "Cannot determine post ID for this comment" };
-    }
-    
-    return { parentId: effectiveParentId, postId: effectivePostId };
-  }
-
-  // Simplified send method
-async send(
-  type: "post" | "comment",
-  parentIdOrPostId?: string,
-  postIdForNestedComment?: string,
-  onSuccess?: () => void,
-  parentSlug?: string,
-  postSlug?: string
-) {
-  logger.log(`[SendFormStore] send called with: type=${type}, parentSlug=${parentSlug}, postSlug=${postSlug}`);
-
-  if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
-    runInAction(() => {
-      this.setError("Please enter some text, upload an image, or attach a file.");
-    });
-    return;
-  }
-
-  // Validate content using unified function
-  const { valid, sanitized, error } = this.sanitizeContent(this.text);
-  if (!valid) {
-    runInAction(() => {
-      this.setError(error || "Invalid content");
-    });
-    return;
-  }
-
-  if (!this.userId || this.userId.trim() === '') {
-    runInAction(() => {
-      this.setError("You must be logged in to post.");
-    });
-    return;
-  }
-
-  const socket = socketStore[type === "post" ? "posts" : "comments"];
-  if (!socket) {
-    runInAction(() => {
-      this.setError("Connection error. Please try again.");
-    });
-    return;
-  }
-
-  runInAction(() => {
-    this.setLoading(true);
-  });
-
-  // Resolve IDs from slugs
-  const resolved = this.resolveIds(type, parentIdOrPostId, postIdForNestedComment, parentSlug, postSlug);
-  
-  if (resolved.error) {
-    runInAction(() => {
-        this.setError(resolved.error || "An error occurred");
-        this.setLoading(false);
-      });
-    return;
-  }
-
-  // Form base data with resolved IDs
-  const baseData: SendData = {
-    userId: this.userId,
-    content: sanitized,
-    userName: this.userName,
-    postId: resolved.postId,
-    parentId: resolved.parentId,
-    image: {
-      name: '',
-      type: '',
-      base64: ''
-    }
-  };
-
-  // Логируем полученные данные перед отправкой
-  logger.log(`[SendFormStore] Sending ${type} with data:`, {
-    parentId: baseData.parentId,
-    postId: baseData.postId
-  });
-
-  if (type === "comment") {
-    if (resolved.parentId && !resolved.postId) {
-      // Ответ на комментарий
-      baseData.parentId = resolved.parentId;
-    } else if (resolved.parentId && resolved.postId) {
-      // Вложенный комментарий
-      baseData.parentId = resolved.parentId;
-      baseData.postId = resolved.postId;
-    } else if (resolved.postId) {
-      // Комментарий к посту
-      baseData.postId = resolved.postId;
-    }
-  }
-    const emitData = () => {
-      socket.emit(
-        type === "post" ? "addPost" : "addComment",
-        baseData,
-        (ack: { success: boolean; message?: string }) => {
-          runInAction(() => {
-            this.setLoading(false);
-            if (ack.success) {
-              this.setSuccess("Your content has been posted successfully");
-              onSuccess?.();
-              this.resetForm();
-            } else if (ack.message) {
-              this.setError(ack.message);
-            }
-          });
-        }
-      );
+    // Формируем базовые данные
+    const baseData: SendData = {
+      userId: this.userId,
+      content: sanitized,
+      userName: this.userName,
+      postId: resolvedIds.postId,
+      parentId: resolvedIds.parentId,
+      image: { name: '', type: '', base64: '' }
     };
 
+    // Настройка для комментариев
+    if (type === "comment") {
+      if (resolvedIds.parentId && !resolvedIds.postId) {
+        // Ответ на комментарий
+        baseData.parentId = resolvedIds.parentId;
+      } else if (resolvedIds.parentId && resolvedIds.postId) {
+        // Вложенный комментарий
+        baseData.parentId = resolvedIds.parentId;
+        baseData.postId = resolvedIds.postId;
+      } else if (resolvedIds.postId) {
+        // Комментарий к посту
+        baseData.postId = resolvedIds.postId;
+      }
+    }
+
+    return baseData;
+  }
+
+  private emitData(
+    type: "post" | "comment",
+    baseData: SendData,
+    onSuccess?: () => void
+  ): void {
+    const socket = this.socketStore[type === "post" ? "posts" : "comments"];
+    
+    // Добавляем роль пользователя для серверной проверки
+    const dataWithRole = {
+      ...baseData,
+      userRole: this.userStore?.user?.role || 'user'
+    };
+
+    if (!socket) {
+      runInAction(() => {
+        this.setLoading(false);
+        this.setError("Connection error. Please try again.");
+      });
+      return;
+    }
+
+    socket.emit(
+      type === "post" ? "addPost" : "addComment",
+      dataWithRole,
+      (ack: { success: boolean; message?: string }) => {
+        runInAction(() => {
+          this.setLoading(false);
+          if (ack.success) {
+            this.setSuccess("Your content has been posted successfully");
+            onSuccess?.();
+            this.resetForm();
+          } else if (ack.message) {
+            this.setError(ack.message);
+          }
+        });
+      }
+    );
+  }
+
+  private async handleAttachments(baseData: SendData): Promise<SendData> {
+  if (this.selectedImageFile && this.selectedFile) {
+    // И изображение, и файл
+    const imageBase64 = this.imagePreview!.split(",")[1];
+    const fileBase64 = await FileUtils.readFileAsBase64(this.selectedFile);
+    
+    return {
+      ...baseData,
+      image: {
+        name: this.selectedImageFile.name,
+        type: this.selectedImageFile.type,
+        base64: imageBase64
+      },
+      file: {
+        name: this.selectedFile.name,
+        type: this.selectedFile.type,
+        base64: fileBase64
+      }
+    };
+  }
+  else if (this.selectedImageFile && this.imagePreview) {
+    // Только изображение
+    const base64 = this.imagePreview.split(",")[1];
+    
+    return {
+      ...baseData,
+      image: {
+        name: this.selectedImageFile.name,
+        type: this.selectedImageFile.type,
+        base64: base64
+      }
+    };
+  }
+  else if (this.selectedFile) {
+    // Только файл
+    const base64 = await FileUtils.readFileAsBase64(this.selectedFile);
+    
+    return {
+      ...baseData,
+      file: {
+        name: this.selectedFile.name,
+        type: this.selectedFile.type,
+        base64: base64
+      }
+    };
+  }
+  
+  // Только текст
+  return baseData;
+}
+
+  /**
+   * Отправляет данные на сервер.
+   * @param type Тип отправляемых данных: "post" или "comment".
+   * @param parentIdOrPostId ID родительского комментария или поста.
+   * @param postIdForNestedComment ID поста для вложенного комментария.
+   * @param onSuccess Функция, вызываемая при успешной отправке.
+   * @param parentSlug Слаг родительского комментария или поста.
+   * @param postSlug Слаг поста для вложенного комментария.
+   */
+  async send(
+    type: "post" | "comment",
+    parentIdOrPostId?: string,
+    postIdForNestedComment?: string,
+    onSuccess?: () => void,
+    parentSlug?: string,
+    postSlug?: string
+  ) {
+    logger.log(`[SendFormStore] send called with: type=${type}, parentSlug=${parentSlug}, postSlug=${postSlug}`);
+
+    // 1. Проверяем наличие контента
+    if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
+      runInAction(() => {
+        this.setError("Please enter some text, upload an image, or attach a file.");
+      });
+      return;
+    }
+
+    // 2. Проверяем необходимость капчи
+    if (this.shouldShowCaptcha()) {
+      runInAction(() => {
+        this.setCaptchaVisible(true);
+      });
+      return;
+    }
+
+    // 3. Проверяем текст на валидность
+    const { valid, error } = ContentSanitizer.sanitizeContent(this.text);
+    if (!valid) {
+      runInAction(() => {
+        this.setError(error || "Invalid content");
+      });
+      return;
+    }
+
+    // 4. Проверяем пользователя
+    if (!this.userId || this.userId.trim() === '') {
+      runInAction(() => {
+        this.setError("You must be logged in to post.");
+      });
+      return;
+    }
+
+    // 5. Проверяем соединение
+    const socket = this.socketStore[type === "post" ? "posts" : "comments"];
+    if (!socket) {
+      runInAction(() => {
+        this.setError("Connection error. Please try again.");
+      });
+      return;
+    }
+
+    // 6. Устанавливаем состояние загрузки
+    runInAction(() => {
+      this.setLoading(true);
+    });
+
+    // 7. Сбрасываем флаг капчи, если это не админ
+    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') || 
+                 (this.userStore && this.userStore.user?.role === 'superadmin');
+                 
+  // Устанавливаем флаг в true для админов, для остальных сбрасываем
+  this.setCaptchaVerified(isAdmin);
+
     try {
-      // Логика отправки файлов (без изменений)
-      if (this.selectedImageFile && this.selectedFile) {
-        // И изображение, и файл
-        const imageBase64 = this.imagePreview!.split(",")[1];
-        const file = this.selectedFile;
-        
-        const reader = new FileReader();
-        reader.onload = () => {
-          const fileBase64 = (reader.result as string).split(",")[1];
-          
-          baseData.image = {
-            name: this.selectedImageFile!.name,
-            type: this.selectedImageFile!.type,
-            base64: imageBase64
-          };
-          
-          baseData.file = {
-            name: file.name,
-            type: file.type,
-            base64: fileBase64
-          };
-          
-          emitData();
-        };
-        reader.readAsDataURL(file);
+      // 8. Получаем ID из слагов
+      const resolved = IdResolver.resolveIds(
+        type, 
+        parentIdOrPostId, 
+        postIdForNestedComment, 
+        parentSlug, 
+        postSlug
+      );
+      
+      if (resolved.error) {
+        runInAction(() => {
+          this.setError(resolved.error || "An error occurred");
+          this.setLoading(false);
+        });
+        return;
       }
-      else if (this.selectedImageFile && this.imagePreview) {
-        // Только изображение
-        const base64 = this.imagePreview.split(",")[1];
-        
-        baseData.image = {
-          name: this.selectedImageFile.name,
-          type: this.selectedImageFile.type,
-          base64: base64
-        };
-        
-        emitData();
-      }
-      else if (this.selectedFile) {
-        // Только файл
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(",")[1];
-          
-          baseData.file = {
-            name: this.selectedFile!.name,
-            type: this.selectedFile!.type,
-            base64: base64
-          };
-          
-          emitData();
-        };
-        reader.readAsDataURL(this.selectedFile);
-      }
-      else {
-        // Только текст
-        emitData();
-      }
+
+      // 9. Подготавливаем данные для отправки
+      const baseData = this.prepareBaseData(type, resolved);
+      
+      // 10. Логируем отправляемые данные
+      logger.log(`[SendFormStore] Sending ${type} with data:`, {
+        parentId: baseData.parentId,
+        postId: baseData.postId
+      });
+
+      // 11. Добавляем вложения
+      const dataWithAttachments = await this.handleAttachments(baseData);
+      
+      // 12. Отправляем данные
+      this.emitData(type, dataWithAttachments, onSuccess);
     } catch (error) {
       runInAction(() => {
         this.setLoading(false);
@@ -600,4 +446,4 @@ async send(
   }
 }
 
-export const sendFormStore = new SendFormStore();
+export default SendFormStore;

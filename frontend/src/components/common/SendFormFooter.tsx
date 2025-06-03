@@ -11,7 +11,7 @@ interface FormFooterProps {
   disabled?: boolean;
   loading?: boolean;
 }
-
+//Компонент для отображения нижней части формы отправки комментария или поста
 export default function SendFormFooter({ 
   text, 
   maxLength, 

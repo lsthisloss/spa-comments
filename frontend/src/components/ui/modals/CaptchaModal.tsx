@@ -1,106 +1,129 @@
-import { Modal, Form, Input, Button } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Modal, Button, Input, Form } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useState, useEffect } from 'react';
-import { socketStore } from '../../../services/stores/SocketStore';
-import { User } from '../../../types/interfaces';
-
-/*
-  CaptchaModal — компонент для отображения модального окна с CAPTCHA
-  - Использует сокеты для генерации и проверки CAPTCHA
-  - При успешной проверке вызывает функцию onSubmit с данными
-  - Позволяет пользователю обновить CAPTCHA
-*/
+import { useSendFormStore, useSocketStore } from '../../../hooks/useStore';
+import { UserRole } from '../../../types/interfaces';
 
 interface CaptchaModalProps {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (data: { text: string; userInfo: User; captcha: string }) => void;
-  text: string;
-  userInfo: User;
+  onSubmit: () => void;
+  userRole: UserRole;
+  socketType?: 'posts' | 'comments';
 }
 
-export default function CaptchaModal({ visible, onClose, onSubmit, text, userInfo }: CaptchaModalProps) {
-  const socket = socketStore.comments;
-  const [captchaImage, setCaptchaImage] = useState('');
+const CaptchaModal: React.FC<CaptchaModalProps> = ({ 
+  visible, 
+  onClose, 
+  onSubmit,
+  userRole,
+  socketType = 'comments'
+}) => {
+  const socketStore = useSocketStore();
+  const sendFormStore = useSendFormStore();
+  const socket = socketType === 'posts' ? socketStore.posts : socketStore.comments;
+    const [captchaImage, setCaptchaImage] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [captchaError, setCaptchaError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+const refreshCaptcha = React.useCallback(() => {
+  if (socket) {
+    socket.emit('generateCaptcha', {}, (response: { image: string }) => {
+      setCaptchaImage(response.image);
+    });
+  }
+}, [socket]);
+
 
   useEffect(() => {
     if (visible && socket) {
       setInputValue('');
-      socket.emit('generateCaptcha', {}, (response: { image: string }) => {
-        setCaptchaImage(response.image);
-      });
+      refreshCaptcha();
     }
-  }, [visible, socket]);
+  }, [visible, socket, refreshCaptcha]);
 
-  const refreshCaptcha = () => {
-    if (socket) {
+
+const handleSubmit = () => {
+  if (!socket) return;
+
+  setLoading(true);
+  socket.emit('validateCaptcha', { captcha: inputValue }, (response: { valid: boolean }) => {
+    setLoading(false);
+    if (response.valid) {
+      setCaptchaError('');
+      // Устанавливаем флаг в сторе
+      sendFormStore.setCaptchaVerified(true);
+      onSubmit();
+      onClose();
+    } else {
+      setCaptchaError('Incorrect captcha. Please try again.');
+      refreshCaptcha();
       setInputValue('');
-      socket.emit('generateCaptcha', {}, (response: { image: string }) => {
-        setCaptchaImage(response.image);
-      });
     }
-  };
-
-  const handleSubmit = () => {
-    if (socket) {
-      socket.emit('validateCaptcha', { captcha: inputValue }, (response: { valid: boolean }) => {
-        if (response.valid) {
-          setCaptchaError('');
-          onSubmit({ text, userInfo, captcha: inputValue });
-          onClose();
-        } else {
-          setCaptchaError('Captcha is incorrect. Please try again.');
-          refreshCaptcha();
-        }
-      });
-    }
-  };
+  });
+};
 
   return (
     <Modal
-      className="modal"
-      title="CAPTCHA Verification"
-      open={visible}
+      title="Security Check"
+      open={visible && userRole === 'user'} // Показываем только для обычных пользователей
       onCancel={onClose}
       footer={null}
       centered
     >
-      <Form layout="vertical" onFinish={handleSubmit}>
-        <Form.Item>
-          <div className="captcha-container" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src={`data:image/svg+xml;base64,${btoa(captchaImage)}`} alt="CAPTCHA" />
-            <Button
-              type="text"
-              icon={<ReloadOutlined />}
-              onClick={refreshCaptcha}
-              className="refresh-button"
-            />
-            <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
-              Captcha is case-sensitive
-            </span>
-          </div>
-          {captchaError && (
-            <div style={{ color: '#d4380d', fontSize: 13, marginTop: 6 }}>
-              {captchaError}
+      <Form onFinish={handleSubmit}>
+        <div style={{ marginBottom: 16 }}>
+          <p>Please enter the characters you see in the image:</p>
+          
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+            <div 
+              style={{ 
+                marginRight: 8, 
+                padding: '6px', 
+                border: '1px solid #d9d9d9', 
+                borderRadius: '4px',
+                background: '#f5f5f5' 
+              }}
+            >
+              <img 
+                src={`data:image/svg+xml;base64,${btoa(captchaImage)}`} 
+                alt="CAPTCHA" 
+                style={{ height: '40px' }}
+              />
             </div>
-          )}
-        </Form.Item>
-        <Form.Item>
-          <Input
-            maxLength={6}
-            placeholder="Enter CAPTCHA"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-          />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" block>
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={refreshCaptcha}
+              type="text"
+            />
+          </div>
+          
+          <Form.Item 
+            validateStatus={captchaError ? 'error' : ''}
+            help={captchaError}
+          >
+            <Input
+              placeholder="Enter captcha"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              maxLength={10}
+              autoFocus
+            />
+          </Form.Item>
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button onClick={onClose} style={{ marginRight: 8 }}>
+            Cancel
+          </Button>
+          <Button type="primary" htmlType="submit" loading={loading}>
             Submit
           </Button>
-        </Form.Item>
+        </div>
       </Form>
     </Modal>
   );
-}
+};
+
+export default CaptchaModal;

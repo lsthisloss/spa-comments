@@ -4,12 +4,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import '../styles/main.scss';
 import { XIcon } from './ui/particles/XIcon';
-import userStore from '../services/stores/UserStore';
-import authStore from '../services/stores/AuthStore';
-import { postStore } from '../services/stores/PostStore';
 import { observer } from 'mobx-react-lite';
 import { logger } from '../utils/Logger';
 import { SearchModal } from './ui/modals/SearchModal';
+import { usePostStore, useUserStore, useAuthStore } from '../hooks/useStore';
 
 const Sidebar = observer(() => {
   const location = useLocation();
@@ -17,6 +15,9 @@ const Sidebar = observer(() => {
   const [collapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  const postStore = usePostStore();
+  const userStore = useUserStore();
+  const authStore = useAuthStore();
   // Функция для навигации на главную с очисткой состояния
   const navigateToHome = () => {
     logger.log('[Sidebar] Navigating to home - clearing saved state and loading fresh feed');
