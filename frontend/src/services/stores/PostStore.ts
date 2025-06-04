@@ -481,9 +481,9 @@ class PostStore extends BaseStore<Post> implements IPostStore {
           const mappedPost = this.postsMap.get(post.id);
           if (mappedPost) {
             postsToAdd.push(mappedPost);
-            logger.log(`[PostStore] Using shared reference for post ${post.id}`);
+            //logger.log(`[PostStore] Using shared reference for post ${post.id}`);
           } else {
-            // Этого не должно происходить, но если происходит - создаем observable и добавляем в map
+            // КРИТИКАЛ случай - Этого не должно происходить, но если происходит - создаем observable и добавляем в map
             logger.warn(`[PostStore] Post ${post.id} not found in postsMap, creating new observable`);
             const observablePost = observable(post);
             this.postsMap.set(post.id, observablePost);
@@ -945,9 +945,9 @@ processPosts = action((posts: Post[]) => {
       post.commentCount = serverCommentCount;
       
       if (serverCommentCount > 0) {
-        logger.log(`[PostStore] Set commentCount to ${serverCommentCount} (from server repliesCount) for post ${post.id}`);
+        //logger.log(`[PostStore] Set commentCount to ${serverCommentCount} (from server repliesCount) for post ${post.id}`);
       } else {
-        logger.log(`[PostStore] Initialized commentCount to 0 for post ${post.id}`);
+        //logger.log(`[PostStore] Initialized commentCount to 0 for post ${post.id}`);
       }
     }
   });
@@ -976,7 +976,7 @@ processPosts = action((posts: Post[]) => {
       // Создаем новый observable пост только если его нет
       const observablePost = observable(post);
       this.postsMap.set(post.id, observablePost);
-      logger.log(`[PostStore] Added new post ${post.id} to postsMap`);
+      //logger.log(`[PostStore] Added new post ${post.id} to postsMap`);
     }
   });
 });
@@ -984,40 +984,50 @@ processPosts = action((posts: Post[]) => {
   /**
    * Добавление поста
    */
-  addPost = action((post: Post, feedType?: FeedType) => {
-    runInAction(() => {
-      // Кэшируем пользователя только если его еще нет в кэше
-      if (post.user && post.user.id) {
-        const existingUser = this.userStore.getCachedUser(post.user.id);
-        if (!existingUser) {
-          this.userStore.addCachedUser(post.user);
-        }
-      } else if (!post.user && post.userId) {
-        // Если нет user объекта, но есть userId, пробуем восстановить из кэша
-        const cachedUser = this.userStore.getCachedUser(post.userId);
-        if (cachedUser) {
-          post.user = cachedUser;
-          logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
+addPost = action((post: Post, feedType?: FeedType) => {
+  runInAction(() => {
+    // Кэшируем пользователя только если его еще нет в кэше
+    if (post.user && post.user.id) {
+      const existingUser = this.userStore.getCachedUser(post.user.id);
+      if (!existingUser) {
+        this.userStore.addCachedUser(post.user);
+      }
+    } else if (!post.user && post.userId) {
+      // Если нет user объекта, но есть userId, пробуем восстановить из кэша
+      const cachedUser = this.userStore.getCachedUser(post.userId);
+      if (cachedUser) {
+        post.user = cachedUser;
+        logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
+      } else {
+        logger.warn(`[PostStore] Could not restore user data for post ${post.id}, userId: ${post.userId}`);
+      }
+    }
+
+    // СНАЧАЛА обрабатываем пост через processPosts для единообразия
+    this.processPosts([post]);
+
+    // ЗАТЕМ используем ссылку из postsMap для feeds
+    const mappedPost = this.postsMap.get(post.id);
+    if (!mappedPost) {
+      logger.error(`[PostStore] Post ${post.id} not found in postsMap after processing!`);
+      return;
+    }
+
+    if (feedType) {
+      const feed = this.feeds[feedType];
+      if (feed) {
+        const existingIndex = feed.list.findIndex(p => p.id === post.id);
+        if (existingIndex >= 0) {
+          feed.list[existingIndex] = mappedPost; // Используем mappedPost
+          logger.log(`[PostStore] Updated existing post ${post.id} in ${feedType} feed with postsMap reference`);
         } else {
-          logger.warn(`[PostStore] Could not restore user data for post ${post.id}, userId: ${post.userId}`);
+          feed.list.push(mappedPost); // Используем mappedPost
+          logger.log(`[PostStore] Added new post ${post.id} to ${feedType} feed with postsMap reference`);
         }
       }
-
-      this.postsMap.set(post.id, post);
-
-      if (feedType) {
-        const feed = this.feeds[feedType];
-        if (feed) {
-          const existingIndex = feed.list.findIndex(p => p.id === post.id);
-          if (existingIndex >= 0) {
-            feed.list[existingIndex] = post;
-          } else {
-            feed.list.push(post);
-          }
-        }
-      }
-    });
+    }
   });
+});
 
   /**
    * Перемещение скролла к началу страницы
@@ -1031,22 +1041,29 @@ processPosts = action((posts: Post[]) => {
    * Добавление поста во все ленты
    */
   addPostToAllFeeds = action((post: Post) => {
-    // Добавляем пост в основную ленту, если его там нет
-    const mainFeed = this.feeds.feed;
-    if (!mainFeed.list.some(p => p.id === post.id)) {
-      logger.log(`[PostStore] Adding post ${post.id} to main feed`);
-      mainFeed.list.push(post);
-    }
+  // Используем ссылку из postsMap вместо исходного объекта
+  const mappedPost = this.postsMap.get(post.id);
+  if (!mappedPost) {
+    logger.warn(`[PostStore] Post ${post.id} not found in postsMap when adding to feeds`);
+    return;
+  }
 
-    // Добавляем в ленту пользователя, если это его пост
-    if (post.userId && this.feeds.user.userId === post.userId) {
-      const userFeed = this.feeds.user;
-      if (!userFeed.list.some(p => p.id === post.id)) {
-        logger.log(`[PostStore] Adding post ${post.id} to user feed`);
-        userFeed.list.push(post);
-      }
+  // Добавляем пост в основную ленту, если его там нет
+  const mainFeed = this.feeds.feed;
+  if (!mainFeed.list.some(p => p.id === post.id)) {
+    logger.log(`[PostStore] Adding post ${post.id} to main feed using postsMap reference`);
+    mainFeed.list.push(mappedPost); // Используем mappedPost вместо post
+  }
+
+  // Добавляем в ленту пользователя, если это его пост
+  if (post.userId && this.feeds.user.userId === post.userId) {
+    const userFeed = this.feeds.user;
+    if (!userFeed.list.some(p => p.id === post.id)) {
+      logger.log(`[PostStore] Adding post ${post.id} to user feed using postsMap reference`);
+      userFeed.list.push(mappedPost); // Используем mappedPost вместо post
     }
-  });
+  }
+});
 
   /**
    * Сохранение состояния feed
@@ -1137,102 +1154,110 @@ processPosts = action((posts: Post[]) => {
   /**
    * Получение поста по slug
    */
-  fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
-    try {
-      const cacheKey = `slug:${slug}`;
+// Update fetchPostBySlug to ensure proper reference handling
 
-      // Check if a fetch is already in progress
-      if (this.fetchPostPromises?.has(cacheKey)) {
-        logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
-        return this.fetchPostPromises.get(cacheKey)!;
-      }
+fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
+  try {
+    const cacheKey = `slug:${slug}`;
 
-      logger.log(`[PostStore] Fetching post by slug: ${slug}`);
+    // Check if a fetch is already in progress
+    if (this.fetchPostPromises?.has(cacheKey)) {
+      logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
+      return this.fetchPostPromises.get(cacheKey)!;
+    }
 
-      // Check if post exists in store
-      const existingPost = this.getPostBySlug(slug);
-      if (existingPost) {
-        logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
+    logger.log(`[PostStore] Fetching post by slug: ${slug}`);
 
-        // Create a resolved promise for consistency
-        const cachedPromise = Promise.resolve(existingPost);
-        this.fetchPostPromises?.set(cacheKey, cachedPromise);
+    // Check if post exists in store
+    const existingPost = this.getPostBySlug(slug);
+    if (existingPost) {
+      logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
 
-        // Clean up promise cache after a short delay
+      // Create a resolved promise for consistency
+      const cachedPromise = Promise.resolve(existingPost);
+      this.fetchPostPromises?.set(cacheKey, cachedPromise);
+
+      // Clean up promise cache after a short delay
+      setTimeout(() => {
+        this.fetchPostPromises?.delete(cacheKey);
+      }, 1000);
+
+      return existingPost;
+    }
+
+    if (!this.socketStore.posts?.connected) {
+      logger.error('[PostStore] Socket not available');
+      throw new Error('Socket connection not available');
+    }
+
+    // Create a promise for handling the request
+    const fetchPromise = new Promise<Post | null>((resolve, reject) => {
+      this.socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse) => {
+        logger.log(`[PostStore] Response for slug ${slug}:`, response);
+
+        // Handle server exception responses
+        if (response && response.status === 'error') {
+          logger.error(`[PostStore] Server error: ${response.message}`);
+          reject(new Error(response.message || 'Server error'));
+          return;
+        }
+
+        // Handle other error formats (array with "exception")
+        if (Array.isArray(response) && response[0] === 'exception') {
+          const errorMsg = response[1]?.message || 'Unknown server error';
+          logger.error(`[PostStore] Server exception: ${errorMsg}`);
+          reject(new Error(errorMsg));
+          return;
+        }
+
+        const post = this.extractPostFromResponse(response);
+
+        if (post) {
+          runInAction(() => {
+            // СНАЧАЛА обрабатываем пост через processPosts
+            this.processPosts([post]);
+            
+            // ЗАТЕМ добавляем в feeds используя ссылку из postsMap
+            this.addPostToAllFeeds(post);
+          });
+          
+          // Возвращаем ссылку из postsMap для консистентности
+          const mappedPost = this.postsMap.get(post.id);
+          resolve(mappedPost || post);
+        } else {
+          logger.error(`[PostStore] No post data found in response for ${slug}`);
+          resolve(null);
+        }
+      });
+
+      // Add timeout to prevent hanging requests
+      setTimeout(() => {
+        if (this.fetchPostPromises?.has(cacheKey)) {
+          logger.error(`[PostStore] Request timeout for slug ${slug}`);
+          reject(new Error('Request timed out'));
+        }
+      }, 15000); // 15 second timeout
+    });
+
+    // Save promise in cache
+    this.fetchPostPromises?.set(cacheKey, fetchPromise);
+
+    // Clean up promise from cache on completion
+    fetchPromise
+      .finally(() => {
         setTimeout(() => {
           this.fetchPostPromises?.delete(cacheKey);
         }, 1000);
-
-        return existingPost;
-      }
-
-      if (!this.socketStore.posts?.connected) {
-        logger.error('[PostStore] Socket not available');
-        throw new Error('Socket connection not available');
-      }
-
-      // Create a promise for handling the request
-      const fetchPromise = new Promise<Post | null>((resolve, reject) => {
-        this.socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse) => {
-          logger.log(`[PostStore] Response for slug ${slug}:`, response);
-
-          // Handle server exception responses
-          if (response && response.status === 'error') {
-            logger.error(`[PostStore] Server error: ${response.message}`);
-            reject(new Error(response.message || 'Server error'));
-            return;
-          }
-
-          // Handle other error formats (array with "exception")
-          if (Array.isArray(response) && response[0] === 'exception') {
-            const errorMsg = response[1]?.message || 'Unknown server error';
-            logger.error(`[PostStore] Server exception: ${errorMsg}`);
-            reject(new Error(errorMsg));
-            return;
-          }
-
-          const post = this.extractPostFromResponse(response);
-
-          if (post) {
-            runInAction(() => {
-              this.processPosts([post]);
-              this.addPostToAllFeeds(post);
-            });
-            resolve(post);
-          } else {
-            logger.error(`[PostStore] No post data found in response for ${slug}`);
-            resolve(null);
-          }
-        });
-
-        // Add timeout to prevent hanging requests
-        setTimeout(() => {
-          if (this.fetchPostPromises?.has(cacheKey)) {
-            logger.error(`[PostStore] Request timeout for slug ${slug}`);
-            reject(new Error('Request timed out'));
-          }
-        }, 15000); // 15 second timeout
       });
 
-      // Save promise in cache
-      this.fetchPostPromises?.set(cacheKey, fetchPromise);
-
-      // Clean up promise from cache on completion
-      fetchPromise
-        .finally(() => {
-          setTimeout(() => {
-            this.fetchPostPromises?.delete(cacheKey);
-          }, 1000);
-        });
-
-      return fetchPromise;
-    } catch (error: Error | unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(`[PostStore] Error fetching post by slug: ${errorMessage}`);
-      this.fetchPostPromises?.delete(`slug:${slug}`);
-      throw error; // Re-throw the error to be handled by the component
-    }
-  });
+    return fetchPromise;
+  } catch (error: Error | unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`[PostStore] Error fetching post by slug: ${errorMessage}`);
+    this.fetchPostPromises?.delete(`slug:${slug}`);
+    throw error; // Re-throw the error to be handled by the component
+  }
+});
 
   /**
    * Помечает ленту для обновления при следующей загрузке

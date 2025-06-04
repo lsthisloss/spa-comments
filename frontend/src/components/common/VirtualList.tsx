@@ -142,8 +142,7 @@ useEffect(() => {
     return;
   }
 
-    // Log current state for debugging
-    logger.log(`[VirtualList] Scroll check: canLoadMore=${canLoadMoreRef.current}, isLoading=${isLoadingRef.current}, items=${items.length}, virtual=${virtualItems.length}`);
+    //logger.log(`[VirtualList] Scroll check: canLoadMore=${canLoadMoreRef.current}, isLoading=${isLoadingRef.current}, items=${items.length}, virtual=${virtualItems.length}`);
 
 
     // ПРОВЕРКА СОРТИРОВКИ

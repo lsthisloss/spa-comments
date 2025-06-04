@@ -57,15 +57,15 @@ const commentCount = useMemo(() => {
   if (type === 'post') {
     // For posts, use commentCount (which is now properly set from server's repliesCount)
     const count = postCommentCount || 0;
-    logger.log(`[ItemFooter] Post ${item.id} commentCount: ${count}`);
+    //logger.log(`[ItemFooter] Post ${item.id} commentCount: ${count}`);
     return count;
   } else {
     // For comments, use repliesCount 
     const count = item.repliesCount || 0;
-    logger.log(`[ItemFooter] Comment ${item.id} repliesCount: ${count}`);
+    //logger.log(`[ItemFooter] Comment ${item.id} repliesCount: ${count}`);
     return count;
   }
-}, [type, postCommentCount, item.id, item.repliesCount]);
+}, [type, postCommentCount, item.repliesCount]);
 
 
   // Navigation handler

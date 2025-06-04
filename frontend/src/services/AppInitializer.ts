@@ -1,6 +1,7 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import { logger } from "../utils/Logger";
-import { stores } from "./stores"; // Импортируем хранилища из единой точки
+import { stores } from "./stores";
+import { connectionService } from "./ConnectionService";
 
 
 // Деструктурируем хранилища
@@ -78,8 +79,8 @@ class AppInitializer {
         this.retryCount = 0;
       });
 
-      // Запускаем мониторинг подключения
-      //this.startConnectionMonitoring();
+  // 5. Инициализируем мониторинг соединений ПОСЛЕ готовности
+      connectionService.init(socketStore);
 
       logger.info("[AppInit] Application initialization completed");
     } catch (error) {
@@ -131,28 +132,6 @@ class AppInitializer {
       this.reset();
       this.initialize();
     }, retryDelay);
-  }
-
-  private startConnectionMonitoring() {
-    if (this.connectionCheckInterval) {
-      clearInterval(this.connectionCheckInterval);
-    }
-
-    this.connectionCheckInterval = setInterval(() => {
-      const isConnected = socketStore.users?.connected;
-      
-      if (!isConnected && this.status === 'ready') {
-        logger.warn("[AppInit] Connection lost, attempting reconnection");
-        runInAction(() => {
-          this.status = 'server_unavailable';
-        });
-        
-        // Попытка переподключения
-        if (this.retryCount < this.maxRetries) {
-          this.scheduleRetry();
-        }
-      }
-    }, 10000); // Проверяем каждые 10 секунд
   }
 
   private async waitForAuthReady(): Promise<void> {
