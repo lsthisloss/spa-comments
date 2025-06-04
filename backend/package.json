@@ -6,12 +6,12 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
-    "dev": "nest start --watch",
+    "build": "NODE_OPTIONS='--max-old-space-size=1536' nest build",
+    "dev": "NODE_OPTIONS='--max-old-space-size=1024' nest start --watch",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
+    "start:dev": "NODE_OPTIONS='--max-old-space-size=1024' nest start --watch",
+    "start:debug": "NODE_OPTIONS='--max-old-space-size=1024' nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
@@ -19,7 +19,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "create-superadmin:local": "DB_HOST=localhost DB_PASSWORD=password DB_NAME=spa_comments ts-node src/scripts/create-superadmin.ts"
+    "create-superadmin": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts",
+    "create-superadmin:local": "NODE_OPTIONS='--max-old-space-size=512' DB_HOST=localhost DB_PASSWORD=password DB_NAME=spa_comments ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts",
+    "create-superadmin:docker": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.9.0",

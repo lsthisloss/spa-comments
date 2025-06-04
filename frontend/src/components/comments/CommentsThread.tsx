@@ -103,7 +103,6 @@ const handleSortChange = useCallback((key: string) => {
       onSortChange(key as 'date' | 'likes');
     }
   } else if (key === localSort) {
-    // Добавить логирование для отладки
     logger.log(`[CommentsThread] Sort ${key} already active, ignoring click`);
   }
 }, [localSort, onSortChange]);

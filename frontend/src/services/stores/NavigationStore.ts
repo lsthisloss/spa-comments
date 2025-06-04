@@ -52,7 +52,7 @@ class NavigationStore {
   // Карта позиций скролла по путям
   private scrollPositions = new Map<string, number>();
 
-  // Добавляем карту для позиций скролла вкладок
+  // Карта для позиций скролла вкладок
   private tabScrollPositions = new Map<string, number>();
 
   // Публичные свойства для прямого доступа (для обратной совместимости)

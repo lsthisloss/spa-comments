@@ -24,14 +24,95 @@ export class PostsService {
     private readonly elasticsearchService: ElasticsearchService,
   ) {}
 
-  async sendPostToQueue(createPostDto: CreatePostDto): Promise<void> {
-    const queueName = 'add_post_queue';
-    await this.rabbitMQService.sendToQueue(queueName, {
-      createPostDto: createPostDto,
-    });
-    console.log(`Post sent to queue "${queueName}":`, createPostDto);
+  async sendPostToQueue(
+    createPostDto: CreatePostDto,
+  ): Promise<{ postId: string; queued?: boolean }> {
+    try {
+      const queueName = 'add_post_queue';
+
+      const contentSlug = slugify(createPostDto.content.slice(0, 50));
+      const timestamp = Date.now();
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const uniqueSlug = `${contentSlug}-${timestamp}-${randomSuffix}`;
+
+      // СОЗДАЕМ ПОСТ В БД СРАЗУ для получения реального UUID
+      const post = this.postRepository.create({
+        ...createPostDto,
+        likes: 0,
+        repliesCount: 0,
+        likedUserIds: [],
+        slug: uniqueSlug,
+      });
+
+      const savedPost = await this.postRepository.save(post);
+
+      // ОТПРАВЛЯЕМ В ОЧЕРЕДЬ С НОВОЙ СТРУКТУРОЙ
+      await this.rabbitMQService.sendToQueue(queueName, {
+        createPostDto: createPostDto, // Исходные данные с файлами
+        postId: savedPost.id, // ID созданного поста
+      });
+
+      console.log(`Post sent to queue "${queueName}": ${savedPost.id}`);
+
+      //  ВОЗВРАЩАЕМ НЕМЕДЛЕННО ID ПОСТА
+      return {
+        postId: savedPost.id,
+        queued: true,
+      };
+    } catch (error) {
+      console.error('Error in sendPostToQueue:', error);
+      throw error;
+    }
   }
 
+  async updatePostFiles(
+    postId: string,
+    files: {
+      fileUrl?: string;
+      fileName?: string;
+      fileType?: string;
+      imageUrl?: string;
+    },
+  ): Promise<Post | null> {
+    try {
+      console.log(`[PostsService] Updating files for post ${postId}:`, files);
+
+      // ПРОВЕРЯЕМ что пост существует
+      const existingPost = await this.postRepository.findOne({
+        where: { id: postId },
+      });
+
+      if (!existingPost) {
+        console.error(`[PostsService] Post ${postId} not found`);
+        return null;
+      }
+
+      // Обновляем только не-пустые поля
+      const updateData: Partial<Post> = {};
+
+      if (files.fileUrl) updateData.fileUrl = files.fileUrl;
+      if (files.fileName) updateData.fileName = files.fileName;
+      if (files.fileType) updateData.fileType = files.fileType;
+      if (files.imageUrl) updateData.imageUrl = files.imageUrl;
+
+      if (Object.keys(updateData).length === 0) {
+        console.log(`[PostsService] No files to update for post ${postId}`);
+        return existingPost;
+      }
+
+      this.postRepository.merge(existingPost, updateData);
+      const updatedPost = await this.postRepository.save(existingPost);
+
+      console.log(`[PostsService] Post ${postId} files updated successfully`);
+      return updatedPost;
+    } catch (error) {
+      console.error(
+        `[PostsService] Error updating post files for ${postId}:`,
+        error,
+      );
+      return null;
+    }
+  }
   async createPost(createPostDto: CreatePostDto): Promise<Post> {
     const post = this.postRepository.create({
       ...createPostDto,

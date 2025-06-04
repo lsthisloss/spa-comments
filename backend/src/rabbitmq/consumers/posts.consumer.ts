@@ -5,22 +5,26 @@ import type { CreatePostDto } from '../../posts/dto/create-post.dto';
 import { PostsGateway } from '../../posts/posts.gateway';
 import { UsersService } from '../../users/users.service';
 import { CommonWsService } from '../../common/common-ws.service';
+import { TestService } from '../../test/test.service';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Post } from '../../posts/entities/post.entity';
 
 @Injectable()
 export class PostsConsumer implements OnModuleInit {
   private readonly logger = new Logger(PostsConsumer.name);
   private readonly queueName = 'add_post_queue';
 
-  private processedPostIds = new Set<string>(); // Используем Set для хранения уникальных идентификаторов постов
+  private processedPostIds = new Set<string>();
   private userPostCounts = new Map<
     string,
     { count: number; resetTime: number }
   >();
-  private readonly MAX_POSTS_PER_MINUTE = 10; // Максимум 10 постов в минуту на пользователя
-  private readonly RATE_LIMIT_WINDOW = 60 * 1000; // 60 секунд
-  private readonly CACHE_TTL = 10 * 60 * 1000; // 10 минут
+  private readonly MAX_POSTS_PER_MINUTE = 10;
+  private readonly TEST_USER_MAX_POSTS = 100; // Увеличенный лимит для тестовых пользователей
+  private readonly RATE_LIMIT_WINDOW = 60 * 1000;
+  private readonly CACHE_TTL = 10 * 60 * 1000;
 
-  // Метрики для мониторинга
   private stats = {
     totalProcessed: 0,
     rateLimitedDropped: 0,
@@ -34,18 +38,17 @@ export class PostsConsumer implements OnModuleInit {
     private readonly postsGateway: PostsGateway,
     private readonly usersService: UsersService,
     private readonly commonWsService: CommonWsService,
+    private readonly testService: TestService,
+    @InjectRepository(Post)
+    private readonly postRepository: Repository<Post>,
   ) {}
-  /* Метод, вызываемый при инициализации модуля
-   * Подписывается на очередь RabbitMQ и начинает обработку сообщений
-   * Также запускает периодическую очистку кэша
-   */
+
   async onModuleInit() {
     try {
       await this.rabbitMQService.consume(this.queueName, (msg) => {
         void this.handleMessage(msg);
       });
 
-      // Периодическая очистка кэша
       setInterval(
         () => {
           this.cleanupCaches();
@@ -60,10 +63,7 @@ export class PostsConsumer implements OnModuleInit {
       );
     }
   }
-  /* Метод для обработки сообщений из очереди
-   * @param msg - сообщение из очереди RabbitMQ
-   * Обрабатывает сообщение, проверяет rate limiting, дублирование и создает пост
-   */
+
   private async handleMessage(msg: any) {
     try {
       this.stats.totalProcessed++;
@@ -75,26 +75,105 @@ export class PostsConsumer implements OnModuleInit {
       }
 
       const content = msg.content.toString();
-      const createPostDto = this.parseMessageContent(content);
+      const messageData = this.parseMessageContent(content);
 
-      if (!createPostDto) {
+      if (!messageData) {
         this.rabbitMQService.nackMessage(msg);
         return;
       }
 
-      // ПРОВЕРЯЕМ RATE LIMITING (дублированная проверка для безопасности)
-      if (!this.checkRateLimit(createPostDto.userId)) {
+      const { createPostDto, postId } = messageData;
+
+      console.log(`[QUEUE] Processing message for post: ${postId || 'new'}`);
+
+      // ПРОВЕРЯЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
+      const isTestUser = this.testService.isTestUserId(createPostDto.userId);
+
+      console.log(
+        `[QUEUE] User ${createPostDto.userId.substring(0, 8)}... isTestUser: ${isTestUser}`,
+      );
+
+      // RATE LIMITING ТОЛЬКО ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ
+      if (!isTestUser && !this.checkRateLimit(createPostDto.userId)) {
         this.stats.rateLimitedDropped++;
         this.logger.warn(
           `❌ Rate limit exceeded for user ${createPostDto.userId} - POST DROPPED. Stats: ${this.stats.rateLimitedDropped} dropped total`,
         );
-
-        //Помечаем сообщение как обработанное, но пост не создаем
         this.rabbitMQService.ackMessage(msg);
         return;
       }
+
+      // ДЛЯ ТЕСТОВЫХ ПОЛЬЗОВАТЕЛЕЙ - СОХРАНЯЕМ В БД С ИЗОБРАЖЕНИЯМИ
+      if (isTestUser) {
+        console.log(
+          `[TEST] Processing test user post in DB: ${createPostDto.userId}`,
+        );
+
+        const processedData = { ...createPostDto };
+
+        // Обрабатываем файлы для тестовых пользователей
+        this.processFiles(processedData);
+
+        const messageHash = this.generateMessageHash(createPostDto);
+        if (this.processedPostIds.has(messageHash)) {
+          this.stats.duplicatesDropped++;
+          this.logger.warn(`❌ Duplicate test post detected - POST DROPPED`);
+          this.rabbitMQService.ackMessage(msg);
+          return;
+        }
+
+        let post: Post | null = null;
+
+        if (postId) {
+          // Обновляем существующий пост в БД
+          const hasFiles = !!(processedData.fileUrl || processedData.imageUrl);
+
+          if (hasFiles) {
+            post = await this.postsService.updatePostFiles(postId, {
+              fileUrl: processedData.fileUrl,
+              fileName: processedData.fileName,
+              fileType: processedData.fileType,
+              imageUrl: processedData.imageUrl,
+            });
+            console.log(`[TEST] Test post files updated in DB: ${postId}`);
+          } else {
+            post = await this.postRepository.findOne({
+              where: { id: postId },
+            });
+          }
+        } else {
+          // Создаем новый пост в БД для тестового пользователя
+          post = await this.postsService.createPost(processedData);
+          console.log(`[TEST] Test post created in DB: ${post?.id}`);
+        }
+
+        if (!post) {
+          console.error(`[TEST] Failed to process test post: ${postId}`);
+          this.rabbitMQService.ackMessage(msg);
+          return;
+        }
+
+        const postWithUser = await this.enrichPostWithUserData(
+          post,
+          createPostDto.userId,
+        );
+
+        this.emitNewPostEvent(postWithUser);
+        this.processedPostIds.add(messageHash);
+
+        this.rabbitMQService.ackMessage(msg);
+        return;
+      }
+
+      // Для обычных пользователей (без изменений)...
+      console.log(
+        `[QUEUE] Processing regular user post: ${createPostDto.userId.substring(0, 8)}...`,
+      );
+
+      const processedData = { ...createPostDto };
+      let hasFiles = false;
+
       if (createPostDto.image && createPostDto.file) {
-        // Есть и изображение, и файл
         const fileResult = this.commonWsService.processContentWithMultipleFiles(
           createPostDto.content,
           {
@@ -103,92 +182,111 @@ export class PostsConsumer implements OnModuleInit {
           },
         );
 
-        Object.assign(createPostDto, fileResult);
-        delete createPostDto.image;
-        delete createPostDto.file;
+        Object.assign(processedData, fileResult);
+        delete processedData.image;
+        delete processedData.file;
+        hasFiles = !!(fileResult?.fileUrl || fileResult?.imageUrl);
       } else if (createPostDto.file) {
-        // Только файл
         const fileResult = this.commonWsService.processContentWithFile(
           createPostDto.content,
           { file: createPostDto.file },
         );
 
-        Object.assign(createPostDto, fileResult);
-        delete createPostDto.file;
+        Object.assign(processedData, fileResult);
+        delete processedData.file;
+        hasFiles = !!fileResult?.fileUrl;
       } else if (createPostDto.image) {
-        // Только изображение
         const fileResult = this.commonWsService.processContentWithFile(
           createPostDto.content,
           { file: createPostDto.image },
         );
 
-        Object.assign(createPostDto, fileResult);
-        delete createPostDto.image;
+        Object.assign(processedData, fileResult);
+        delete processedData.image;
+        hasFiles = !!fileResult?.imageUrl;
       }
-      // Проверка на дублирование
-      const messageHash = this.generateMessageHash(createPostDto);
-      if (this.processedPostIds.has(messageHash)) {
-        this.stats.duplicatesDropped++;
-        this.logger.warn(
-          `❌ Duplicate post detected: ${messageHash} - POST DROPPED`,
-        );
+
+      let post: Post | null = null;
+
+      if (postId) {
+        if (hasFiles) {
+          const existingPost = await this.postRepository.findOne({
+            where: { id: postId },
+          });
+
+          if (!existingPost) {
+            console.error(`[QUEUE] Post ${postId} not found for file update`);
+            this.rabbitMQService.ackMessage(msg);
+            return;
+          }
+
+          post = await this.postsService.updatePostFiles(postId, {
+            fileUrl: processedData.fileUrl,
+            fileName: processedData.fileName,
+            fileType: processedData.fileType,
+            imageUrl: processedData.imageUrl,
+          });
+          console.log(`[QUEUE] Post files updated: ${postId}`);
+        } else {
+          post = await this.postRepository.findOne({
+            where: { id: postId },
+          });
+          console.log(`[QUEUE] Post found: ${postId}`);
+        }
+      } else {
+        const messageHash = this.generateMessageHash(createPostDto);
+        if (this.processedPostIds.has(messageHash)) {
+          this.stats.duplicatesDropped++;
+          this.logger.warn(
+            `❌ Duplicate post detected: ${messageHash} - POST DROPPED`,
+          );
+          this.rabbitMQService.ackMessage(msg);
+          return;
+        }
+
+        post = await this.postsService.createPost(processedData);
+        console.log(`[QUEUE] New post created: ${post?.id}`);
+        this.processedPostIds.add(messageHash);
+      }
+
+      if (!post) {
+        console.error(`[QUEUE] Failed to process post: ${postId}`);
         this.rabbitMQService.ackMessage(msg);
         return;
       }
 
-      // Сохраняем пост
-      const post = await this.postsService.createPost(createPostDto);
       this.logger.log(
-        `Post created successfully: ${post.id} for user ${createPostDto.userId}`,
+        `Post processed successfully: ${post.id} for user ${createPostDto.userId}`,
       );
 
-      // Получаем данные пользователя с ROLE
       const postWithUser = await this.enrichPostWithUserData(
         post,
         createPostDto.userId,
       );
 
-      // Эмитим событие
       this.emitNewPostEvent(postWithUser);
-
-      // Обновляем счетчики
       this.updateRateLimit(createPostDto.userId);
-      this.processedPostIds.add(messageHash);
 
       this.rabbitMQService.ackMessage(msg);
     } catch (error) {
       this.stats.errorsCount++;
       this.logger.error('❌ Error processing post:', error);
-      this.rabbitMQService.nackMessage(msg);
+
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      if (
+        errorMessage.includes('duplicate key') ||
+        errorMessage.includes('unique constraint')
+      ) {
+        console.log('[QUEUE] Rejecting duplicate message');
+        this.rabbitMQService.ackMessage(msg);
+      } else {
+        this.rabbitMQService.nackMessage(msg);
+      }
     }
   }
 
-  /* Метод для получения детализированной статистики
-   * Возвращает объект со статистикой потребителя, включая активные rate limits
-   */
-  getDetailedStats() {
-    const now = Date.now();
-    const activeRateLimits = Array.from(this.userPostCounts.entries())
-      .filter(([, limit]) => now <= limit.resetTime)
-      .map(([userId, limit]) => ({
-        userId,
-        count: limit.count,
-        remaining: this.MAX_POSTS_PER_MINUTE - limit.count,
-        resetIn: Math.ceil((limit.resetTime - now) / 1000),
-      }));
-
-    return {
-      ...this.getStats(),
-      activeRateLimits,
-      rateLimitSummary: {
-        usersWithLimits: activeRateLimits.length,
-        totalDropped: this.stats.rateLimitedDropped,
-        maxPostsPerMinute: this.MAX_POSTS_PER_MINUTE,
-      },
-    };
-  }
-  // Проверяем rate limit для пользователя
-  // Возвращает true, если пользователь может создать пост, иначе false
   private checkRateLimit(userId: string): boolean {
     const now = Date.now();
     const userLimit = this.userPostCounts.get(userId);
@@ -203,21 +301,8 @@ export class PostsConsumer implements OnModuleInit {
 
     return userLimit.count < this.MAX_POSTS_PER_MINUTE;
   }
-  /* Метод для обновления счетчика rate limit
-   * Увеличивает счетчик для пользователя и сбрасывает время, если лимит достигнут
-   * @param userId - идентификатор пользователя
-   */
-  private updateRateLimit(userId: string): void {
-    const userLimit = this.userPostCounts.get(userId);
-    if (userLimit) {
-      userLimit.count++;
-    }
-  }
-  /* Метод для обогащения поста данными пользователя
-   * @param post - пост, который нужно обогатить
-   * @param userId - идентификатор пользователя
-   * @returns обогащенный пост с данными пользователя
-   */
+
+  // УБИРАЕМ дублирующие методы и используем TestService
   private async enrichPostWithUserData<T extends object>(
     post: T,
     userId: string,
@@ -234,6 +319,29 @@ export class PostsConsumer implements OnModuleInit {
     }
   > {
     try {
+      // ИСПОЛЬЗУЕМ TestService для проверки тестового пользователя
+      const isTestUser = this.testService.isTestUserId(userId);
+
+      if (isTestUser) {
+        console.log(`[POSTS] Processing test user post: ${userId}`);
+
+        // ИСПОЛЬЗУЕМ TestService для генерации данных тестового пользователя
+        const testUserData = this.testService.generateTestUserData(userId);
+
+        return {
+          ...post,
+          user: {
+            id: userId,
+            userName: testUserData.userName,
+            avatarUrl: testUserData.avatarUrl,
+            avatarShape: testUserData.avatarShape,
+            slug: testUserData.slug,
+            role: testUserData.role,
+          },
+        };
+      }
+
+      // Для обычных пользователей получаем данные из БД
       const user = await this.usersService.findById(userId);
 
       return {
@@ -261,9 +369,44 @@ export class PostsConsumer implements OnModuleInit {
       };
     }
   }
-  /* Метод для эмита события нового поста
-   * @param postWithUser - пост с данными пользователя
-   */
+
+  // Остальные методы остаются без изменений...
+  private processFiles(processedData: Partial<CreatePostDto>): void {
+    if (processedData.image && processedData.file) {
+      const fileResult = this.commonWsService.processContentWithMultipleFiles(
+        processedData.content as string,
+        {
+          image: processedData.image,
+          file: processedData.file,
+        },
+      );
+      Object.assign(processedData, fileResult);
+      delete processedData.image;
+      delete processedData.file;
+    } else if (processedData.file) {
+      const fileResult = this.commonWsService.processContentWithFile(
+        processedData.content as string,
+        { file: processedData.file },
+      );
+      Object.assign(processedData, fileResult);
+      delete processedData.file;
+    } else if (processedData.image) {
+      const fileResult = this.commonWsService.processContentWithFile(
+        processedData.content as string,
+        { file: processedData.image },
+      );
+      Object.assign(processedData, fileResult);
+      delete processedData.image;
+    }
+  }
+
+  private updateRateLimit(userId: string): void {
+    const userLimit = this.userPostCounts.get(userId);
+    if (userLimit) {
+      userLimit.count++;
+    }
+  }
+
   private emitNewPostEvent(postWithUser: any) {
     try {
       if (this.postsGateway.server) {
@@ -273,40 +416,64 @@ export class PostsConsumer implements OnModuleInit {
       this.logger.error('Failed to emit new post event:', error);
     }
   }
-  /*  Метод для очистки кэшей
-   * Очищает кэш rate limit и processed posts
-   */
+
   private cleanupCaches() {
     const now = Date.now();
 
-    // Очищаем rate limit кэш
     for (const [userId, limit] of this.userPostCounts.entries()) {
       if (now > limit.resetTime) {
         this.userPostCounts.delete(userId);
       }
     }
 
-    // Очищаем processed posts кэш
     if (this.processedPostIds.size > 1000) {
       this.processedPostIds.clear();
       this.logger.log('Processed posts cache cleared');
     }
   }
 
-  /* Метод для получения статистики
-   * Возвращает объект со статистикой потребителя
-   */
+  getDetailedStats() {
+    const now = Date.now();
+    const activeRateLimits = Array.from(this.userPostCounts.entries())
+      .filter(([, limit]) => now <= limit.resetTime)
+      .map(([userId, limit]) => {
+        const isTestUser = this.testService.isTestUserId(userId);
+        const maxPosts = isTestUser
+          ? this.TEST_USER_MAX_POSTS
+          : this.MAX_POSTS_PER_MINUTE;
+
+        return {
+          userId,
+          count: limit.count,
+          remaining: maxPosts - limit.count,
+          resetIn: Math.ceil((limit.resetTime - now) / 1000),
+          isTestUser,
+        };
+      });
+
+    return {
+      ...this.getStats(),
+      activeRateLimits,
+      rateLimitSummary: {
+        usersWithLimits: activeRateLimits.length,
+        totalDropped: this.stats.rateLimitedDropped,
+        maxPostsPerMinute: this.MAX_POSTS_PER_MINUTE,
+        testUserMaxPosts: this.TEST_USER_MAX_POSTS,
+      },
+    };
+  }
+
   getStats() {
     return {
       ...this.stats,
       processedCacheSize: this.processedPostIds.size,
       rateLimitEntries: this.userPostCounts.size,
       maxPostsPerMinute: this.MAX_POSTS_PER_MINUTE,
+      testUserMaxPosts: this.TEST_USER_MAX_POSTS,
       timestamp: new Date().toISOString(),
     };
   }
 
-  // Метод для сброса статистики
   resetStats() {
     this.stats = {
       totalProcessed: 0,
@@ -317,7 +484,6 @@ export class PostsConsumer implements OnModuleInit {
     this.logger.log('PostsConsumer stats reset');
   }
 
-  // Метод для emergency cleanup
   emergencyCleanup() {
     this.processedPostIds.clear();
     this.userPostCounts.clear();
@@ -325,16 +491,14 @@ export class PostsConsumer implements OnModuleInit {
     this.logger.warn('PostsConsumer emergency cleanup performed');
   }
 
-  // Геттеры для размеров кэшей (для внешнего мониторинга)
   getProcessedCacheSize(): number {
     return this.processedPostIds.size;
   }
-  // Возвращает количество пользователей с активными rate limit
+
   getRateLimitEntries(): number {
     return this.userPostCounts.size;
   }
 
-  // Проверяем, что сообщение имеет правильный формат
   private isValidMessage(
     msg: unknown,
   ): msg is { content: { toString: () => string } } {
@@ -348,10 +512,13 @@ export class PostsConsumer implements OnModuleInit {
         'function'
     );
   }
-  // Парсим содержимое сообщения и возвращаем CreatePostDto или null
-  private parseMessageContent(content: string): CreatePostDto | null {
+
+  private parseMessageContent(
+    content: string,
+  ): { createPostDto: CreatePostDto; postId?: string } | null {
     try {
       const parsed = JSON.parse(content) as unknown;
+
       if (
         typeof parsed === 'object' &&
         parsed !== null &&
@@ -360,20 +527,43 @@ export class PostsConsumer implements OnModuleInit {
           'object' &&
         (parsed as { createPostDto?: unknown }).createPostDto !== null
       ) {
-        const dto = (parsed as { createPostDto: Partial<CreatePostDto> })
-          .createPostDto;
+        const data = parsed as {
+          createPostDto: Partial<CreatePostDto>;
+          postId?: string;
+        };
+        const dto = data.createPostDto;
+
         if (typeof dto.userId === 'string' && typeof dto.content === 'string') {
-          return dto as CreatePostDto;
+          return {
+            createPostDto: dto as CreatePostDto,
+            postId: data.postId,
+          };
         }
       }
+
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'userId' in parsed &&
+        'content' in parsed &&
+        typeof (parsed as { userId?: unknown }).userId === 'string' &&
+        typeof (parsed as { content?: unknown }).content === 'string'
+      ) {
+        return {
+          createPostDto: parsed as CreatePostDto,
+        };
+      }
+
       return null;
     } catch {
       return null;
     }
   }
-  // Генерируем хэш сообщения для проверки дубликатов
+
   private generateMessageHash(createPostDto: CreatePostDto): string {
-    const timeWindow = Math.floor(Date.now() / 5000); // 5-секундные окна
-    return `${createPostDto.userId}-${timeWindow}-${createPostDto.content.substring(0, 50)}`;
+    const timeWindow = Math.floor(Date.now() / 10000); // окно до 10 секунд
+    const contentHash = createPostDto.content.substring(0, 50);
+    const randomSalt = Math.random().toString(36).substring(2, 6); //  случайную соль
+    return `${createPostDto.userId}-${timeWindow}-${contentHash}-${randomSalt}`;
   }
 }

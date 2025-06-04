@@ -33,8 +33,8 @@ const UserProfilePage = observer(() => {
   const postStore = usePostStore();
   const navigationHelper = useNavigationHelper();
 
-  // Get username from URL params
-  const { username: usernameParam } = useParams<{ username: string }>();
+  // Get username and userId from URL params
+  const { username: usernameParam, userId: userIdParam } = useParams<{ username?: string; userId?: string }>();
   const userSlug = usernameParam;
   const location = useLocation();
 
@@ -47,7 +47,7 @@ const UserProfilePage = observer(() => {
   const [isLoading, setIsLoading] = useState(false);
 
   const currentUser = userStore.user;
-  
+  const searchParam = userIdParam || usernameParam;
   // Determine if this is own profile
   const isOwnProfile = !userSlug || 
     userSlug === currentUser?.userName || 
@@ -58,7 +58,7 @@ const UserProfilePage = observer(() => {
 
   // Load user effect
   useEffect(() => {
-    if (!userSlug || isOwnProfile) {
+    if (!searchParam || isOwnProfile) {
       setProfileUser(null);
       setIsLoading(false);
       return;
@@ -67,21 +67,30 @@ const UserProfilePage = observer(() => {
     const loadUser = async () => {
       setIsLoading(true);
       try {
-        logger.log(`[UserProfilePage] Loading user: ${userSlug}`);
+        logger.log(`[UserProfilePage] Loading user: ${searchParam}`);
         
-        // Check if UserStore has a method to get user by username/slug
-        // You'll need to implement this method in UserStore
-        const loadedUser = await userStore.getUserByUsername(userSlug);
+        // Сначала проверяем кэш
+        const cachedUser = userStore.getCachedUser(searchParam);
+        
+        if (cachedUser) {
+          logger.log(`[UserProfilePage] Found user in cache: ${cachedUser.userName} (${cachedUser.slug})`);
+          setProfileUser(cachedUser);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Загружаем через API
+        const loadedUser = await userStore.getUserById(searchParam);
         
         if (loadedUser) {
-          logger.log(`[UserProfilePage] Loaded user: ${loadedUser.userName}`);
+          logger.log(`[UserProfilePage] Loaded user: ${loadedUser.userName} (${loadedUser.slug})`);
           setProfileUser(loadedUser);
         } else {
-          logger.warn(`[UserProfilePage] User not found: ${userSlug}`);
+          logger.warn(`[UserProfilePage] User not found: ${searchParam}`);
           setProfileUser(null);
         }
       } catch (error) {
-        logger.error(`[UserProfilePage] Error loading user ${userSlug}:`, error);
+        logger.error(`[UserProfilePage] Error loading user ${searchParam}:`, error);
         setProfileUser(null);
       } finally {
         setIsLoading(false);
@@ -89,7 +98,7 @@ const UserProfilePage = observer(() => {
     };
 
     loadUser();
-  }, [userSlug, isOwnProfile, userStore]);
+  }, [searchParam, isOwnProfile, userStore]);
 
   // Check if following
   const isFollowing = useMemo(() => {

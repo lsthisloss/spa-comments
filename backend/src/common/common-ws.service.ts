@@ -3,6 +3,7 @@ import * as svgCaptcha from 'svg-captcha';
 import * as path from 'path';
 import * as fs from 'fs';
 import { Socket as IOSocket } from 'socket.io';
+import { TestService } from 'src/test/test.service';
 
 interface SocketData {
   captchaVerified?: boolean;
@@ -35,7 +36,7 @@ const globalCaptchaStore = new Map<
 
 @Injectable()
 export class CommonWsService {
-  constructor() {
+  constructor(private readonly testService: TestService) {
     // Очищаем устаревшие капчи каждые 5 минут
     setInterval(
       () => {
@@ -81,7 +82,7 @@ export class CommonWsService {
     }
 
     if (captchaData.text.toLowerCase() === data.captcha.toLowerCase()) {
-      // 1. Устанавливаем флаг в SocketData (для совместимости)
+      // 1. Устанавливаем флаг в SocketData
       (client.data as SocketData).captchaVerified = true;
 
       // 2. Дополнительно сохраняем в более стабильном хранилище
@@ -100,69 +101,54 @@ export class CommonWsService {
     );
     return { valid: false };
   }
-
   isCaptchaVerified(client: Socket): boolean {
-    const TEST_TOKEN = 'sk8-h4ck-t0k3n-1337';
-    // Check for test mode header
-    if (
-      TEST_TOKEN &&
-      client.handshake?.query?.testMode === 'true' &&
-      client.handshake?.query?.testToken === TEST_TOKEN
-    ) {
-      console.log(
-        `[CAPTCHA] Test mode active for client ${client.id}, bypassing verification`,
-      );
-      return true;
-    }
-
-    // Get user role for role-based checks
-    let userRole = 'user';
-
-    // Debug: логируем структуру client.data для отладки
-    console.log(`[CAPTCHA] client.data:`, JSON.stringify(client.data, null, 2));
-
-    // Check if client.data exists and is an object
+    // Проверяем данные пользователя
     if (client.data && typeof client.data === 'object') {
       const data = client.data as Record<string, unknown>;
 
-      // Check if user property exists and is an object
+      // АДМИНЫ ПРОХОДЯТ АВТОМАТИЧЕСКИ
       if ('user' in data && data.user && typeof data.user === 'object') {
         const user = data.user as Record<string, unknown>;
 
-        // Check if role property exists and is a string
         if ('role' in user && typeof user.role === 'string') {
-          userRole = user.role;
-        }
+          const role = user.role;
 
-        // Временное решение: проверить email вместо роли
-        if ('email' in user && typeof user.email === 'string') {
-          const email = user.email;
-          if (email === 'admin@sk8.pw' || email.includes('admin@')) {
-            console.log(`[CAPTCHA] Admin detected by email: ${email}`);
-            userRole = 'admin';
+          // Админы и суперадмины обходят CAPTCHA
+          if (role === 'admin' || role === 'superadmin') {
+            console.log(
+              `[CAPTCHA] Admin auto-verified: ${role} for client ${client.id}`,
+            );
+            return true;
           }
         }
       }
+
+      // Проверяем тестовую генерацию данных
+      const testDataGeneration =
+        client.handshake?.query?.testDataGeneration === 'true';
+      if (testDataGeneration) {
+        console.log(
+          `[CAPTCHA] Test data generation verified for client ${client.id}`,
+        );
+        return true;
+      }
+
+      // Проверяем пре-верификацию
+      if ('captchaVerified' in data && data.captchaVerified === true) {
+        console.log(`[CAPTCHA] Pre-verified for client ${client.id}`);
+        return true;
+      }
     }
-    console.log(`[CAPTCHA] Checking captcha for client ${client.id}`);
-    console.log(`[CAPTCHA] Detected user role: ${userRole}`);
 
-    // ОДНА проверка на админа, без дублирования
-    if (userRole === 'admin' || userRole === 'superadmin') {
-      console.log(
-        `[CAPTCHA] Admin user detected (${userRole}), bypassing verification`,
-      );
-      return true;
-    }
+    // Стандартная проверка CAPTCHA
+    return this.performStandardCaptchaCheck(client);
+  }
 
-    console.log(`[CAPTCHA] Regular user, checking verification status`);
-
-    // Standard check for regular users
+  private performStandardCaptchaCheck(client: Socket): boolean {
     if ((client.data as SocketData)?.captchaVerified === true) {
       return true;
     }
 
-    // Check in verifiedClients Map
     const verificationData = verifiedClients.get(client.id);
     if (verificationData?.verified) {
       const tenMinutes = 10 * 60 * 1000;
@@ -172,9 +158,7 @@ export class CommonWsService {
       verifiedClients.delete(client.id);
     }
 
-    console.log(
-      `[CAPTCHA] Verification failed for client ${client.id}, role: ${userRole}`,
-    );
+    console.log(`[CAPTCHA] Verification failed for client ${client.id}`);
     return false;
   }
 
@@ -204,7 +188,10 @@ export class CommonWsService {
       // Image validation
       const maxImageSize = 10 * 1024 * 1024; // 10MB
       if (buffer.length > maxImageSize) {
-        throw new Error('Image file size exceeds 10MB limit');
+        console.error(
+          `Image too large: ${buffer.length} bytes (max: ${maxImageSize})`,
+        );
+        return null;
       }
 
       if (
@@ -212,42 +199,69 @@ export class CommonWsService {
           file.type,
         )
       ) {
-        throw new Error(
-          'Invalid image format. Only JPG, PNG, and GIF are allowed.',
-        );
+        console.error(`Invalid image type: ${file.type}`);
+        return null;
       }
     } else {
-      // Text file validation
-      const maxTextSize = 100 * 1024; // 100KB
-      if (buffer.length > maxTextSize) {
-        throw new Error('Text file size exceeds 100KB limit');
+      // Non-image file validation
+      const maxFileSize = 100 * 1024; // 100KB
+      if (buffer.length > maxFileSize) {
+        console.error(
+          `File too large: ${buffer.length} bytes (max: ${maxFileSize})`,
+        );
+        return null;
       }
 
-      if (file.type !== 'text/plain') {
-        throw new Error('Only .txt files are allowed for non-image uploads.');
+      // ТОЛЬКО TXT файлы разрешены
+      const allowedFileTypes = ['text/plain'];
+
+      if (!allowedFileTypes.includes(file.type)) {
+        console.error(
+          `Invalid file type: ${file.type}. Allowed: ${allowedFileTypes.join(', ')}`,
+        );
+        return null;
       }
+
+      console.log(`Accepted TXT file: ${file.name} (${file.type})`);
     }
 
-    // Create upload directory
     const uploadDir = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+        console.log(`Created uploads directory: ${uploadDir}`);
+      }
+    } catch (dirError) {
+      console.error(`Failed to create uploads directory:`, dirError);
+      return null;
     }
 
     // Generate unique filename
     const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `${timestamp}-${sanitizedName}`;
+    const fileName = `${timestamp}-${randomSuffix}-${sanitizedName}`;
     const filePath = path.join(uploadDir, fileName);
 
-    // Save file to disk
-    fs.writeFileSync(filePath, buffer);
+    try {
+      fs.writeFileSync(filePath, buffer);
+
+      // Проверяем что файл действительно создался
+      if (!fs.existsSync(filePath)) {
+        console.error(`File was not created: ${filePath}`);
+        return null;
+      }
+
+      const fileStats = fs.statSync(filePath);
+      console.log(
+        `File saved successfully: ${fileName} (${fileStats.size} bytes)`,
+      );
+    } catch (saveError) {
+      console.error(`Failed to save file ${fileName}:`, saveError);
+      return null;
+    }
 
     const fileUrl = `/uploads/${fileName}`;
-
-    console.log(
-      `File uploaded successfully: ${fileName} (${buffer.length} bytes)`,
-    );
 
     return {
       fileUrl,
@@ -365,10 +379,23 @@ export class CommonWsService {
     return result;
   }
 
-  /**
-   * Process avatar upload from WebSocket request
-   * @returns Processed avatar information
-   */
+  processTestAvatarUpload(
+    fileData: FileUploadData,
+    userId: string,
+    avatarShape: 'circle' | 'square' = 'circle',
+  ): { avatarUrl: string; avatarShape: string; testMode: boolean } {
+    console.log(`[AVATAR] Processing test avatar for user ${userId}`);
+
+    const result = this.processAvatarUpload(fileData, userId, avatarShape);
+
+    console.log(`[AVATAR] Test avatar processed: ${result.avatarUrl}`);
+
+    return {
+      ...result,
+      testMode: true,
+    };
+  }
+
   processAvatarUpload(
     fileData: FileUploadData,
     userId: string,
@@ -386,10 +413,14 @@ export class CommonWsService {
       throw new Error('Avatar must be an image file');
     }
 
-    // Image validation
-    const maxAvatarSize = 2 * 1024 * 1024; // 2MB
+    // Image validation with more lenient limits for test users
+    const isTestUser = userId.startsWith('test-user-');
+    const maxAvatarSize = isTestUser ? 1 * 1024 * 1024 : 2 * 1024 * 1024; // 1MB для тестовых, 2MB для обычных
+
     if (buffer.length > maxAvatarSize) {
-      throw new Error('Avatar file size exceeds 2MB limit');
+      throw new Error(
+        `Avatar file size exceeds ${maxAvatarSize / (1024 * 1024)}MB limit`,
+      );
     }
 
     if (
@@ -409,7 +440,9 @@ export class CommonWsService {
     // Generate unique filename with user ID
     const timestamp = Date.now();
     const extension = this.getFileExtension(file.name);
-    const fileName = `avatar_${userId}_${timestamp}${extension}`;
+    const fileName = isTestUser
+      ? `test_avatar_${userId}_${timestamp}${extension}`
+      : `avatar_${userId}_${timestamp}${extension}`;
     const filePath = path.join(avatarDir, fileName);
 
     // Save file to disk
@@ -418,7 +451,7 @@ export class CommonWsService {
     const avatarUrl = `/uploads/avatars/${fileName}`;
 
     console.log(
-      `Avatar uploaded for user ${userId}: ${fileName} (${buffer.length} bytes)`,
+      `Avatar uploaded for ${isTestUser ? 'test ' : ''}user ${userId}: ${fileName} (${buffer.length} bytes)`,
     );
 
     return {
@@ -426,7 +459,6 @@ export class CommonWsService {
       avatarShape,
     };
   }
-
   /**
    * Get file extension from filename
    */

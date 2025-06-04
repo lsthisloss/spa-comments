@@ -5,7 +5,7 @@ import { notification } from 'antd';
 import AuthStore from "./AuthStore";
 import UserStore from "./UserStore";
 import { ISocketStore } from "../../types/stores";
-
+import { testService } from "../test/TestService";
 /**
  * SocketStore - управляет всеми веб-сокет соединениями приложения
  * - Инициализирует и поддерживает сокеты для users, posts, comments и search
@@ -103,19 +103,12 @@ class SocketStore implements ISocketStore {
   // Публичные методы для внешнего использования
   // ---------------------------------------------------
 
-  /**
-   * Инициализирует сокеты, требующие аутентификации
-   * @param token JWT токен для аутентификации
-   * @returns Promise<void>
-   */
   initializeAuthenticatedSockets = action(async (token: string): Promise<void> => {
-    // Предотвращаем множественную инициализацию
     if (this.initializationInProgress) {
       logger.log("[SocketStore] Socket initialization already in progress, waiting...");
       return this.waitForInitialization();
     }
 
-    // Проверяем, может уже инициализировано с этим токеном
     if (this.hasTokenConnection(token)) {
       return;
     }
@@ -123,13 +116,11 @@ class SocketStore implements ISocketStore {
     this.initializationInProgress = true;
     
     try {
-      // Сохраняем текущий токен
       this.currentToken = token;
-      
       const wsUrl = import.meta.env.VITE_WS_URL;
       
-      // Создаем конфигурацию с токеном
-      const socketConfig = {
+      // Всегда используем обычный режим
+      const socketConfig: Record<string, unknown> = {
         transports: ['websocket', 'polling'] as ['websocket', 'polling'],
         timeout: 5000,
         reconnection: true,
@@ -146,27 +137,24 @@ class SocketStore implements ISocketStore {
       // Отключаем старые соединения
       await this.cleanupSockets();
 
-      // Переинициализируем users socket с токеном для аутентификации
+      // Инициализируем все сокеты с одинаковой конфигурацией
       const usersSocket = io(`${wsUrl}/users`, socketConfig);
       this.setUsers(usersSocket);
       this.setupUsersHandlers();
 
-      // Инициализируем posts socket
       const postsSocket = io(`${wsUrl}/posts`, socketConfig);
       this.setPosts(postsSocket);
       this.setupPostsHandlers();
 
-      // Инициализируем comments socket  
       const commentsSocket = io(`${wsUrl}/comments`, socketConfig);
       this.setComments(commentsSocket);
       this.setupCommentsHandlers();
 
-      // Инициализируем search socket
       const searchSocket = io(`${wsUrl}/search`, socketConfig);
       this.setSearch(searchSocket);
       this.setupSearchHandlers();
 
-      // Ждем подключения с более коротким таймаутом
+      // Ждем подключения
       const connections = await Promise.allSettled([
         this.waitForConnection(this.users!, 'users', 3000),
         this.waitForConnection(this.posts!, 'posts', 3000),
@@ -183,7 +171,7 @@ class SocketStore implements ISocketStore {
           logger.error(`${socketNames[index]} socket failed:`, (failure as PromiseRejectedResult).reason);
         });
       } else {
-        logger.log("[SocketStore] All authenticated sockets initialized successfully");
+        logger.log(`[SocketStore] All authenticated sockets initialized successfully`);
       }
 
     } catch (error) {
@@ -191,6 +179,23 @@ class SocketStore implements ISocketStore {
       throw error;
     } finally {
       this.initializationInProgress = false;
+    }
+  })
+
+  /**
+   * Проверяет готовность всех сокетов и отправляет событие
+   */
+  checkSocketsReady = action(() => {
+    if (this.posts?.connected && 
+        this.comments?.connected && 
+        this.users?.connected &&
+        this.search?.connected) {
+      
+      logger.log(`[SocketStore] All sockets ready, dispatching event`);
+      
+      // Отправляем событие о готовности всех сокетов
+      const event = new CustomEvent('sockets-ready');
+      document.dispatchEvent(event);
     }
   })
 
@@ -293,22 +298,6 @@ class SocketStore implements ISocketStore {
     }
   })
 
-  /**
-   * Проверяет готовность всех сокетов и отправляет событие
-   */
-  checkSocketsReady = action(() => {
-    if (this.posts?.connected && 
-        this.comments?.connected && 
-        this.users?.connected &&
-        this.search?.connected) {
-      
-      logger.log('[SocketStore] All sockets ready, dispatching event');
-      
-      // Отправляем событие о готовности всех сокетов
-      const event = new CustomEvent('sockets-ready');
-      document.dispatchEvent(event);
-    }
-  })
 
   /**
    * Проверяет, установлено ли соединение с указанным токеном
@@ -395,25 +384,38 @@ class SocketStore implements ISocketStore {
   // Приватные методы и вспомогательные функции
   // ---------------------------------------------------
 
-  /**
-   * Инициализирует сокет пользователей без аутентификации
-   */
   private initializeUsersSocket() {
     if (this.users?.connected) return;
 
-    logger.log("[SocketStore] Initializing users socket (no auth required)");
-    
     const wsUrl = import.meta.env.VITE_WS_URL;
     
-    const userSocket = io(`${wsUrl}/users`, {
+    let socketConfig: Record<string, unknown> = {
       transports: ['websocket', 'polling'],
       timeout: 10000,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-    });
+    };
 
-    // Используем action для установки сокета
+    // ПРОВЕРЯЕМ ТЕСТОВЫЙ РЕЖИМ
+    if (testService.isTestMode()) {
+      logger.log("[SocketStore] Initializing users socket in TEST mode");
+      
+      const testQueryParams = testService.getTestQueryParams();
+      socketConfig = {
+        ...socketConfig,
+        query: testQueryParams,
+        forceNew: true,
+        reconnection: false, // Отключаем реконнект для тестов
+      };
+      
+      logger.log("[SocketStore] Test users socket config:", socketConfig);
+    } else {
+      logger.log("[SocketStore] Initializing users socket (no auth required)");
+    }
+    
+    const userSocket = io(`${wsUrl}/users`, socketConfig);
+
     runInAction(() => {
       this.setUsers(userSocket);
     });
@@ -428,7 +430,9 @@ class SocketStore implements ISocketStore {
     if (!this.users) return;
 
     this.users.on('connect', () => {
-      logger.log('[SocketStore] Users socket connected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Users socket connected${mode}`);
+      
       runInAction(() => {
         this.setConnected(true);
         this.checkSocketsReady();
@@ -436,18 +440,26 @@ class SocketStore implements ISocketStore {
     });
 
     this.users.on('forcedLogout', (data: { reason: string, timestamp: string }) => {
+      // В тестовом режиме можем логировать по-другому
+      if (testService.isTestMode()) {
+        logger.log("[SocketStore] Test mode: ignoring forcedLogout", data);
+        return;
+      }
       this.handleForcedLogout(data);
     });
 
     this.users.on('disconnect', () => {
-      logger.log('[SocketStore] Users socket disconnected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Users socket disconnected${mode}`);
+      
       runInAction(() => {
         this.setConnected(false);
       });
     });
 
     this.users.on('connect_error', (error: Error) => {
-      logger.error('[SocketStore] Users socket connection error:', error);
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.error(`[SocketStore] Users socket connection error${mode}:`, error);
     });
   }
 
@@ -458,7 +470,9 @@ class SocketStore implements ISocketStore {
     if (!this.posts) return;
 
     this.posts.on('connect', () => {
-      logger.log('[SocketStore] Posts socket connected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Posts socket connected${mode}`);
+      
       runInAction(() => {
         this.setPostsReady(true);
         this.checkSocketsReady(); 
@@ -466,18 +480,25 @@ class SocketStore implements ISocketStore {
     });
 
     this.posts.on('forcedLogout', (data: { reason: string, timestamp: string }) => {
+      if (testService.isTestMode()) {
+        logger.log("[SocketStore] Test mode: ignoring forcedLogout", data);
+        return;
+      }
       this.handleForcedLogout(data);
     });
 
     this.posts.on('disconnect', () => {
-      logger.log('[SocketStore] Posts socket disconnected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Posts socket disconnected${mode}`);
+      
       runInAction(() => {
         this.setPostsReady(false);
       });
     });
 
     this.posts.on('connect_error', (error: Error) => {
-      logger.error('[SocketStore] Posts socket connection error:', error);
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.error(`[SocketStore] Posts socket connection error${mode}:`, error);
     });
   }
 
@@ -488,7 +509,9 @@ class SocketStore implements ISocketStore {
     if (!this.comments) return;
 
     this.comments.on('connect', () => {
-      logger.log('[SocketStore] Comments socket connected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Comments socket connected${mode}`);
+      
       runInAction(() => {
         this.setCommentsReady(true);
         this.checkSocketsReady(); 
@@ -496,18 +519,25 @@ class SocketStore implements ISocketStore {
     });
 
     this.comments.on('forcedLogout', (data: { reason: string, timestamp: string }) => {
+      if (testService.isTestMode()) {
+        logger.log("[SocketStore] Test mode: ignoring forcedLogout", data);
+        return;
+      }
       this.handleForcedLogout(data);
     });
 
     this.comments.on('disconnect', () => {
-      logger.log('[SocketStore] Comments socket disconnected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Comments socket disconnected${mode}`);
+      
       runInAction(() => {
         this.setCommentsReady(false);
       });
     });
 
     this.comments.on('connect_error', (error: Error) => {
-      logger.error('[SocketStore] Comments socket connection error:', error);
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.error(`[SocketStore] Comments socket connection error${mode}:`, error);
     });
   }
 
@@ -518,23 +548,29 @@ class SocketStore implements ISocketStore {
     if (!this.search) return;
     
     this.search.on('connect', () => {
-      logger.log('[SocketStore] Search socket connected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Search socket connected${mode}`);
       this.checkSocketsReady();
     });
     
     this.search.on('forcedLogout', (data: { reason: string, timestamp: string }) => {
+      if (testService.isTestMode()) {
+        logger.log("[SocketStore] Test mode: ignoring forcedLogout", data);
+        return;
+      }
       this.handleForcedLogout(data);
     });
     
     this.search.on('disconnect', () => {
-      logger.log('[SocketStore] Search socket disconnected');
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.log(`[SocketStore] Search socket disconnected${mode}`);
     });
     
     this.search.on('connect_error', (error: Error) => {
-      logger.error('[SocketStore] Search socket connection error:', error);
+      const mode = testService.isTestMode() ? " (TEST MODE)" : "";
+      logger.error(`[SocketStore] Search socket connection error${mode}:`, error);
     });
   }
-
 
   /**
    * Обрабатывает событие принудительного выхода

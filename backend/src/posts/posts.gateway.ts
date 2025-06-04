@@ -20,6 +20,7 @@ import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { isUUID } from 'class-validator';
 import { PostResponseDto } from './dto/post-response.dto';
+import { TestService } from '../test/test.service';
 
 @Injectable()
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/posts' })
@@ -38,13 +39,13 @@ export class PostsGateway
   >();
   private readonly MAX_POSTS_PER_MINUTE = 10;
   private readonly RATE_LIMIT_WINDOW = 60 * 1000;
-
   constructor(
     private readonly commonWsService: CommonWsService,
     private readonly postsService: PostsService,
     private readonly commentsService: CommentsService,
     private readonly usersService: UsersService,
     private readonly rabbitMQService: RabbitMQService,
+    private readonly testService: TestService,
   ) {}
 
   afterInit(server: Server) {
@@ -61,9 +62,36 @@ export class PostsGateway
   }
 
   handleConnection(client: Socket) {
-    this.logger.log(
-      `Posts WS connected to: ${client.nsp.name}, client: ${client.id}, user: ${(client.data as { user?: { id?: string } })?.user?.id || 'anonymous'}`,
+    console.log(`Posts WS connected: ${client.id}`);
+
+    // ДЕТАЛЬНАЯ ОТЛАДКА
+    console.log(`[WS] Query params:`, client.handshake.query);
+    console.log(`[WS] Client data:`, client.data);
+
+    const clientData = client.data as {
+      user?: { id?: string; role?: string };
+      testDataGeneration?: boolean;
+      testMode?: boolean;
+      captchaVerified?: boolean;
+    };
+
+    const testDataGeneration =
+      client.handshake?.query?.testDataGeneration === 'true';
+    console.log(`[WS] testDataGeneration from query: ${testDataGeneration}`);
+    console.log(
+      `[WS] clientData.testDataGeneration: ${clientData?.testDataGeneration}`,
     );
+    console.log(`[WS] userId: ${clientData?.user?.id}`);
+
+    // ЕСЛИ ПОДКЛЮЧЕНИЕ С ФЛАГОМ testDataGeneration=true
+    if (
+      (testDataGeneration || clientData?.testDataGeneration) &&
+      clientData?.user?.id
+    ) {
+      // МАРКИРУЕМ ПОЛЬЗОВАТЕЛЯ КАК ТЕСТОВОГО
+      this.testService.markAsTestUser(clientData.user.id);
+      console.log(`[WS] MARKED TEST USER ON CONNECTION: ${clientData.user.id}`);
+    }
   }
 
   handleDisconnect(client: Socket) {
@@ -93,71 +121,80 @@ export class PostsGateway
   async handleAddPost(
     @ConnectedSocket() client: Socket,
     @MessageBody() createPostDto: CreatePostDto,
-  ): Promise<{ success: boolean; message: string; postId?: string }> {
+  ): Promise<any> {
     try {
-      const userData = client.data as { user?: { id?: string; role?: string } };
+      const userData = client.data as {
+        user?: {
+          id?: string;
+          role?: string;
+        };
+        testMode?: boolean;
+        testDataGeneration?: boolean;
+        captchaVerified?: boolean;
+      };
+
       const userId = userData.user?.id;
-      const userRole = userData.user?.role || 'user';
+      const userRole = userData.user?.role;
+
+      const isTestDataGeneration =
+        client.handshake?.query?.testDataGeneration === 'true' ||
+        userData?.testDataGeneration === true;
+
+      const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+
+      console.log(
+        `[ADD POST] User: ${userId} (${userRole}) | Admin: ${isAdmin} | TestDataGen: ${isTestDataGeneration}`,
+      );
 
       if (!userId) {
         return { success: false, message: 'User not authenticated' };
       }
 
-      // Проверка капчи только для обычных пользователей
-      const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+      // МАРКИРУЕМ ПОЛЬЗОВАТЕЛЯ КАК ТЕСТОВОГО ЕСЛИ testDataGeneration=true
+      if (isTestDataGeneration) {
+        this.testService.markAsTestUser(userId);
+        console.log(`[ADD POST] ✅ MARKED TEST USER: ${userId}`);
+      }
 
-      // Если пользователь НЕ админ, проверяем капчу
-      if (!isAdmin) {
-        // Используем новый метод для проверки верификации капчи
-        const captchaVerified = this.commonWsService.isCaptchaVerified(client);
-        if (!captchaVerified) {
-          return { success: false, message: 'CAPTCHA verification required' };
+      // RATE LIMIT + CAPTCHA проверки ТОЛЬКО ДЛЯ НЕ-ТЕСТОВЫХ
+      if (!isAdmin && !isTestDataGeneration) {
+        const rateLimit = this.checkUserRateLimit(userId);
+        if (!rateLimit.allowed) {
+          return {
+            success: false,
+            message: `Rate limit exceeded. Try again in ${rateLimit.retryAfter} seconds.`,
+            rateLimited: true,
+            retryAfter: rateLimit.retryAfter,
+          };
+        }
+
+        const captchaValid = this.commonWsService.isCaptchaVerified(client);
+        if (!captchaValid) {
+          return { success: false, message: 'Captcha verification required' };
         }
       }
 
-      // ПРОВЕРКА RATE LIMIT ПЕРЕД ОТПРАВКОЙ В ОЧЕРЕДЬ
-      const rateLimitResult = this.checkUserRateLimit(userId);
-      if (!rateLimitResult.allowed) {
-        this.logger.warn(
-          `Rate limit exceeded for user ${userId}: ${rateLimitResult.currentCount}/${rateLimitResult.maxPosts}`,
-        );
-        return {
-          success: false,
-          message: `Rate limit exceeded. You can create ${rateLimitResult.maxPosts} posts per minute. Try again in ${rateLimitResult.retryAfter} seconds.`,
-        };
+      // Обновляем rate limit ТОЛЬКО ДЛЯ НЕ-ТЕСТОВЫХ
+      if (!isAdmin && !isTestDataGeneration) {
+        this.updateUserRateLimit(userId);
       }
 
-      const postData = {
-        ...createPostDto,
-        userId,
-      };
+      //  ОТПРАВЛЯЕМ В ОЧЕРЕДЬ И ПОЛУЧАЕМ РЕАЛЬНЫЙ ID
+      const result = await this.postsService.sendPostToQueue(createPostDto);
 
-      this.logger.log(
-        `Post sent to queue "add_post_queue": ${JSON.stringify(postData)}`,
-      );
-
-      // Отправляем в очередь
-      await this.rabbitMQService.sendToQueue('add_post_queue', {
-        createPostDto: postData,
-      });
-
-      // Обновляем rate limit счетчик ТОЛЬКО если пост отправлен в очередь
-      this.updateUserRateLimit(userId);
+      console.log(`Post created for user ${userId}: ${result.postId}`);
 
       return {
         success: true,
-        message: 'Post queued for processing',
-        postId: 'pending', // Временный ID пока не обработан
+        message: 'Post added successfully',
+        postId: result.postId,
+        queued: result.queued,
       };
-    } catch (error) {
-      this.logger.error(
-        `Error adding post: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return {
-        success: false,
-        message:
-          error instanceof Error ? error.message : 'Failed to create post',
-      };
+    } catch (error: unknown) {
+      console.error('Error adding post:', error);
+      const message =
+        error instanceof Error ? error.message : 'An unknown error occurred';
+      return { success: false, message };
     }
   }
   private checkUserRateLimit(userId: string): {

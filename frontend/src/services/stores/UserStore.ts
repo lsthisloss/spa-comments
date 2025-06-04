@@ -25,7 +25,6 @@ class UserStore implements IUserStore {
     makeObservable(this, {
       user: observable,
       usersCache: observable,
-      getUserByUsername: action,
       loadingUsers: observable,
       loginLoading: observable,
       setUser: action,
@@ -1019,108 +1018,6 @@ clearUser = action(() => {
     });
   }
 
-  // Replace the existing getUserByUsername method with this:
-
-async getUserByUsername(username: string): Promise<User | null> {
-  try {
-    logger.log(`[UserStore] Fetching user by username: ${username}`);
-    
-    // Check cache first - search through all cached users
-    for (const [, user] of this.usersCache.entries()) {
-      if (user.userName === username || user.slug === username) {
-        logger.log(`[UserStore] Found user in cache: ${user.userName} (${user.id})`);
-        return user;
-      }
-    }
-    
-    // Check if already loading this user
-    if (this.loadingUsers.has(username)) {
-      logger.log(`[UserStore] User ${username} is already being loaded, waiting...`);
-      return new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (!this.loadingUsers.has(username)) {
-            clearInterval(checkInterval);
-            // Check cache again after loading is complete
-            for (const [, user] of this.usersCache.entries()) {
-              if (user.userName === username || user.slug === username) {
-                resolve(user);
-                return;
-              }
-            }
-            resolve(null);
-          }
-        }, 100);
-      });
-    }
-    
-    // Start loading
-    runInAction(() => {
-      this.loadingUsers.add(username);
-    });
-    
-    // Fetch from server
-    return new Promise<User | null>((resolve, reject) => {
-      if (!this.socketStore.users) {
-        runInAction(() => {
-          this.loadingUsers.delete(username);
-        });
-        reject(new Error("Users socket not available"));
-        return;
-      }
-
-      this.socketStore.users.emit(
-        'getUserByUsername', 
-        { username }, 
-        (res: { success: boolean; user?: Partial<User>; message?: string }) => {
-          runInAction(() => {
-            this.loadingUsers.delete(username);
-          });
-
-          if (res.success && res.user && res.user.id && res.user.userName) {
-            // Create validated user
-            const validatedUser: User = {
-              id: res.user.id,
-              userName: res.user.userName,
-              email: res.user.email || '',
-              role: this.validateUserRole(res.user.role),
-              avatarUrl: res.user.avatarUrl || null,
-              avatarShape: res.user.avatarShape || 'circle',
-              slug: res.user.slug || res.user.userName.toLowerCase(),
-              createdAt: res.user.createdAt || new Date().toISOString(),
-              updatedAt: res.user.updatedAt || new Date().toISOString(),
-              followers: res.user.followers || [],
-              following: res.user.following || [],
-              settings: res.user.settings || { debugMode: false },
-            };
-
-            // Cache under multiple keys for fast lookup
-            runInAction(() => {
-              this.usersCache.set(validatedUser.id, validatedUser);
-              this.usersCache.set(validatedUser.userName, validatedUser);
-              if (validatedUser.slug && validatedUser.slug !== validatedUser.userName) {
-                this.usersCache.set(validatedUser.slug, validatedUser);
-              }
-              this.usersCache.set(username, validatedUser); // Cache under search key too
-            });
-
-            logger.log(`[UserStore] Fetched and cached user: ${validatedUser.userName} (${validatedUser.id})`);
-            resolve(validatedUser);
-          } else {
-            logger.warn(`[UserStore] User not found for username: ${username}`);
-            resolve(null);
-          }
-        }
-      );
-    });
-    
-  } catch (error) {
-    runInAction(() => {
-      this.loadingUsers.delete(username);
-    });
-    logger.error(`[UserStore] Error fetching user by username: ${username}`, error);
-    return null;
-  }
-}
   /**
    * Ищет пользователей по запросу
    */

@@ -8,7 +8,6 @@ export class QueueMonitorService {
 
   constructor(private readonly rabbitMQService: RabbitMQService) {}
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
   @Cron(CronExpression.EVERY_30_SECONDS)
   async checkQueueHealth() {
     try {
@@ -32,7 +31,6 @@ export class QueueMonitorService {
           `CRITICAL: Queue overload detected! Total messages: ${totalMessages}`,
         );
 
-        // Здесь можно добавить алерты в Slack/Email
         this.sendAlert('QUEUE_OVERLOAD', {
           totalMessages,
           posts: stats.posts.messageCount,
@@ -46,13 +44,25 @@ export class QueueMonitorService {
     }
   }
 
+  isRabbitMQConnected(): boolean {
+    return (
+      this.rabbitMQService.isConnected() &&
+      this.rabbitMQService.connection &&
+      !this.rabbitMQService.connection.closed
+    );
+  }
+
   // Метод для ручной проверки (можно вызвать через API)
   async getQueueStatus() {
     try {
       const stats = await this.rabbitMQService.getQueueStats();
 
       if (!stats) {
-        return { error: 'RabbitMQ not available' };
+        return {
+          error: 'RabbitMQ not available',
+          status: 'disconnected',
+          timestamp: new Date().toISOString(),
+        };
       }
 
       const totalMessages =
@@ -72,26 +82,33 @@ export class QueueMonitorService {
               : 'ok',
         timestamp: stats.timestamp,
         memoryUsage: process.memoryUsage(),
+        rabbitmq: {
+          connected: true,
+          connectionStatus: 'active',
+        },
       };
     } catch (error: unknown) {
       const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to get queue status:', errorMessage);
-      return { error: errorMessage };
+      return {
+        error: errorMessage,
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        rabbitmq: {
+          connected: false,
+          connectionStatus: 'error',
+        },
+      };
     }
   }
 
   private sendAlert(type: string, data: any) {
-    // Отправка алертов
     this.logger.error(`🚨 ALERT [${type}]:`, JSON.stringify(data, null, 2));
   }
 
-  // Дополнительный метод для экстренной очистки очередей
   async emergencyQueueCleanup() {
     try {
       this.logger.warn('🚨 Performing emergency queue cleanup...');
-
-      // Здесь можно добавить логику очистки критически переполненных очередей
-      // Например, удаление старых сообщений или временное отключение некритичных операций
 
       const stats = await this.rabbitMQService.getQueueStats();
       if (stats) {
@@ -100,15 +117,22 @@ export class QueueMonitorService {
         );
       }
 
-      return { success: true, message: 'Emergency cleanup initiated' };
+      return {
+        success: true,
+        message: 'Emergency cleanup initiated',
+        timestamp: new Date().toISOString(),
+      };
     } catch (error: unknown) {
       const errorMessage = this.getErrorMessage(error);
       this.logger.error('Emergency cleanup failed:', errorMessage);
-      return { success: false, error: errorMessage };
+      return {
+        success: false,
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+      };
     }
   }
 
-  // Утилитарный метод для безопасного извлечения сообщения об ошибке
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
       return error.message;

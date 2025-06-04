@@ -300,6 +300,7 @@ export class UsersService {
         sub: user.id,
         email: user.email,
         userName: user.userName,
+        role: user.role || UserRole.USER,
       };
 
       const token = this.jwtService.sign(payload);
@@ -606,6 +607,7 @@ export class UsersService {
       followers: followerRelations,
     };
   }
+  // Обновить ваш метод с дополнительным логированием
 
   async updateUserAvatar(
     userId: string,
@@ -613,31 +615,73 @@ export class UsersService {
     avatarShape?: 'circle' | 'square',
   ): Promise<User | null> {
     try {
-      const user = await this.findById(userId);
-      if (!user) return null;
-
-      if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
-      if (avatarShape !== undefined) user.avatarShape = avatarShape;
-
-      const updatedUser = await this.userRepository.save(user);
-
-      // --- Обновление в Elasticsearch ---
-      await this.elasticsearchService.update({
-        index: 'users',
-        id: updatedUser.id,
-        doc: {
-          avatarUrl: updatedUser.avatarUrl || '',
-          avatarShape: updatedUser.avatarShape || 'circle',
-        },
-        doc_as_upsert: true,
+      console.log(`🔄 Updating avatar for user ${userId}:`, {
+        avatarUrl,
+        avatarShape,
       });
 
+      const user = await this.findById(userId);
+      if (!user) {
+        console.error(`❌ User not found for avatar update: ${userId}`);
+        return null;
+      }
+
+      console.log(
+        `👤 Found user for avatar update: ${user.userName} (${user.id})`,
+      );
+
+      // Обновляем поля аватара
+      if (avatarUrl !== undefined) {
+        user.avatarUrl = avatarUrl;
+        console.log(`📷 Updated avatarUrl: ${avatarUrl}`);
+      }
+      if (avatarShape !== undefined) {
+        user.avatarShape = avatarShape;
+        console.log(`🔲 Updated avatarShape: ${avatarShape}`);
+      }
+
+      const updatedUser = await this.userRepository.save(user);
+      console.log(`💾 User saved successfully:`, {
+        id: updatedUser.id,
+        userName: updatedUser.userName,
+        avatarUrl: updatedUser.avatarUrl,
+        avatarShape: updatedUser.avatarShape,
+      });
+
+      // --- Обновление в Elasticsearch ---
+      try {
+        await this.elasticsearchService.update({
+          index: 'users',
+          id: updatedUser.id,
+          doc: {
+            avatarUrl: updatedUser.avatarUrl || '',
+            avatarShape: updatedUser.avatarShape || 'circle',
+          },
+          doc_as_upsert: true,
+        });
+        console.log(`🔍 Elasticsearch updated for user ${updatedUser.id}`);
+      } catch (esError) {
+        console.warn(
+          `⚠️ Failed to update Elasticsearch for user ${updatedUser.id}:`,
+          esError,
+        );
+        // Не блокируем операцию из-за ошибки Elasticsearch
+      }
+
+      this.logger.log(
+        `✅ Avatar updated successfully for user ${updatedUser.userName}: ${avatarUrl}`,
+      );
       return updatedUser;
     } catch (error) {
-      this.logger.error(`Error updating user avatar ${userId}:`, error);
+      this.logger.error(
+        `❌ Failed to update avatar for user ${userId}:`,
+        error,
+      );
+      console.error(`❌ updateUserAvatar error details:`, error);
       return null;
     }
   }
+
   async createSuperAdmin(
     email: string,
     userName: string,

@@ -938,9 +938,8 @@ processPosts = action((posts: Post[]) => {
       uniqueUsers.set(fullUser.id, fullUser);
     }
 
-    // ИСПРАВЛЕНИЕ: Используем repliesCount с сервера как commentCount для постов
+    // Используем repliesCount с серва как commentCount для постов (надо рефакторнуть)
     if (post.commentCount === undefined || post.commentCount === null) {
-      // For posts, server sends repliesCount which represents comment count
       const serverCommentCount = (post as Post).repliesCount || 0;
       post.commentCount = serverCommentCount;
       

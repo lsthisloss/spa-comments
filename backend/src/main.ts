@@ -1,11 +1,20 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import * as express from 'express';
 import * as path from 'path';
+import * as fs from 'fs';
 import { AuthenticatedSocketIoAdapter } from './socket-io.adapter';
 import { createConnection } from 'net';
 import { Client, ClientConfig } from 'pg';
+import * as crypto from 'crypto';
+
+if (typeof globalThis !== 'undefined') {
+  // @ts-expect-error: Assigning Node.js crypto to globalThis for compatibility
+  globalThis.crypto = crypto;
+} else if (typeof global !== 'undefined') {
+  // @ts-expect-error: Assigning Node.js crypto to global for compatibility
+  global.crypto = crypto;
+}
 
 interface ErrorLike {
   message: unknown;
@@ -112,10 +121,10 @@ async function waitForPostgres(): Promise<void> {
           socket.destroy();
           reject(new Error('Connection timeout'));
         });
-      });
 
-      console.log('✅ PostgreSQL server is ready!');
-      return;
+        console.log('✅ PostgreSQL server is ready!');
+        return;
+      });
     } catch (err: unknown) {
       const error = toError(err);
       console.log(
@@ -138,20 +147,6 @@ async function bootstrap(): Promise<void> {
 
     console.log('🚀 Starting NestJS application...');
 
-    console.log('🔍 DATABASE ENVIRONMENT DEBUG:');
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    console.log('DB_HOST:', process.env.DB_HOST);
-    console.log('DB_PORT:', process.env.DB_PORT);
-    console.log('DB_USER:', process.env.DB_USER);
-    console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'undefined');
-    console.log('DB_NAME:', process.env.DB_NAME);
-    console.log(
-      'DATABASE_URL:',
-      process.env.DATABASE_URL
-        ? process.env.DATABASE_URL.replace(/:[^:@]*@/, ':***@')
-        : 'undefined',
-    );
-
     const app = await NestFactory.create(AppModule, {
       logger:
         process.env.NODE_ENV === 'production'
@@ -167,41 +162,31 @@ async function bootstrap(): Promise<void> {
       }),
     );
 
-    app.use(
-      '/uploads',
-      (
-        req: express.Request,
-        res: express.Response,
-        next: express.NextFunction,
-      ) => {
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('X-Frame-Options', 'DENY');
+    // В development режиме __dirname = /app/dist/, но файлы в /app/uploads/
+    const uploadsPath =
+      process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../uploads') // /app/dist/../uploads = /app/uploads
+        : path.join(process.cwd(), 'uploads'); // /app/uploads
 
-        const ext = path.extname(req.path).toLowerCase();
-        if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-          res.setHeader('Content-Disposition', 'inline');
-        } else {
-          res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="${req.path.split('/').pop() || 'file'}"`,
-          );
-        }
-        next();
-      },
-      express.static(path.join(__dirname, '../uploads')),
-    );
+    console.log(`📁 Uploads directory: ${uploadsPath}`);
+    console.log(`📁 Current working directory: ${process.cwd()}`);
+    console.log(`📁 __dirname: ${__dirname}`);
 
-    app
-      .getHttpAdapter()
-      .get('/health', (req: express.Request, res: express.Response) => {
-        res.status(200).json({
-          status: 'ok',
-          timestamp: new Date().toISOString(),
-          uptime: process.uptime(),
-          environment: process.env.NODE_ENV || 'development',
-          memory: process.memoryUsage(),
-        });
-      });
+    if (!fs.existsSync(uploadsPath)) {
+      fs.mkdirSync(uploadsPath, { recursive: true });
+      console.log(`📁 Created uploads directory: ${uploadsPath}`);
+    }
+
+    // Проверяем что файлы действительно там
+    try {
+      const existingFiles = fs.readdirSync(uploadsPath);
+      console.log(`📁 Found ${existingFiles.length} existing files in uploads`);
+      if (existingFiles.length > 0) {
+        console.log(`📁 Sample files: ${existingFiles.slice(0, 3).join(', ')}`);
+      }
+    } catch (error) {
+      console.log(`📁 Could not read uploads directory: ${error}`);
+    }
 
     app.useWebSocketAdapter(new AuthenticatedSocketIoAdapter(app));
     console.log('[SOCKET AUTH] WebSocket adapter initialized');
@@ -248,8 +233,13 @@ async function bootstrap(): Promise<void> {
     await app.listen(port, '0.0.0.0');
 
     console.log(`🎉 Application is running on: http://0.0.0.0:${port}`);
+    console.log(`📁 Static files served from: ${uploadsPath} -> /uploads/*`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`Health check: http://0.0.0.0:${port}/health`);
+    console.log(`🔍 Monitoring: http://0.0.0.0:${port}/api/monitoring/health`);
+    console.log(
+      `📊 Queue status: http://0.0.0.0:${port}/api/monitoring/queue-status`,
+    );
   } catch (err: unknown) {
     const error = toError(err);
     console.error('❌ Failed to start application:', error.message);

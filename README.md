@@ -411,14 +411,14 @@ npm run create-superadmin:local
 
 **Мониторинг системы:**
 ```bash
-# Проверьте статус очередей через API
-curl http://localhost:3001/api/monitoring/queue-status
 
-# Проверьте здоровье системы
-curl http://localhost:3001/api/monitoring/health
+curl http://localhost:3001/api/monitoring/queue-status # Проверьте статус очередей через API
+curl http://localhost:3001/api/monitoring/health # Проверьте здоровье системы
+curl http://localhost:9200  # Elasticsearch
+http://localhost:3000  # Frontend {UI}
+http://localhost:15672  # RabbitMQ Management {UI}
+
 ```
-
-Актуальные ссылки для доступа к приложению будут показаны в консоли после запуска.
 
 ---
 

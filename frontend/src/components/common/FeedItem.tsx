@@ -34,14 +34,13 @@ const FeedItemComponent = ({
   expanded = false,
   onShowMore,
   hideCommentButton,
-  onClick,
 }: FeedItemProps) => {
   const userStore = useUserStore();
   const postStore = usePostStore();
   const commentStore = useCommentStore();
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const [, setImageLoaded] = useState(false);
-
+  
   const userName = useMemo(() => {
     if (item.user && item.user.userName) return item.user.userName;
     if (item.userName) return item.userName;
@@ -101,7 +100,7 @@ const FeedItemComponent = ({
     }
   }, [onLikeClick, type, item.id, userStore.user, postStore, commentStore]);
 
-  const handleTextToggle = useCallback(() => {
+    const handleTextToggle = useCallback(() => {
     const newExpandedState = !localExpanded;
     setLocalExpanded(newExpandedState);
 
@@ -145,9 +144,9 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
       className={`${type}-item fade-in`}
       variant="borderless"
       style={{ cursor: "default" }}
-      onClick={onClick}
     >
       <div className="item-layout" data-id={item.id}>
+        {/* Аватар */}
         {item.user?.avatarUrl ? (
           <div
             className="item-avatar"
@@ -181,20 +180,21 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
             {avatarLetter}
           </div>
         )}
+        
         <div className="item-content">
           <div className="item-user-info">
-              <Typography.Text
-                strong
-                className="clickable-username"
-                style={{
-                  cursor: "pointer",
-                  transition: "color 0.2s ease",
-                }}
-                onClick={handleUsernameClick}
-              >
-                {userName}
-              </Typography.Text>
-              <AdminBadge role={userRole} />
+            <Typography.Text
+              strong
+              className="clickable-username"
+              style={{
+                cursor: "pointer",
+                transition: "color 0.2s ease",
+              }}
+              onClick={handleUsernameClick}
+            >
+              {userName}
+            </Typography.Text>
+            <AdminBadge role={userRole} />
             <span className="item-separator">·</span>
             <Tooltip title={new Date(item.createdAt).toLocaleString()}>
               <span className="item-date">{formattedDate}</span>
@@ -216,6 +216,7 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
                 contain: "layout style",
                 wordBreak: "break-word",
                 overflowWrap: "break-word",
+                whiteSpace: "pre-wrap",
               }}
               dangerouslySetInnerHTML={{
                 __html: item.content.replace(/\n/g, "<br/>"),
@@ -223,6 +224,7 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
             />
           )}
 
+          {/* Изображение */}
           {imageUrl && (
             <div className="item-image-container">
               <Image
@@ -230,19 +232,20 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
                 alt={`Image attached to post ${item.id}`}
                 loading="lazy"
                 onLoad={handleImageLoad}
-                onError={(e) => { //
+                onError={(e) => {
                   console.error('Image failed to load:', imageUrl, e);
                   logger.error(`[FeedItem] Image failed to load: ${imageUrl}`);
                 }}
                 preview={true}
                 style={{
-                  maxHeight: '400px', //
+                  maxHeight: '400px',
                   width: '100%',
                   objectFit: 'cover',
                 }}
               />
             </div>
           )}
+          
           <ItemFooter
             item={item}
             type={type}

@@ -86,10 +86,10 @@ const AppContent = observer(() => {
     );
   }
 
-  // ⭐ НОВЫЙ ПОДХОД: ВСЕГДА РЕНДЕРИМ РОУТЫ + OVERLAY
+  // НОВЫЙ ПОДХОД: ВСЕГДА РЕНДЕРИМ РОУТЫ + OVERLAY
   return (
     <ErrorBoundary>
-      {/* ⭐ OVERLAY ПОВЕРХ РОУТОВ */}
+      {/* OVERLAY ПОВЕРХ РОУТОВ */}
       {appInitializer.initialized && !appInitializer.socketsReady && (
         <div style={{ 
           position: 'fixed',
@@ -109,7 +109,7 @@ const AppContent = observer(() => {
         </div>
       )}
       
-      {/* ⭐ РОУТЫ ВСЕГДА РЕНДЕРЯТСЯ */}
+      {/* РОУТЫ ВСЕГДА РЕНДЕРЯТСЯ */}
           <Routes>
             <Route
               path="/auth"
@@ -125,7 +125,6 @@ const AppContent = observer(() => {
                 <RequireAuth>
                   <Layout>
                     {(props) => (
-                      // ⭐ ТОЛЬКО КОГДА ВСЕ ГОТОВО - ПОКАЗЫВАЕМ РОУТЫ
                       appInitializer.initialized && appInitializer.socketsReady ? (
                         <Routes>
                           <Route path="/" element={<MainPage {...props} />} />
@@ -136,7 +135,6 @@ const AppContent = observer(() => {
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       ) : (
-                        // ⭐ ПОКАЗЫВАЕМ LOADING ВМЕСТО РОУТОВ
                         <div style={{ padding: '20px', textAlign: 'center' }}>
                           <Spin size="large" />
                           <p>Initializing...</p>

@@ -17,15 +17,6 @@ import { CommonWsService } from '../common/common-ws.service';
 import { User } from './entities/user.entity';
 import { SessionService } from '../auth/session.service';
 
-interface AvatarUploadData {
-  file: {
-    name: string;
-    type: string;
-    base64: string;
-  };
-  avatarShape: string;
-}
-
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/users' })
 export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -393,68 +384,97 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private validateAvatarShape(shape: string | undefined): 'circle' | 'square' {
-    if (shape === 'circle' || shape === 'square') {
-      return shape;
-    }
-    return 'circle';
-  }
-
+  @UseGuards(WsJwtGuard)
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('uploadAvatar')
   async handleUploadAvatar(
-    @MessageBody() data: AvatarUploadData,
     @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      file: { name: string; type: string; base64: string };
+      avatarShape?: 'circle' | 'square';
+    },
   ) {
     try {
-      // Получаем ID пользователя из JWT
-      const userData = client.data as AuthenticatedSocketData;
-      const userId = userData.user.id;
+      const userData = client.data as {
+        user?: { id: string; userName: string };
+      };
+      const userId = userData.user?.id;
 
       if (!userId) {
-        console.error('Upload avatar failed: Not authenticated');
-        return { success: false, message: 'Not authenticated' };
+        client.emit('avatarUploaded', {
+          success: false,
+          message: 'User not authenticated',
+        });
+        return;
       }
 
-      if (!data.file || !data.file.base64) {
-        console.error('Upload avatar failed: Invalid file data');
-        return { success: false, message: 'Invalid file data' };
-      }
-      const validatedShape = this.validateAvatarShape(data.avatarShape);
+      console.log(`[AVATAR] Processing avatar upload for user ${userId}`);
 
-      // Обрабатываем загрузку аватара через CommonWsService
-      const { avatarUrl } = this.commonWsService.processAvatarUpload(
+      // Проверяем тестовую генерацию данных
+      const isTestDataGeneration =
+        client.handshake?.query?.testDataGeneration === 'true';
+
+      // Обрабатываем аватар
+      const result = this.commonWsService.processAvatarUpload(
         { file: data.file },
         userId,
-        validatedShape, // Передаем валидированное значение
+        data.avatarShape || 'circle',
       );
 
-      // Обновляем пользователя с новым аватаром
-      const updatedUser = await this.usersService.updateUserAvatar(
-        userId,
-        avatarUrl,
-        validatedShape,
-      );
-
-      if (updatedUser) {
-        console.log(`User avatar uploaded successfully: ${updatedUser.id}`);
-        return {
-          success: true,
-          user: {
-            id: updatedUser.id,
-            email: updatedUser.email,
-            userName: updatedUser.userName,
-            avatarUrl: updatedUser.avatarUrl,
-            avatarShape: updatedUser.avatarShape,
-          },
-        };
+      if (!result) {
+        client.emit('avatarUploaded', {
+          success: false,
+          message: 'Failed to process avatar',
+        });
+        return;
       }
 
-      return { success: false, message: 'Failed to update avatar' };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Upload failed';
-      console.error('uploadAvatar: Error =', message);
-      return { success: false, message };
+      // Обновляем пользователя в БД (ТОЛЬКО для реального режима)
+      if (!isTestDataGeneration) {
+        const updatedUser = await this.usersService.updateUserAvatar(
+          userId,
+          result.avatarUrl,
+          result.avatarShape as 'circle' | 'square',
+        );
+
+        if (!updatedUser) {
+          client.emit('avatarUploaded', {
+            success: false,
+            message: 'Failed to update user avatar',
+          });
+          return;
+        }
+
+        console.log(`[AVATAR] User avatar updated in DB: ${result.avatarUrl}`);
+      } else {
+        console.log(`[AVATAR] Test data generation - skipping DB update`);
+      }
+
+      // Отправляем успешный ответ
+      client.emit('avatarUploaded', {
+        success: true,
+        message: 'Avatar uploaded successfully',
+        avatarUrl: result.avatarUrl,
+        avatarShape: result.avatarShape,
+        user: {
+          id: userId,
+          userName: userData.user?.userName,
+          avatarUrl: result.avatarUrl,
+          avatarShape: result.avatarShape,
+        },
+      });
+
+      console.log(
+        `[AVATAR] Avatar upload completed for user ${userId}: ${result.avatarUrl}`,
+      );
+    } catch (error) {
+      console.error('[AVATAR] Avatar upload error:', error);
+      client.emit('avatarUploaded', {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Avatar upload failed',
+      });
     }
   }
 
@@ -505,6 +525,11 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
       console.error('updateAvatarShape: Error =', message);
       return { success: false, message };
     }
+  }
+
+  private validateAvatarShape(shape: any): 'circle' | 'square' {
+    if (shape === 'square') return 'square';
+    return 'circle';
   }
   @UseGuards(WsJwtGuard)
   @SubscribeMessage('promoteToAdmin')
