@@ -5,11 +5,11 @@ import { CommentsGateway } from './comments.gateway';
 import { PostsModule } from '../posts/posts.module';
 import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { Comment } from './entities/comment.entity';
-import { CommonWsService } from '../common/common-ws.service';
 import { Post } from '../posts/entities/post.entity';
 import { AuthModule } from '../auth/auth.module';
 import { SearchModule } from '../search/search.module';
 import { User } from '../users/entities/user.entity';
+import { CommonModule } from '../common/common.module';
 
 @Module({
   imports: [
@@ -18,8 +18,9 @@ import { User } from '../users/entities/user.entity';
     RabbitMQModule,
     AuthModule,
     SearchModule,
+    CommonModule,
   ],
-  providers: [CommentsGateway, CommentsService, CommonWsService],
+  providers: [CommentsGateway, CommentsService],
   exports: [CommentsGateway, CommentsService],
 })
 export class CommentsModule {}

@@ -5,7 +5,6 @@ import { UsersService } from './users.service';
 import { UsersGateway } from './users.gateway';
 import { AuthModule } from '../auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
-import { CommonWsService } from '../common/common-ws.service';
 import { CommonModule } from '../common/common.module';
 import { SearchModule } from '../search/search.module';
 
@@ -17,7 +16,7 @@ import { SearchModule } from '../search/search.module';
     CommonModule,
     SearchModule,
   ],
-  providers: [UsersService, UsersGateway, CommonWsService],
+  providers: [UsersService, UsersGateway],
   exports: [UsersService, UsersGateway],
 })
 export class UsersModule {}

@@ -132,7 +132,7 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
   
   // Reactive data retrieval
   const post = postStore.getPostBySlug(postSlug);
-  const comment = !post ? commentStore.getCommentBySlug(postSlug) : null;
+  const comment = !post ? commentStore.getCommentBySlug(postSlug, false) : null;
   
   // Determine entity type and get comments
   const entityType = post ? 'post' : (comment ? 'comment' : null);

@@ -80,6 +80,8 @@ export interface IPostStore {
   feedAllLoaded: boolean;
   feedTotal: number;
   fetchFeedPosts(page?: number): Promise<void>;
+  fetchFollowingPosts(page?: number): Promise<void>;
+  fetchUserPosts(userId: string, page?: number): Promise<void>;
   loadMoreFeedPosts(): void;
   resetFeedsState(): void;
   hasFeedItems: boolean;

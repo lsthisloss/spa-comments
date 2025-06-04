@@ -4,6 +4,7 @@ import { PostsService } from '../../posts/posts.service';
 import type { CreatePostDto } from '../../posts/dto/create-post.dto';
 import { PostsGateway } from '../../posts/posts.gateway';
 import { UsersService } from '../../users/users.service';
+import { CommonWsService } from '../../common/common-ws.service';
 
 @Injectable()
 export class PostsConsumer implements OnModuleInit {
@@ -32,6 +33,7 @@ export class PostsConsumer implements OnModuleInit {
     private readonly postsService: PostsService,
     private readonly postsGateway: PostsGateway,
     private readonly usersService: UsersService,
+    private readonly commonWsService: CommonWsService,
   ) {}
   /* Метод, вызываемый при инициализации модуля
    * Подписывается на очередь RabbitMQ и начинает обработку сообщений
@@ -91,7 +93,38 @@ export class PostsConsumer implements OnModuleInit {
         this.rabbitMQService.ackMessage(msg);
         return;
       }
+      if (createPostDto.image && createPostDto.file) {
+        // Есть и изображение, и файл
+        const fileResult = this.commonWsService.processContentWithMultipleFiles(
+          createPostDto.content,
+          {
+            image: createPostDto.image,
+            file: createPostDto.file,
+          },
+        );
 
+        Object.assign(createPostDto, fileResult);
+        delete createPostDto.image;
+        delete createPostDto.file;
+      } else if (createPostDto.file) {
+        // Только файл
+        const fileResult = this.commonWsService.processContentWithFile(
+          createPostDto.content,
+          { file: createPostDto.file },
+        );
+
+        Object.assign(createPostDto, fileResult);
+        delete createPostDto.file;
+      } else if (createPostDto.image) {
+        // Только изображение
+        const fileResult = this.commonWsService.processContentWithFile(
+          createPostDto.content,
+          { file: createPostDto.image },
+        );
+
+        Object.assign(createPostDto, fileResult);
+        delete createPostDto.image;
+      }
       // Проверка на дублирование
       const messageHash = this.generateMessageHash(createPostDto);
       if (this.processedPostIds.has(messageHash)) {

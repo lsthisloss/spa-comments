@@ -27,7 +27,7 @@ export class IdResolver {
     
     // Resolve parent comment from slug if needed
     if (type === "comment" && !effectiveParentId && parentSlug) {
-      const comment = commentStore.getCommentBySlug(parentSlug);
+      const comment = commentStore.getCommentBySlug(parentSlug, false);
       if (comment) {
         effectiveParentId = comment.id;
         

@@ -15,21 +15,25 @@ export default function Layout({ children }: LayoutProps) {
 
   // Инициализация вкладки из URL
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const tabFromUrl = searchParams.get('tab');
-    
-    if (tabFromUrl === 'following') {
-      setActiveTab('my');
-      navigationStore.setActiveTab('my');
-    } else {
-      setActiveTab('all');
-      navigationStore.setActiveTab('all');
-    }
-  }, [location.search, navigationStore]);
+  // Обрабатываем вкладки только на главной странице
+  if (location.pathname !== '/') {
+    return;
+  }
+  
+  const searchParams = new URLSearchParams(location.search);
+  const tabFromUrl = searchParams.get('tab');
+  const newTab = tabFromUrl === 'following' ? 'my' : 'all';
+  
+  if (activeTab !== newTab) {
+    logger.log(`[Layout] Syncing tab with URL: ${newTab}`);
+    setActiveTab(newTab);
+    navigationStore.setActiveTab(newTab);
+  }
+}, [location.search, location.pathname, navigationStore]);
 
-  const handleTabClick = (tab: 'all' | 'my') => {
+const handleTabClick = (tab: 'all' | 'my') => {
   if (tab === activeTab) {
-    // Если пользователь кликает на активный таб, прокручиваем страницу к началу
+    // If user clicks on active tab, scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
     logger.log(`[Layout] Active tab ${tab} clicked, scrolling to top`);
     return;
@@ -37,22 +41,21 @@ export default function Layout({ children }: LayoutProps) {
 
   logger.log(`[Layout] Switching tab from ${activeTab} to ${tab}`);
   
-  // Сохраняем позицию скролла
+  // Save scroll position for current tab
   navigationStore.saveTabScrollPosition(activeTab);
   
-  // Переключаем вкладку
+  // Switch tab
   setActiveTab(tab);
   navigationStore.setActiveTab(tab);
   
-  // Обновляем URL
+  // Update URL
   const newUrl = tab === 'my' ? '/?tab=following' : '/';
-  window.history.pushState({}, '', newUrl);
+  window.history.pushState({ preserveFeeds: true }, '', newUrl); // Add preserveFeeds flag
   
-  // Восстанавливаем позицию скролла для новой вкладки
+  // Restore scroll position for new tab
   setTimeout(() => {
     const restored = navigationStore.restoreTabScrollPosition(tab);
     if (!restored) {
-      // Если нет сохраненной позиции - скроллим в начало
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
   }, 100);

@@ -10,24 +10,27 @@ import { logger } from "../../utils/Logger";
 import { usePostStore, useUserStore, useNavigationStore } from "../../hooks/useStore";
 import { FeedType } from "../../types/enums";
 import { useNavigationHelper } from "../../hooks/useNavigationHelper";
+import { useLocation } from "react-router-dom";
 interface PostsFeedProps {
   activeTab: string;
-  userId?: string; 
+  userId?: string;
 }
 
+// Then, inside the PostsThread component function, add:
 const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps) => {
+  const location = useLocation();
   const [, setSocketError] = useState<string | null>(null);
   const postStore = usePostStore();
   const userStore = useUserStore();
   const navigationStore = useNavigationStore();
   const navigationHelper = useNavigationHelper();
-
+  const [preserveData, setPreserveData] = useState(location.state?.preserveFeeds === true);
   const actualUserId = propsUserId || userStore.user?.id;
-  
+
   const hasRestoredScrollRef = useRef(false);
   const stableUserId = useMemo(() => actualUserId, [actualUserId]);
   const isLoadingRef = useRef(false);
-
+  
   // Определяем тип ленты и получаем состояние
   const { feedType, feed } = useMemo(() => {
     if (activeTab === "user") {
@@ -38,13 +41,13 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
           feed: postStore.getFeed("feed")
         };
       }
-      
+
       return {
         feedType: "user" as FeedType,
         feed: postStore.getUserFeedState()
       };
     }
-    
+
     const type: FeedType = activeTab === "all" ? "feed" : "following";
     logger.log(`[PostsThread] Main feed requested, type: ${type}, activeTab: ${activeTab}`);
     return {
@@ -52,6 +55,15 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
       feed: postStore.getFeed(type)
     };
   }, [activeTab, actualUserId, postStore]);
+  
+  useEffect(() => {
+    if (preserveData && feed.list.length > 0) {
+      logger.log(`[PostsThread] Clearing preserveData flag after successful restoration`);
+      setPreserveData(false);
+      // Also clear the browser state to prevent issues on refresh
+      window.history.replaceState(null, '', location.pathname + location.search);
+    }
+  }, [preserveData, feed.list.length, location.pathname, location.search]);
 
   // Переключение пользователя (только для user feed)
   useEffect(() => {
@@ -62,65 +74,87 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
 
   // Загрузка данных - с защитой от дублирования
   useEffect(() => {
-    // Защита от дублирования
+    // Check if we should skip fetch (when returning from profile)
+    if (location.state?.skipFetch === true) {
+      logger.log(`[PostsThread] Skipping fetch due to skipFetch flag in location state`);
+      window.history.replaceState(null, '', location.pathname + location.search);
+      return;
+    }
+
+    // Check if we're preserving feeds (tab switch)
+    if (location.state?.preserveFeeds === true) {
+      logger.log(`[PostsThread] Preserving feeds - using cached data for ${feedType}`);
+      return;
+    }
+
+    // Protection against duplicates
     if (isLoadingRef.current) {
       logger.log(`[PostsThread] Load already in progress, skipping`);
       return;
     }
 
-    // Проверки
+    // Check loading state
     if (feed.loading) {
       logger.log(`[PostsThread] Skipping load - another load in progress`);
       return;
     }
-    
+
+    // Check if we already have data and don't need to reset
     if (feed.list.length > 0 && !feed.reset) {
       logger.log(`[PostsThread] Already loaded ${feed.list.length} posts for ${feedType}, skipping`);
       return;
     }
-    
+
     // Для user feed проверяем userId
     if (feedType === "user") {
       if (!stableUserId) {
         logger.log(`[PostsThread] User feed requested but no userId available`);
         return;
       }
-      
+
       // Проверяем что userId совпадает
       if (postStore.getUserFeedState().userId !== stableUserId) {
         logger.log(`[PostsThread] Waiting for user feed to switch to ${stableUserId}`);
         return;
       }
     }
-    
+
     // Сбрасываем флаг reset
     if (feed.reset) {
       postStore.clearResetFlag(feedType, feedType === "user" ? stableUserId : undefined);
     }
-    
+
     // Устанавливаем флаг загрузки
     isLoadingRef.current = true;
-    
-    // Загружаем
-    logger.log(`[PostsThread] Loading posts for ${feedType}${stableUserId ? ` ${stableUserId}` : ''}`);
-    const userId = feedType === "user" ? stableUserId : undefined;
-    
-    postStore.fetchPosts(feedType, 1, userId)
+
+    // Use specific cached methods instead of generic fetchPosts
+    let fetchPromise: Promise<void>;
+
+    if (feedType === "user" && stableUserId) {
+      logger.log(`[PostsThread] Loading posts for user ${stableUserId}`);
+      fetchPromise = postStore.fetchUserPosts(stableUserId, 1);
+    } else if (feedType === "following") {
+      logger.log(`[PostsThread] Loading posts for following ${stableUserId}`);
+      fetchPromise = postStore.fetchFollowingPosts(1);
+    } else {
+      logger.log(`[PostsThread] Loading posts for feed`);
+      fetchPromise = postStore.fetchFeedPosts(1);
+    }
+
+    fetchPromise
       .catch(setSocketError)
       .finally(() => {
         isLoadingRef.current = false;
       });
-    
-  }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length, postStore]);
 
-  // Восстановление скролла
+  }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length, postStore, location.state?.skipFetch, location.pathname, location.search, location.state?.preserveFeeds]);  // Восстановление скролла
   useEffect(() => {
     if (hasRestoredScrollRef.current) return;
-    
+
     if (feedType === "feed") {
       const savedScrollPosition = navigationStore.feedScrollPosition;
       const hasSavedPosts = postStore.feedSavedPosts.length > 0;
-      
+
       if (savedScrollPosition > 0 && hasSavedPosts) {
         logger.log(`[PostsThread] Restoring main feed from saved state, position: ${savedScrollPosition}`);
         postStore.onBackToFeed((position) => {
@@ -129,7 +163,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         });
         return;
       }
-      
+
       if (savedScrollPosition > 0 && feed.list.length > 0) {
         logger.log(`[PostsThread] Tab switch detected, restoring scroll position`);
         setTimeout(() => {
@@ -138,12 +172,12 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         }, 100);
         return;
       }
-      
+
       if (savedScrollPosition > 0 && !hasSavedPosts && feed.list.length === 0) {
         logger.log(`[PostsThread] Direct URL detected, will load fresh feed`);
         navigationStore.feedScrollPosition = 0;
       }
-    } 
+    }
     else if (feedType === "following" && navigationStore.followingScrollPosition > 0) {
       logger.log(`[PostsThread] Restoring following feed position: ${navigationStore.followingScrollPosition}`);
       setTimeout(() => {
@@ -160,24 +194,24 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      
+
       const currentScrollPosition = window.scrollY;
       if (currentScrollPosition > 0) {
         navigationStore.saveTabScrollPosition(
-          feedType === 'feed' ? 'all' : 'my', 
+          feedType === 'feed' ? 'all' : 'my',
           currentScrollPosition
         );
       }
     };
   }, [feedType, navigationStore]);
-  
+
   const { estimateItemHeight, getItemKey } = usePostsFeed();
   const { virtualItems, totalHeight, measureElement } = useVirtualItems(
-    feed.list, 
-    getItemKey, 
+    feed.list,
+    getItemKey,
     estimateItemHeight
   );
 
@@ -189,9 +223,9 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
 
   const handleLoadMore = useCallback(() => {
     if (feed.loading || feed.allLoaded) return;
-    
+
     logger.log(`[PostsThread] Loading more ${feedType} posts`);
-    
+
     if (feedType === "user") {
       postStore.loadMore(feedType, actualUserId);
     } else {
@@ -201,7 +235,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
 
   const handleLoadNewPosts = useCallback(() => {
     if (feed.buffer.length === 0) return;
-    
+
     logger.log(`[PostsThread] Loading ${feed.buffer.length} new posts from buffer`);
     postStore.handleLoadNewPosts(feedType);
     postStore.setManualUpdateMode(feedType, false);
@@ -209,26 +243,26 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
   }, [feed.buffer.length, feedType, postStore]);
 
   const handleItemClick = useCallback((postSlug: string) => {
-  logger.log(`[PostsThread] Navigate to post: ${postSlug}`);
-  
-  // Сохраняем позицию скролла в хранилище
-  const currentScrollPosition = window.scrollY;
-  
-  // Преобразуем тип feed в main для соответствия ожидаемому типу в контексте
-  const contextFeedType = feedType === "feed" ? "main" : feedType;
-  
-  navigationStore.pushNavigationPoint(
-    window.location.pathname + window.location.search,
-    { feedType: contextFeedType, userId: actualUserId },
-    currentScrollPosition
-  );
-  
-  // Используем хелпер для навигации
-  navigationHelper.navigateToPost(postSlug);
-}, [feedType, actualUserId, navigationStore, navigationHelper]);
+    logger.log(`[PostsThread] Navigate to post: ${postSlug}`);
+
+    // Сохраняем позицию скролла в хранилище
+    const currentScrollPosition = window.scrollY;
+
+    // Преобразуем тип feed в main для соответствия ожидаемому типу в контексте
+    const contextFeedType = feedType === "feed" ? "main" : feedType;
+
+    navigationStore.pushNavigationPoint(
+      window.location.pathname + window.location.search,
+      { feedType: contextFeedType, userId: actualUserId },
+      currentScrollPosition
+    );
+
+    // Используем хелпер для навигации
+    navigationHelper.navigateToPost(postSlug);
+  }, [feedType, actualUserId, navigationStore, navigationHelper]);
 
   const renderPostItem = useCallback((
-    virtualItem: VirtualListItem<Post>, 
+    virtualItem: VirtualListItem<Post>,
     measureRef: (el: HTMLElement | null) => void
   ) => {
     return (
@@ -237,7 +271,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         ref={measureRef}
         data-virtual-index={virtualItem.index}
       >
-        <MemoizedPostItem 
+        <MemoizedPostItem
           post={virtualItem.item}
           onClick={handleItemClick}
           onHeightChange={() => {
@@ -252,11 +286,11 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
   }, [handleItemClick, measureElement]);
 
   const shouldShowNotification = feed.manualUpdateMode && feed.newPostsCount > 0 && feedType !== "user";
-  
+
   const headerComponent = shouldShowNotification ? (
-    <NewPostNotification 
+    <NewPostNotification
       latestPost={feed.latestPost}
-      onFocusPost={() => {}}
+      onFocusPost={() => { }}
       newPostsCount={feed.newPostsCount}
       onLoadNewPosts={handleLoadNewPosts}
       truncateContent={(text: string) => text.length > 50 ? `${text.substring(0, 50)}...` : text}
@@ -269,6 +303,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
       <VirtualList
         feedContextId={`${feedType}-${actualUserId || 'default'}`}
         items={feed.list}
+        preserveData={preserveData}
         renderItem={renderPostItem}
         getItemKey={getItemKey}
         totalHeight={totalHeight}
@@ -283,8 +318,6 @@ const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps
         manualMode={feed.manualUpdateMode}
         onScrollDown={handleScrollDown}
         enableManualModeTracking={feedType !== "user"}
-        initialLoadComplete={feed.list.length > 0}
-        endReachedThreshold={1500}
         debugOptions={{
           feedType,
           actualUserId,

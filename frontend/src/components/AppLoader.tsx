@@ -7,6 +7,7 @@ import styles from '../styles/components/_AppLoader.module.scss';
 const { Text } = Typography;
 
 const AppLoader = observer(() => {
+
   // Показываем ошибку сервера
   if (appInitializer.isServerUnavailable || 
       (appInitializer.error && appInitializer.error.message.includes('Server is unavailable'))) {
@@ -52,15 +53,29 @@ const AppLoader = observer(() => {
     );
   }
 
-  // Приложение готово - показываем App
-  if (appInitializer.initialized && appInitializer.socketsReady) {
-    return <App />;
-  }
-
-  // Минимальная загрузка
   return (
-    <div className={styles.loadingContainer}>
-      <Spin size="large" />
+    <div style={{ position: 'relative' }}>
+      {(!appInitializer.initialized || !appInitializer.socketsReady) && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div className={styles.loadingContainer}>
+            <Spin size="large" />
+            <p style={{ marginTop: 16 }}>Loading application...</p>
+          </div>
+        </div>
+      )}
+      
+      <App />
     </div>
   );
 });

@@ -3,7 +3,6 @@ import { Comment } from '../../types/interfaces';
 import { logger } from "../../utils/Logger";
 import { useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 import { useUserStore, useCommentStore } from '../../hooks/useStore';
 
 interface CommentItemProps {
@@ -16,8 +15,7 @@ interface CommentItemProps {
 }
 
 const CommentItem = observer((props: CommentItemProps) => {
-  const { item, disableShowMore, onNavigate, onShowMore, hideCommentButton = false } = props;
-  const { navigateToEntity } = useNavigationHelper();
+  const { item, disableShowMore, onShowMore, hideCommentButton = false } = props;
   const userStore = useUserStore();
   const commentStore = useCommentStore();
 
@@ -31,18 +29,12 @@ const CommentItem = observer((props: CommentItemProps) => {
     logger.log(`Comment ${item.id} like clicked by user ${userStore.user.id}`);
     commentStore.toggleLike(item.id, userStore.user.id);
   }, [item.id, userStore.user, commentStore]);
-  
-  // Handle navigation
-  const handleNavigate = useCallback((slug: string) => {
-    navigateToEntity('comment', slug, onNavigate);
-  }, [onNavigate, navigateToEntity]);
 
   return (
     <FeedItem
       item={item}
       type="comment"
       disableShowMore={disableShowMore}
-      onNavigate={handleNavigate}
       onLikeClick={handleLikeClick}
       onShowMore={onShowMore}
       hideCommentButton={hideCommentButton || props.disableNestedComments}

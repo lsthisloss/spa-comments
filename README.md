@@ -421,17 +421,12 @@ curl http://localhost:3001/api/monitoring/health
 Актуальные ссылки для доступа к приложению будут показаны в консоли после запуска.
 
 ---
-<details>
-<summary><strong>⚡DEMO</strong></summary>
-  
-![image](https://github.com/user-attachments/assets/01f40e30-c1a7-4ed9-9448-a6a77b914ba2)
-
-</details>
 
 <details>
-<summary><strong>⚡DEMO</strong></summary>
+<summary><strong>⚡DEMO SCREENSHOT </strong></summary>
   
-![image](https://github.com/user-attachments/assets/01f40e30-c1a7-4ed9-9448-a6a77b914ba2)
+![image](https://github.com/user-attachments/assets/78defeda-1053-4ea7-b166-0afa4b75b659)
+
 
 </details>
 

@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
+import React, { ReactNode, useEffect, useRef } from 'react';
 import type { VirtualItem as TanStackVirtualItem } from '@tanstack/react-virtual';
 import { DebugInfo } from "../ui/modals/DebugInfo";
 import { logger } from '../../utils/Logger';
@@ -13,13 +13,13 @@ export interface VirtualListItem<T> extends TanStackVirtualItem {
 
 interface VirtualListProps<T> {
   items: T[];
+  preserveData?: boolean;
   renderItem: (virtualItem: VirtualListItem<T>, measureRef: (el: HTMLElement | null) => void) => ReactNode;
   getItemKey: (item: T, index: number) => string;
   totalHeight: number;
   virtualItems: VirtualListItem<T>[];
   measureElement: (el: HTMLElement | null, index: number) => void;
   onEndReached?: () => void;
-  endReachedThreshold?: number;
   loading?: boolean;
   loadingIndicator?: ReactNode;
   emptyComponent?: ReactNode;
@@ -33,7 +33,6 @@ interface VirtualListProps<T> {
   onScrollToTop?: () => void;
   onScrollDown?: () => void;
   enableManualModeTracking?: boolean;
-  initialLoadComplete?: boolean;
   feedContextId?: string;
 }
 
@@ -46,7 +45,6 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     virtualItems,
     measureElement,
     onEndReached,
-    endReachedThreshold = 800,
     loading = false,
     loadingIndicator,
     emptyComponent,
@@ -59,137 +57,172 @@ function VirtualList<T>(props: VirtualListProps<T>) {
     manualMode = false,
     onScrollDown,
     enableManualModeTracking = false,
-    initialLoadComplete = false,
     feedContextId,
+    preserveData = false,
   } = props;
 
-  const listRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  const loadingRef = useRef(loading);
-  const isHandlingRef = useRef(false);
-  const lastLoadTimeRef = useRef<number>(0);
-  const lastItemsCountRef = useRef(0);
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const initialLoadCompleteRef = useRef(false);
-  const lastFeedContextIdRef = useRef(feedContextId);
-  const emptyLoadAttemptsRef = useRef<number>(0);
-
-  // 1. Простая синхронизация loading
-  useEffect(() => {
-    loadingRef.current = loading;
-    logger.log(`[VirtualList] Loading state updated: ${loading}`);
-  }, [loading]);
-
-  // 2. Сброс флагов при смене контекста
-  useEffect(() => {
-    if (feedContextId && feedContextId !== lastFeedContextIdRef.current) {
-      logger.log(`[VirtualList] Feed context changed from ${lastFeedContextIdRef.current} to ${feedContextId}`);
-      lastFeedContextIdRef.current = feedContextId;
-      isHandlingRef.current = false;
-      emptyLoadAttemptsRef.current = 0;
-    }
-  }, [feedContextId]);
-
-  // 3. Сброс флагов при очистке items
-  useEffect(() => {
-    if (items.length === 0) {
-      isHandlingRef.current = false;
-      initialLoadCompleteRef.current = false;
-      lastItemsCountRef.current = 0;
-      emptyLoadAttemptsRef.current = 0;
-      logger.log('[VirtualList] Items reset, flags cleared');
-    }
-  }, [items.length]);
-
-  // 4. Обновление счетчика при увеличении items
-  useEffect(() => {
-    const currentItemsCount = items.length;
-    const lastCount = lastItemsCountRef.current;
-    
-    if (currentItemsCount > lastCount && lastCount > 0) {
-      logger.log(`[VirtualList] Items increased from ${lastCount} to ${currentItemsCount}, resetting loading state`);
-      isHandlingRef.current = false;
-    }
-    
-    lastItemsCountRef.current = currentItemsCount;
-  }, [items.length]);
-
-  // 5. Сброс isHandlingRef после загрузки
-  useEffect(() => {
-    if (!loading && isHandlingRef.current) {
-      logger.log('[VirtualList] Loading finished, reset isHandlingRef');
-      isHandlingRef.current = false;
-    }
-  }, [loading]);
-
-  // 6. Установка initialLoadComplete
-  useEffect(() => {
-    if (initialLoadComplete || items.length > 0) {
-      initialLoadCompleteRef.current = true;
-      logger.log('[VirtualList] Setting initialLoadComplete from props');
-    }
-  }, [initialLoadComplete, items.length]);
-
-  // 7. Manual mode tracking
-  useEffect(() => {
-    if (!enableManualModeTracking) return;
-    
-    const firstVisibleIndex = virtualItems[0]?.index ?? 0;
-    
-    if (firstVisibleIndex > 0 && !manualMode) {
-      logger.log('[VirtualList] User scrolled down, enabling manual update mode');
-      onScrollDown?.();
-    }
-  }, [virtualItems, manualMode, enableManualModeTracking, onScrollDown]);
-const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
-  const entry = entries[0];
-  if (!entry || !onEndReached) return;
-
-  if (entry.isIntersecting) {
-    if (loading) {
-      logger.log(`[VirtualList] Intersection ignored: loading=${loading}`);
-      return;
-    }
-
-    if (allLoaded) {
-      logger.log(`[VirtualList] Intersection ignored: allLoaded=${allLoaded}`);
-      return;
-    }
-
-    // ПРОВЕРКА RANGE: подгружаем за 5 элементов до конца
-    const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
-    const totalItems = items.length;
-    const remainingItems = totalItems - lastVisibleIndex - 1;
-    
-    if (remainingItems > 5) {
-      logger.log(`[VirtualList] Intersection ignored: ${remainingItems} items remaining (need ≤5)`);
-      return;
-    }
-
-    logger.log(`[VirtualList] Range triggered loading: ${remainingItems} items remaining (${items.length} total)`);
-    onEndReached();
+  // ФЛАГИ СОСТОЯНИЙ
+  const isDataLoadedRef = useRef(false);           // Данные загружены
+  const isRenderedRef = useRef(false);             // Элементы отрендерены  
+  const isUserScrolledRef = useRef(false);         // Пользователь скроллил
+  const canLoadMoreRef = useRef(false);            // Можно загружать еще
+  const isLoadingRef = useRef(false);              // Идет загрузка
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Update the data preservation logic in the first useEffect
+  
+useEffect(() => {
+  if (preserveData && isDataLoadedRef.current && virtualItems.length > 0 && !isRenderedRef.current) {
+    logger.log(`[VirtualList] Virtual items ready after preservation, enabling scroll`);
+    isRenderedRef.current = true;
+    canLoadMoreRef.current = true;
   }
-}, [onEndReached, allLoaded, loading, items.length, virtualItems]);
-  // 8. Setup IntersectionObserver
+}, [preserveData, virtualItems.length]);
+
+useEffect(() => {
+  const wasEmpty = !isDataLoadedRef.current;
+  const hasData = items.length > 0;
+
+  // Check if we should preserve data
+  if (preserveData && isDataLoadedRef.current && hasData) {
+    logger.log(`[VirtualList] Preserving data, skipping reset (${items.length} items)`);
+    
+    // IMPORTANT: Restore proper state when preserving data
+    if (!isRenderedRef.current && virtualItems.length > 0) {
+      isRenderedRef.current = true;
+      canLoadMoreRef.current = true;
+      logger.log(`[VirtualList] PRESERVED: Restored rendered state and CAN_LOAD_MORE`);
+    }
+    
+    return;
+  }
+
+  if (wasEmpty && hasData) {
+    isDataLoadedRef.current = true;
+    logger.log(`[VirtualList] DATA LOADED: ${items.length} items`);
+  }
+
+  if (!hasData) {
+    isDataLoadedRef.current = false;
+    isRenderedRef.current = false;
+    isUserScrolledRef.current = false;
+    canLoadMoreRef.current = false;
+    isLoadingRef.current = false;
+
+    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+
+    logger.log(`[VirtualList] DATA RESET`);
+  }
+}, [items.length, preserveData, virtualItems.length]);
+  // 2. ОТСЛЕЖИВАНИЕ РЕНДЕРИНГА
   useEffect(() => {
-    if (!sentinelRef.current || !onEndReached) return;
-    
-    const options = {
-      root: null,
-      rootMargin: `${endReachedThreshold}px`,
-      threshold: 0,
-    };
-    
-    observerRef.current = new IntersectionObserver(handleIntersection, options);
-    observerRef.current.observe(sentinelRef.current);
-    
+    const hasData = isDataLoadedRef.current;
+    const hasVirtual = virtualItems.length > 0;
+
+    if (hasData && hasVirtual && !isRenderedRef.current) {
+      isRenderedRef.current = true;
+
+      // ЗАДЕРЖКА перед разрешением загрузки
+      renderTimeoutRef.current = setTimeout(() => {
+        canLoadMoreRef.current = true;
+        logger.log(`[VirtualList] RENDERED: ${virtualItems.length} virtual items, CAN_LOAD_MORE enabled`);
+      }, 1500); // 1.5 секунды задержка
+    }
+
     return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
-      }
+      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
     };
-  }, [onEndReached, endReachedThreshold, handleIntersection]);
+  }, [virtualItems.length]);
+
+
+  useEffect(() => {
+      if (!isRenderedRef.current) {
+    logger.log(`[VirtualList] Skipping scroll detection - not rendered yet№`);
+    return;
+  }
+
+    // Log current state for debugging
+    logger.log(`[VirtualList] Scroll check: canLoadMore=${canLoadMoreRef.current}, isLoading=${isLoadingRef.current}, items=${items.length}, virtual=${virtualItems.length}`);
+
+
+    // ПРОВЕРКА СОРТИРОВКИ
+    const isSorting = debugOptions?.sortingInProgress === true;
+    if (isSorting) {
+      logger.log(`[VirtualList] LOADING BLOCKED: sorting in progress`);
+      return; // БЛОКИРУЕМ ЗАГРУЗКУ ПРИ СОРТИРОВКЕ
+    }
+
+    // АНАЛИЗ ВИДИМОСТИ
+    const firstVisible = virtualItems[0]?.index ?? 0;
+    const lastVisible = virtualItems[virtualItems.length - 1]?.index ?? 0;
+    const totalItems = items.length;
+    const hasMoreOnServer = !allLoaded;
+
+    const isAtEnd = lastVisible >= totalItems - 3; // Стандартная - когда до конца 3 элемента
+
+    const allItemsVisible = virtualItems.length === totalItems && totalItems > 0;
+
+    if (firstVisible > 0 && !isUserScrolledRef.current) {
+      isUserScrolledRef.current = true;
+    }
+
+    if (
+      // СТАНДАРТНЫЙ СЛУЧАЙ - СКРОЛЛ ДО КОНЦА
+      (isAtEnd && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current) ||
+      // НОВЫЙ СЛУЧАЙ - ВСЕ ЭЛЕМЕНТЫ ВИДНЫ, НО ЕСТЬ ЕЩЕ НА СЕРВЕРЕ
+      (allItemsVisible && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current)
+    ) {
+      isLoadingRef.current = true;
+      canLoadMoreRef.current = false;
+
+      if (onEndReached) {
+        logger.log(
+          `[VirtualList] LOADING MORE: atEnd=${isAtEnd}, allVisible=${allItemsVisible}, ` +
+          `totalItems=${totalItems}, visible=${lastVisible}`
+        );
+        onEndReached();
+      }
+    }
+
+    if (enableManualModeTracking && !manualMode && onScrollDown && firstVisible > 0) {
+      onScrollDown();
+    }
+  }, [virtualItems, items.length, allLoaded, onEndReached, enableManualModeTracking, manualMode, onScrollDown, debugOptions]);
+
+  // 4. ОТСЛЕЖИВАНИЕ СОСТОЯНИЯ LOADING
+  useEffect(() => {
+    const wasLoading = isLoadingRef.current;
+    const isCurrentlyLoading = loading;
+
+    if (wasLoading && !isCurrentlyLoading) {
+      // Загрузка завершена
+      isLoadingRef.current = false;
+
+      // Восстанавливаем возможность загрузки через 1 секунду
+      loadTimeoutRef.current = setTimeout(() => {
+        canLoadMoreRef.current = true;
+        logger.log(`[VirtualList] LOADING COMPLETE: CAN_LOAD_MORE restored`);
+      }, 1);
+    }
+
+    if (!wasLoading && isCurrentlyLoading) {
+      isLoadingRef.current = true;
+      logger.log(`[VirtualList] LOADING STARTED`);
+    }
+
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, [loading]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, []);
 
   // Логика состояний
   const hasItems = items.length > 0;
@@ -200,16 +233,16 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
 
   // Показать начальную загрузку
   if (isInitialLoading) {
-    const loadingContent = React.isValidElement(loadingIndicator) 
-      ? loadingIndicator 
-      : <LoadingIndicator 
-          loading={true}
-          allLoaded={false}
-          hasItems={false}
-          onVisible={() => {}}
-          emptyMessage={loadingMessage || "Loading content..."}
-        />;
-        
+    const loadingContent = React.isValidElement(loadingIndicator)
+      ? loadingIndicator
+      : <LoadingIndicator
+        loading={true}
+        allLoaded={false}
+        hasItems={false}
+        onVisible={() => { }}
+        emptyMessage={loadingMessage || "Loading content..."}
+      />;
+
     return (
       <div className="virtual-list-container-empty-state">
         {loadingContent}
@@ -219,10 +252,10 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
 
   // Показать пустое состояние
   if (isEmpty) {
-    const emptyContent = React.isValidElement(emptyComponent) 
-      ? emptyComponent 
+    const emptyContent = React.isValidElement(emptyComponent)
+      ? emptyComponent
       : <Empty description={emptyMessage || "No content available"} />;
-      
+
     return (
       <div className="virtual-list-container-empty-state">
         {emptyContent}
@@ -237,9 +270,11 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
     allLoaded,
     totalHeight,
     measuredItems: virtualItems.length,
-    isHandling: isHandlingRef.current,
-    lastLoadTime: lastLoadTimeRef.current,
-    cooldownRemaining: Math.max(0, 1000 - (Date.now() - lastLoadTimeRef.current)),
+    isDataLoaded: isDataLoadedRef.current,
+    isRendered: isRenderedRef.current,
+    canLoadMore: canLoadMoreRef.current,
+    isLoading: isLoadingRef.current,
+    userScrolled: isUserScrolledRef.current,
     manualMode,
     hasItems,
     isInitialLoading,
@@ -247,14 +282,12 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
     isEmpty,
     shouldShowPaginationIndicator,
     feedContextId,
-    lastFeedContextId: lastFeedContextIdRef.current,
     ...(debugOptions || {})
   };
 
   return (
     <div className={`virtual-list-container ${className}`}>
-      <div 
-        ref={listRef}
+      <div
         className="virtual-list-container-items"
         style={{
           height: `${totalHeight}px`,
@@ -280,23 +313,21 @@ const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) =>
           );
         })}
       </div>
-      
+
       {/* Индикатор пагинации */}
       {shouldShowPaginationIndicator && (
         <div className="virtual-list-container-pagination-indicator">
-          <div ref={sentinelRef} className="virtual-list-container-sentinel" />
-          
-          <LoadingIndicator 
+          <LoadingIndicator
             loading={isLoadingMore}
             allLoaded={allLoaded && !isLoadingMore}
             hasItems={true}
-            onVisible={() => {}}
+            onVisible={() => { }}
             emptyMessage="No more items"
             itemCount={items.length}
           />
         </div>
       )}
-      
+
       {<DebugInfo {...debugProps} />}
     </div>
   );

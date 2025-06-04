@@ -47,46 +47,30 @@ export function useNavigationHelper() {
   /**
    * Навигация к определенному типу сущности (пост, комментарий и т.д.)
    */
-  const navigateToEntity = useCallback((
-    entityType: 'post' | 'comment' | 'profile', 
-    entityId: string
-  ) => {
-    logger.log(`[NavigationHelper] Navigating to ${entityType}: ${entityId}`);
-    
-    let path = '';
-    const context: NavigationContext = { entityId };
-    
-    // Определяем путь в зависимости от типа сущности
-    switch (entityType) {
-      case 'post':
-        path = `/post/${entityId}`;
-        context.pageType = 'post';
-        break;
-      case 'comment':
-        path = `/comment/${entityId}`;
-        context.pageType = 'comment';
-        break;
-      case 'profile':
-        path = `/profile/${entityId}`;
-        context.pageType = 'profile';
-        context.userId = entityId;
-        break;
-      default:
-        logger.error(`[NavigationHelper] Unknown entity type: ${entityType}`);
-        return;
-    }
-    
-    // Используем общий метод для навигации
-    navigateTo(path, context);
-  }, [navigateTo]);
+ // Add logging to the navigateToEntity function
+const navigateToEntity = useCallback((type: 'post' | 'comment' | 'user', id: string, onClick?: (id: string) => void) => {
+  logger.log(`[NavigationHelper] Navigating to ${type} with id ${id}`);
   
-  /**
-   * Навигация назад с пониманием контекста
-   */
-  const goBack = useCallback(() => {
-    navigationStore.goBack(navigate);
-  }, [navigate, navigationStore]);
-
+  // If a click handler is provided, call it and let it handle navigation
+  if (onClick) {
+    logger.log(`[NavigationHelper] Using provided onClick handler for ${type}`);
+    onClick(id);
+    return;
+  }
+  
+  // Otherwise, handle navigation directly
+  const path = type === 'user' 
+    ? `/user/${id}` 
+    : type === 'post' 
+      ? `/post/${id}` 
+      : `/comment/${id}`;
+  
+  logger.log(`[NavigationHelper] Navigating to path: ${path}`);
+  navigateTo(path, {
+    from: location.pathname,
+    timestamp: Date.now()
+  });
+}, [navigateTo, location]);
   /**
    * Навигация к посту
    */
@@ -127,44 +111,58 @@ const navigateToComment = useCallback((commentSlug: string, postSlug?: string) =
     postSlug: postSlug
   });
 }, [location, navigateTo, navigationStore]);
-/**
- * Навигация к профилю пользователя
- */
-const navigateToProfile = useCallback((userId: string) => {
-  if (!userId) {
-    logger.warn('[NavigationHelper] Cannot navigate to profile with empty user ID');
+
+const navigateToProfile = useCallback((userSlug: string) => {
+  if (!userSlug) {
+    logger.warn('[NavigationHelper] Cannot navigate to profile with empty user slug');
     return;
   }
 
-  logger.log(`[NavigationHelper] Navigating to profile: ${userId}`);
+  logger.log(`[NavigationHelper] Navigating to profile: ${userSlug}`);
   
-  // Сохраняем текущий путь перед переходом
+  // Save the current path before navigation
   const currentPath = location.pathname + location.search;
   const currentContext = navigationStore.getPathContext();
   
-  // Всегда сохраняем текущую точку в историю
-  navigationStore.pushNavigationPoint(currentPath, currentContext);
+  // Always save the current point in history with special marker
+  const updatedContext = { ...currentContext, returnToAfterProfile: true };
+  navigationStore.pushNavigationPoint(currentPath, updatedContext);
+  logger.log(`[NavigationHelper] Saved return point with marker: ${currentPath}`);
   
-  // Создаем контекст для профиля
+  // Create context for the profile with correct typing
   const profileContext: NavigationContext = {
     pageType: 'profile',
-    userId: userId,
+    userSlug: userSlug, // Use userSlug instead of userId
+    returnPath: currentPath
   };
   
-  // Сохраняем информацию о родительском посте/комментарии, если есть
-  if (currentPath.startsWith('/post/')) {
-    profileContext.postId = currentPath.split('/').pop();
-    profileContext.isPostParent = true; // Маркируем что пост является родителем
-  }
-  else if (currentPath.startsWith('/comment/')) {
-    const commentId = currentPath.split('/').pop();
-    profileContext.commentId = commentId;
-  }
-  
-  // ИСПОЛЬЗУЕМ navigateTo вместо прямого navigate
-  navigateTo(`/profile/${userId}`, profileContext);
+  // Use navigateTo for consistency - navigate by slug
+  navigateTo(`/user/${userSlug}`, profileContext);
 }, [location, navigateTo, navigationStore]);
 
+const goBack = useCallback(() => {
+  const currentPath = location.pathname;
+  logger.log(`[NavigationHelper] goBack called from path: ${currentPath}`);
+  
+  // Special handling for returning from profile
+  if (currentPath.startsWith('/user/')) {
+    const point = navigationStore.findPointWithProperty('returnToAfterProfile', true);
+    if (point) {
+      logger.log(`[NavigationHelper] Found special return point: ${point.path}`);
+      navigate(point.path, { 
+        state: { 
+          scrollPosition: point.scrollPosition,
+          skipFetch: true, // Use skipFetch instead of preserveFeeds
+          timestamp: Date.now()
+        } 
+      });
+      return;
+    }
+  }
+  
+  // Default behavior
+  navigationStore.goBack(navigate);
+}, [navigate, location, navigationStore]);
   /**
    * Восстановление позиции скролла
    */

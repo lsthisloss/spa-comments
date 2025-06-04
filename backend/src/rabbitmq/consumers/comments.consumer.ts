@@ -4,7 +4,7 @@ import { CommentsService } from '../../comments/comments.service';
 import type { CreateCommentDto } from '../../comments/dto/create-comment.dto';
 import { CommentsGateway } from '../../comments/comments.gateway';
 import { UsersService } from '../../users/users.service';
-
+import { CommonWsService } from '../../common/common-ws.service';
 @Injectable()
 export class CommentsConsumer implements OnModuleInit {
   private readonly logger = new Logger(CommentsConsumer.name);
@@ -32,6 +32,7 @@ export class CommentsConsumer implements OnModuleInit {
     private readonly commentsService: CommentsService,
     private readonly commentsGateway: CommentsGateway,
     private readonly usersService: UsersService,
+    private readonly commonWsService: CommonWsService,
   ) {}
   /**
    * Инициализация потребителя сообщений RabbitMQ
@@ -100,6 +101,39 @@ export class CommentsConsumer implements OnModuleInit {
         this.logger.warn(`Duplicate comment detected: ${messageHash}`);
         this.rabbitMQService.ackMessage(msg);
         return;
+      }
+
+      if (createCommentDto.image && createCommentDto.file) {
+        // Есть и изображение, и файл
+        const fileResult = this.commonWsService.processContentWithMultipleFiles(
+          createCommentDto.content,
+          {
+            image: createCommentDto.image,
+            file: createCommentDto.file,
+          },
+        );
+
+        Object.assign(createCommentDto, fileResult);
+        delete createCommentDto.image;
+        delete createCommentDto.file;
+      } else if (createCommentDto.file) {
+        // Только файл
+        const fileResult = this.commonWsService.processContentWithFile(
+          createCommentDto.content,
+          { file: createCommentDto.file },
+        );
+
+        Object.assign(createCommentDto, fileResult);
+        delete createCommentDto.file;
+      } else if (createCommentDto.image) {
+        // Только изображение
+        const fileResult = this.commonWsService.processContentWithFile(
+          createCommentDto.content,
+          { file: createCommentDto.image },
+        );
+
+        Object.assign(createCommentDto, fileResult);
+        delete createCommentDto.image;
       }
 
       // Сохраняем комментарий

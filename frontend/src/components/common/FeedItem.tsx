@@ -1,4 +1,4 @@
-import { Image, Tooltip, Card, Typography, Spin } from "antd";
+import { Image, Tooltip, Card, Typography } from "antd";
 import { getAvatarColor } from "../ui/particles/avatarColor";
 import ItemFooter from "./ItemFooter";
 import OptimizedText from "../ui/optimization/OptimizedText";
@@ -9,8 +9,8 @@ import { observer } from "mobx-react-lite";
 import { Comment as CommentType, Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
 import { formatDistanceToNow } from "date-fns";
-import { useNavigate } from "react-router-dom";
 import { useUserStore, usePostStore, useCommentStore } from '../../hooks/useStore';
+import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
 type FeedItemType = CommentType | Post;
@@ -19,7 +19,6 @@ interface FeedItemProps {
   item: FeedItemType;
   type: "post" | "comment";
   disableShowMore?: boolean;
-  onNavigate?: (slug: string) => void;
   onLikeClick?: () => void;
   onShowMore?: () => void;
   expanded?: boolean;
@@ -31,7 +30,6 @@ const FeedItemComponent = ({
   item,
   type,
   disableShowMore,
-  onNavigate,
   onLikeClick,
   expanded = false,
   onShowMore,
@@ -41,7 +39,6 @@ const FeedItemComponent = ({
   const userStore = useUserStore();
   const postStore = usePostStore();
   const commentStore = useCommentStore();
-  const navigate = useNavigate();
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const [, setImageLoaded] = useState(false);
 
@@ -64,9 +61,14 @@ const FeedItemComponent = ({
   const isLiked = userId ? item.likedUserIds?.includes(userId) : false;
 
   const imageUrl = useMemo(() => {
-    if (!item.imageUrl) return null;
-    return item.imageUrl.startsWith("http") ? item.imageUrl : `${apiUrl}${item.imageUrl}`;
-  }, [item.imageUrl]);
+  if (!item.imageUrl) return null;
+  
+  const fullUrl = item.imageUrl.startsWith("http") 
+    ? item.imageUrl 
+    : `${apiUrl}${item.imageUrl}`;
+    
+  return fullUrl;
+}, [item.imageUrl]);
 
   const handleImageLoad = useCallback(() => {
     setImageLoaded(true);
@@ -112,28 +114,31 @@ const FeedItemComponent = ({
     return formatDistanceToNow(new Date(item.createdAt), { addSuffix: true });
   }, [item.createdAt]);
 
-  // Обработчик клика по имени пользователя
-  const handleUsernameClick = useCallback((e: React.MouseEvent) => {
-  e.stopPropagation();
-  if (item.user?.id) {
-    logger.log(`Username clicked for user ${item.user.id}`);
-    const profilePath = item.user.slug 
-      ? `/user/${item.user.slug}` 
-      : `/user/${item.user.userName}`;
-    navigate(profilePath);
-  }
-}, [item.user, navigate]);
+  const navigationHelper = useNavigationHelper();
 
+// Update the handleUsernameClick function
+const handleUsernameClick = useCallback((e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  const userSlug = item.user?.userName || item.userName;
+  if (userSlug) {
+    logger.log(`[FeedItem] Username clicked for user ${userSlug} (ID: ${item.userId}), using navigation helper`);
+    navigationHelper.navigateToProfile(userSlug);
+  } else {
+    logger.warn(`[FeedItem] No username available for user ${item.userId}`);
+  }
+}, [item.user?.userName, item.userName, item.userId, navigationHelper]);
+
+// Also update handleAvatarClick to use slug
 const handleAvatarClick = useCallback((e: React.MouseEvent) => {
   e.stopPropagation();
-  if (item.user?.id) {
-    logger.log(`Avatar clicked for user ${item.user.id}`);
-    const profilePath = item.user.slug 
-      ? `/user/${item.user.slug}` 
-      : `/user/${item.user.userName}`;
-    navigate(profilePath);
+  if (item.user?.userName || item.userName) {
+    const userSlug = item.user?.userName || item.userName;
+    logger.log(`[FeedItem] Avatar clicked for user ${userSlug} (ID: ${item.user?.id})`);
+    navigationHelper.navigateToProfile(userSlug);
   }
-}, [item.user, navigate]);
+}, [item.user?.userName, item.userName, item.user?.id, navigationHelper]);
 
   return (
     <Card
@@ -223,30 +228,24 @@ const handleAvatarClick = useCallback((e: React.MouseEvent) => {
               <Image
                 src={imageUrl}
                 alt={`Image attached to post ${item.id}`}
-                placeholder={
-                  <div
-                    style={{
-                      height: item.imageHeight || 300,
-                      background: "#f0f0f0",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Spin />
-                  </div>
-                }
                 loading="lazy"
                 onLoad={handleImageLoad}
+                onError={(e) => { //
+                  console.error('Image failed to load:', imageUrl, e);
+                  logger.error(`[FeedItem] Image failed to load: ${imageUrl}`);
+                }}
                 preview={true}
+                style={{
+                  maxHeight: '400px', //
+                  width: '100%',
+                  objectFit: 'cover',
+                }}
               />
             </div>
           )}
-
           <ItemFooter
             item={item}
             type={type}
-            onNavigate={onNavigate}
             onLikeClick={(e) => {
               e.stopPropagation();
               handleLikeClick();

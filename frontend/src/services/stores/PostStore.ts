@@ -179,7 +179,36 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     return this.feeds.following.list.length > 0;
   }
 
+  async fetchUserPosts(userId: string, page = 1): Promise<void> {
+    // Check if we already have this user's posts cached and not forcing a reset
+    if (page === 1 &&
+      this.feeds.user.list.length > 0 &&
+      this.feeds.user.userId === userId &&
+      !this.feeds.user.reset) {
+      logger.log(`[PostStore] Using cached user posts for ${userId} (${this.feeds.user.list.length} posts)`);
+      return Promise.resolve();
+    }
+
+    return this.fetchPosts("user", page, userId);
+  }
+
+  async fetchFollowingPosts(page = 1): Promise<void> {
+    // If we already have enough data and not forcing a refresh, use the cached data
+    if (page === 1 && this.feeds.following.list.length > 0 && !this.feeds.following.reset) {
+      logger.log(`[PostStore] Using cached following data (${this.feeds.following.list.length} posts)`);
+      return Promise.resolve();
+    }
+
+    return this.fetchPosts("following", page);
+  }
+
   async fetchFeedPosts(page = 1): Promise<void> {
+    // If we already have enough data and not forcing a refresh, use the cached data
+    if (page === 1 && this.feeds.feed.list.length > 0 && !this.feeds.feed.reset) {
+      logger.log(`[PostStore] Using cached feed data (${this.feeds.feed.list.length} posts)`);
+      return Promise.resolve();
+    }
+
     return this.fetchPosts("feed", page);
   }
 
@@ -204,18 +233,65 @@ class PostStore extends BaseStore<Post> implements IPostStore {
 
 
   updatePostCommentCount = action((postId: string, count: number) => {
-    // Находим пост во всех фидах и обновляем
-    Object.values(this.feeds).forEach(feed => {
-      const post = feed.list.find(p => p.id === postId);
-      if (post) {
-        post.commentCount = count;
+    logger.log(`[PostStore] updatePostCommentCount called with postId=${postId}, count=${count}`);
+
+    // First, update in the postsMap (primary source)
+    const mappedPost = this.postsMap.get(postId);
+    if (mappedPost) {
+      const oldCount = mappedPost.commentCount || 0;
+      logger.log(`[PostStore] Updating comment count for post ${postId} in postsMap from ${oldCount} to ${count}`);
+      mappedPost.commentCount = count;
+
+      // Check if feeds share the same references
+      const updatedFeeds: string[] = [];
+      Object.entries(this.feeds).forEach(([feedType, feed]) => {
+        const feedPost = feed.list.find(p => p.id === postId);
+        if (feedPost) {
+          if (feedPost === mappedPost) {
+            logger.log(`[PostStore] Feed ${feedType} shares reference with postsMap - auto-updated to ${count}`);
+          } else {
+            // This shouldn't happen with our fixed approach, but update manually if needed
+            logger.warn(`[PostStore] Feed ${feedType} has different reference, updating manually from ${feedPost.commentCount || 0} to ${count}`);
+            feedPost.commentCount = count;
+          }
+          updatedFeeds.push(feedType);
+        }
+      });
+
+      logger.log(`[PostStore] Updated comment count in feeds: ${updatedFeeds.join(', ') || 'none'}`);
+    } else {
+      logger.warn(`[PostStore] Post ${postId} not found in postsMap, updating feeds directly`);
+
+      // Fallback: update in feeds directly
+      const updatedFeeds: string[] = [];
+      Object.entries(this.feeds).forEach(([feedType, feed]) => {
+        const post = feed.list.find(p => p.id === postId);
+        if (post) {
+          const oldCount = post.commentCount || 0;
+          logger.log(`[PostStore] Updating comment count for post ${postId} in feed ${feedType} from ${oldCount} to ${count}`);
+          post.commentCount = count;
+          updatedFeeds.push(feedType);
+        }
+      });
+
+      logger.log(`[PostStore] Updated comment count in feeds: ${updatedFeeds.join(', ') || 'none'}`);
+    }
+
+    // Also update in buffer and saved posts (existing code)
+    Object.entries(this.feeds).forEach(([feedType, feed]) => {
+      const bufferPost = feed.buffer.find(p => p.id === postId);
+      if (bufferPost) {
+        const oldCount = bufferPost.commentCount || 0;
+        logger.log(`[PostStore] Updating comment count for post ${postId} in ${feedType} buffer from ${oldCount} to ${count}`);
+        bufferPost.commentCount = count;
       }
     });
 
-    // Также обновляем в postsMap
-    const mappedPost = this.postsMap.get(postId);
-    if (mappedPost) {
-      mappedPost.commentCount = count;
+    const savedPost = this.feedSavedPosts.find(p => p.id === postId);
+    if (savedPost) {
+      const oldCount = savedPost.commentCount || 0;
+      logger.log(`[PostStore] Updating comment count for post ${postId} in saved feed posts from ${oldCount} to ${count}`);
+      savedPost.commentCount = count;
     }
   });
 
@@ -384,26 +460,69 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     try {
       const result = await this.emitSocketRequest(eventName, eventData);
 
+      logger.log(`[PostStore] Socket response for ${eventName}:`, result);
+      logger.log(`[PostStore] Processed ${eventName} response:`, {
+        postsCount: result.posts.length,
+        total: result.total,
+        isEmpty: result.isEmpty,
+        allLoaded: result.allLoaded
+      });
+
       logger.log(`[PostStore] Received ${result.posts.length} posts, total: ${result.total}`);
 
       runInAction(() => {
-        // Обрабатываем данные о пользователях
+        // СНАЧАЛА обрабатываем и добавляем в postsMap
         this.processPosts(result.posts);
 
-        // Обновляем основное состояние
+        // ЗАТЕМ получаем ссылки из postsMap для feeds
+        const postsToAdd: Post[] = [];
+
+        result.posts.forEach(post => {
+          const mappedPost = this.postsMap.get(post.id);
+          if (mappedPost) {
+            postsToAdd.push(mappedPost);
+            logger.log(`[PostStore] Using shared reference for post ${post.id}`);
+          } else {
+            // Этого не должно происходить, но если происходит - создаем observable и добавляем в map
+            logger.warn(`[PostStore] Post ${post.id} not found in postsMap, creating new observable`);
+            const observablePost = observable(post);
+            this.postsMap.set(post.id, observablePost);
+            postsToAdd.push(observablePost);
+          }
+        });
+
+        // Проверяем что все посты имеют правильные ссылки
+        logger.log(`[PostStore] Adding ${postsToAdd.length} posts to ${type} feed with shared references`);
+
         if (page === 1) {
-          feed.list.replace(result.posts);
+          // Заменяем весь список для первой страницы
+          feed.list.replace(postsToAdd);
+          feed.page = 1;
         } else {
-          const newPosts = result.posts.filter(
-            post => !feed.list.some(p => p.id === post.id)
-          );
-          feed.list.push(...newPosts);
+          // Добавляем к существующему списку для следующих страниц
+          feed.list.push(...postsToAdd);
+          feed.page = page;
         }
 
         feed.total = result.total;
-        feed.page = page;
-        feed.allLoaded = result.allLoaded || result.posts.length === 0 || feed.list.length >= feed.total;
+        feed.allLoaded = result.allLoaded || result.posts.length < POSTS_PER_PAGE;
         feed.loading = false;
+        feed.error = null;
+        feed.reset = false;
+
+        logger.log(`[PostStore] Updated ${type} feed: ${feed.list.length} total posts`);
+
+        // Проверяем ссылки после добавления
+        if (postsToAdd.length > 0) {
+          const firstPost = postsToAdd[0];
+          const firstFeedPost = feed.list[page === 1 ? 0 : feed.list.length - postsToAdd.length];
+          const firstMappedPost = this.postsMap.get(firstPost.id);
+
+          logger.log(`[PostStore] Reference check for post ${firstPost.id}:`);
+          logger.log(`  - postsMap reference: ${firstMappedPost === firstPost}`);
+          logger.log(`  - feed reference: ${firstFeedPost === firstPost}`);
+          logger.log(`  - all same: ${firstMappedPost === firstPost && firstFeedPost === firstPost}`);
+        }
       });
     } catch (error) {
       runInAction(() => {
@@ -413,6 +532,7 @@ class PostStore extends BaseStore<Post> implements IPostStore {
       });
     }
   });
+
   getUserFeedState(): FeedState {
     return this.feeds.user;
   }
@@ -788,43 +908,78 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     return this.commentStore.loadComments(postId);
   });
 
-  /**
-   * Обрабатывает массив постов и кэширует пользователей
-   */
-  processPosts = action((posts: Post[]) => {
-    const uniqueUsers = new Map<string, User>();
 
-    posts.forEach(post => {
-      if (post.user && post.user.id && post.user.userName) {
-        const existingUser = uniqueUsers.get(post.user.id);
-        if (!existingUser) {
-          uniqueUsers.set(post.user.id, {
-            id: post.user.id,
-            userName: post.user.userName,
-            email: post.user.email || '',
-            avatarUrl: post.user.avatarUrl || null,
-            avatarShape: post.user.avatarShape || 'circle',
-            role: post.user.role || 'user',
-            slug: post.user.slug || post.user.userName.toLowerCase(),
-          } as User);
-        }
-      }
-    });
+// Update processPosts to use repliesCount from server
 
-    // Кэшируем уникальных пользователей
-    uniqueUsers.forEach(user => {
-      this.userStore.addCachedUser(user);
-    });
+processPosts = action((posts: Post[]) => {
+  const uniqueUsers = new Map<string, User>();
 
-    if (uniqueUsers.size > 0) {
-      logger.log(`[PostStore] Cached ${uniqueUsers.size} users with roles`);
+  posts.forEach(post => {
+    // Кэшируем пользователей - проверяем обязательные поля
+    if (post.user && post.user.id && post.user.userName) {
+      const roleValidated = this.userStore.validateUserRole(post.user.role);
+
+      // Создаем полный объект User с обязательными полями
+      const fullUser: User = {
+        id: post.user.id,
+        userName: post.user.userName,
+        email: post.user.email || '',
+        role: roleValidated,
+        avatarUrl: post.user.avatarUrl || null,
+        avatarShape: post.user.avatarShape || 'circle',
+        slug: post.user.slug || post.user.userName.toLowerCase(),
+        createdAt: post.user.createdAt || new Date().toISOString(),
+        updatedAt: post.user.updatedAt || new Date().toISOString(),
+        followers: post.user.followers || [],
+        following: post.user.following || [],
+        settings: post.user.settings || { debugMode: false },
+      };
+
+      uniqueUsers.set(fullUser.id, fullUser);
     }
 
-    // Добавляем посты
-    posts.forEach(post => {
-      this.postsMap.set(post.id, observable(post));
-    });
+    // ИСПРАВЛЕНИЕ: Используем repliesCount с сервера как commentCount для постов
+    if (post.commentCount === undefined || post.commentCount === null) {
+      // For posts, server sends repliesCount which represents comment count
+      const serverCommentCount = (post as Post).repliesCount || 0;
+      post.commentCount = serverCommentCount;
+      
+      if (serverCommentCount > 0) {
+        logger.log(`[PostStore] Set commentCount to ${serverCommentCount} (from server repliesCount) for post ${post.id}`);
+      } else {
+        logger.log(`[PostStore] Initialized commentCount to 0 for post ${post.id}`);
+      }
+    }
   });
+
+  // Кэшируем уникальных пользователей используя существующий метод
+  uniqueUsers.forEach(user => {
+    this.userStore.addCachedUser(user);
+  });
+
+  if (uniqueUsers.size > 0) {
+    logger.log(`[PostStore] Cached ${uniqueUsers.size} users with roles`);
+  }
+
+  // Используем ОБЩИЕ объекты для postsMap и feeds
+  posts.forEach(post => {
+    // Проверяем, есть ли уже этот пост в postsMap
+    const existingPost = this.postsMap.get(post.id);
+
+    if (existingPost) {
+      // Обновляем существующий пост вместо создания нового
+      runInAction(() => {
+        Object.assign(existingPost, post);
+        logger.log(`[PostStore] Updated existing post ${post.id} in postsMap`);
+      });
+    } else {
+      // Создаем новый observable пост только если его нет
+      const observablePost = observable(post);
+      this.postsMap.set(post.id, observablePost);
+      logger.log(`[PostStore] Added new post ${post.id} to postsMap`);
+    }
+  });
+});
 
   /**
    * Добавление поста

@@ -13,6 +13,7 @@ interface FeedItemFooterProps<T extends FeedItemBase> {
   item: T & { 
     likedUserIds?: string[]; 
     repliesCount?: number; 
+    commentCount?: number; // Add commentCount for posts
     fileUrl?: string; 
     fileName?: string; 
     fileType?: string; 
@@ -20,7 +21,6 @@ interface FeedItemFooterProps<T extends FeedItemBase> {
     slug?: string;
   };
   type: 'post' | 'comment';
-  onNavigate?: (id: string) => void;
   onLikeClick?: (e: React.MouseEvent) => void;
   isLiked?: boolean;
   hideCommentButton?: boolean;
@@ -29,7 +29,6 @@ interface FeedItemFooterProps<T extends FeedItemBase> {
 function FeedItemFooterComponent<T extends FeedItemBase>({
   item,
   type,
-  onNavigate,
   onLikeClick,
   isLiked,
   hideCommentButton = false,
@@ -48,14 +47,38 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
     [item.fileUrl, item.fileName, fileInfo.isImage]
   );
 
+  // Определяем правильное количество комментариев/ответов
+  // Extract commentCount for posts to avoid complex expressions and 'any'
+  const postCommentCount = (item as { commentCount?: number }).commentCount;
+
+// Обновляем логику получения commentCount
+
+const commentCount = useMemo(() => {
+  if (type === 'post') {
+    // For posts, use commentCount (which is now properly set from server's repliesCount)
+    const count = postCommentCount || 0;
+    logger.log(`[ItemFooter] Post ${item.id} commentCount: ${count}`);
+    return count;
+  } else {
+    // For comments, use repliesCount 
+    const count = item.repliesCount || 0;
+    logger.log(`[ItemFooter] Comment ${item.id} repliesCount: ${count}`);
+    return count;
+  }
+}, [type, postCommentCount, item.id, item.repliesCount]);
+
+
   // Navigation handler
   const handleNavigate = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     logger.log(`[ItemFooter] Button clicked for ${type} ${item.id}`);
     
+    const identifier = item.slug;
+    logger.log(`[ItemFooter] Using identifier for navigation: ${identifier}`);
+    
     // Use the navigation helper to handle all navigation scenarios
-    navigateToEntity(type, item.slug || item.id, onNavigate);
-  }, [type, item.id, item.slug, onNavigate, navigateToEntity]);
+    navigateToEntity(type, identifier);
+  }, [type, item.id, item.slug, navigateToEntity]);
 
   // File download menu items
   const fileMenu = useMemo(() => shouldShowDownload ? [
@@ -99,12 +122,12 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
             onClick={handleNavigate}
             style={{ cursor: 'pointer' }}
           >
-            {(item.repliesCount ?? 0) > 0 && item.repliesCount}
+            {commentCount > 0 && commentCount}
           </Button>
         )}
         
         {/* Comment preview dropdown */}
-        {(item.repliesCount ?? 0) > 0 && (
+        {commentCount > 0 && (
           <CommentPreviewDropdown postSlug={item.slug || ''}>
             <Button
               type="text"

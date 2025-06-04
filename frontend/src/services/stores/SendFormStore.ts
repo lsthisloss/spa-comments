@@ -76,19 +76,11 @@ class SendFormStore {
       return; // Не обновляем, если данные не изменились
     }
     
-    console.log('[SendFormStore] Initializing user:', { userId, userName, avatarUrl, avatarShape });
     
     this.userId = userId;
     this.userName = userName;
     this.avatarUrl = avatarUrl || null;
     this.avatarShape = avatarShape || 'circle';
-    
-    console.log('[SendFormStore] User initialized with:', {
-      userId: this.userId,
-      userName: this.userName,
-      avatarUrl: this.avatarUrl,
-      avatarShape: this.avatarShape
-    });
   });
 
   // Сеттеры

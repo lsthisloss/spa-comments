@@ -45,6 +45,7 @@ export interface FeedItemBase {
 export interface Post extends FeedItemBase {
   commentCount?: number;
   imageHeight?: number;
+  repliesCount?: number;  
 }
 
 // Интерфейс комментария

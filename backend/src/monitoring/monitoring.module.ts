@@ -7,9 +7,16 @@ import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 import { PostsModule } from '../posts/posts.module';
 import { CommentsModule } from '../comments/comments.module';
 import { UsersModule } from '../users/users.module';
+import { CommonModule } from '../common/common.module';
 
 @Module({
-  imports: [RabbitMQModule, PostsModule, CommentsModule, UsersModule],
+  imports: [
+    RabbitMQModule,
+    PostsModule,
+    CommentsModule,
+    UsersModule,
+    CommonModule,
+  ],
   controllers: [MonitoringController],
   providers: [QueueMonitorService, PostsConsumer, CommentsConsumer],
   exports: [QueueMonitorService],

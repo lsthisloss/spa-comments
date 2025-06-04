@@ -32,8 +32,8 @@ const PostItem = memo(observer(function PostItem({
     }
   }, [post.id, userStore.user, postStore]);
 
-  const handleNavigate = useCallback((slug: string) => {
-    logger.log(`PostItem: handling navigation for post ${slug}`);
+  const handleClick = useCallback(() => {
+    logger.log(`PostItem: handling click for post ${post.slug}`);
     
     if (onClick) {
       logger.log(`PostItem: calling provided onClick`);
@@ -41,9 +41,14 @@ const PostItem = memo(observer(function PostItem({
       return;
     }
     
-    logger.log(`PostItem: direct navigation to post ${slug}`);
-    const navigationState = navigationStore.saveNavigationState("post", post.slug);
-    navigate(`/post/${slug}`, { state: navigationState });
+    logger.log(`PostItem: direct navigation to post ${post.slug}`);
+    const currentScrollPosition = window.scrollY;
+    navigationStore.pushNavigationPoint(
+      window.location.pathname + window.location.search,
+      { pageType: 'feed', feedType: 'main' },
+      currentScrollPosition
+    );
+    navigate(`/post/${post.slug}`);
   }, [onClick, navigate, post.slug, navigationStore]);
 
   return (
@@ -51,16 +56,21 @@ const PostItem = memo(observer(function PostItem({
       <FeedItem
         item={post}
         type="post"
-        onNavigate={handleNavigate}
         onLikeClick={handleLikeClick}
         onShowMore={onShowMore}
         hideCommentButton={hideCommentButton}
-        onClick={undefined}
+        onClick={handleClick}
       />
     </div>
   );
 }), (prevProps, nextProps) => {
-  return prevProps.post.id === nextProps.post.id;
+  // сравниваем все ключевые поля включая commentCount
+  return (
+    prevProps.post.id === nextProps.post.id &&
+    prevProps.post.commentCount === nextProps.post.commentCount &&
+    prevProps.post.likes === nextProps.post.likes &&
+    prevProps.post.content === nextProps.post.content
+  );
 });
 
 export default PostItem;

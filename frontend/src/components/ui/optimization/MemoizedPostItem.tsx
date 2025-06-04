@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { Post } from '../../../types/interfaces';
 import PostItem from '../../posts/PostItem';
 import { useNavigationHelper } from '../../../hooks/useNavigationHelper';
+import { logger } from '../../../utils/Logger';
 
 interface MemoizedPostItemProps {
   post: Post;
@@ -10,6 +11,7 @@ interface MemoizedPostItemProps {
   onHeightChange?: () => void;
 }
 
+// Сначала делаем компонент наблюдаемым через observer
 const PostItemWithComments = observer(({ post, onClick, onHeightChange }: MemoizedPostItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { navigateToEntity } = useNavigationHelper();
@@ -21,8 +23,12 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
   }, [onHeightChange]);
 
   const handleClick = useCallback(() => {
-    navigateToEntity('post', post.slug, onClick);
-  }, [onClick, post.slug, navigateToEntity]);
+    if (onClick) {
+      onClick(post.slug);
+    } else {
+      navigateToEntity('post', post.slug);
+    }
+  }, [post.slug, onClick, navigateToEntity]);
 
   return (
     <div 
@@ -45,15 +51,28 @@ const PostItemWithComments = observer(({ post, onClick, onHeightChange }: Memoiz
   );
 });
 
+// Затем мемоизируем с правильной логикой сравнения
 export const MemoizedPostItem = memo(PostItemWithComments, (prevProps, nextProps) => {
-  return (
+  // Проверяем все важные поля включая commentCount
+  const shouldSkipUpdate = 
     prevProps.post.id === nextProps.post.id &&
     prevProps.post.content === nextProps.post.content &&
     prevProps.post.likes === nextProps.post.likes &&
     prevProps.post.imageUrl === nextProps.post.imageUrl &&
     prevProps.post.createdAt === nextProps.post.createdAt &&
-    prevProps.post.commentCount === nextProps.post.commentCount
-  );
+    prevProps.post.commentCount === nextProps.post.commentCount &&
+    prevProps.post.likedUserIds?.length === nextProps.post.likedUserIds?.length;
+    
+  // Логируем изменения для отладки
+  if (prevProps.post.commentCount !== nextProps.post.commentCount) {
+    logger.log(`[MemoizedPostItem] Re-rendering post ${prevProps.post.id} due to comment count change: ${prevProps.post.commentCount} → ${nextProps.post.commentCount}`);
+  }
+  
+  if (prevProps.post.likes !== nextProps.post.likes) {
+    logger.log(`[MemoizedPostItem] Re-rendering post ${prevProps.post.id} due to likes change: ${prevProps.post.likes} → ${nextProps.post.likes}`);
+  }
+  
+  return shouldSkipUpdate;
 });
 
 export default MemoizedPostItem;

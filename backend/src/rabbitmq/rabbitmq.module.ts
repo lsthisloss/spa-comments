@@ -5,12 +5,14 @@ import { CommentsModule } from '../comments/comments.module';
 import { PostsConsumer } from '../rabbitmq/consumers/posts.consumer';
 import { PostsModule } from '../posts/posts.module';
 import { UsersModule } from '../users/users.module';
+import { CommonModule } from '../common/common.module';
 
 @Module({
   imports: [
     forwardRef(() => CommentsModule),
     forwardRef(() => PostsModule),
     forwardRef(() => UsersModule),
+    CommonModule,
   ],
   providers: [RabbitMQService, CommentsConsumer, PostsConsumer],
   exports: [RabbitMQService],

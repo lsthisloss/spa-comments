@@ -43,8 +43,6 @@ const SendForm = observer(({
             sendFormStore.avatarShape !== userData.avatarShape;
           
           if (needsUpdate) {
-            console.log("[SendForm] User data changed, updating SendFormStore:", userData);
-            
             sendFormStore.initializeUser(
               userData.id, 
               userData.userName,

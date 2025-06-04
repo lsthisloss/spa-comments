@@ -6,6 +6,7 @@ import io from "socket.io-client";
 import type SocketStore from "./SocketStore";
 import type UserStore from "./UserStore";
 import { ICommentStore } from "../../types/stores";
+import PostStore from "./PostStore";
 
 /**
  * Хранилище для управления комментариями
@@ -16,7 +17,6 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
   repliesMap = new Map<string, CommentType[]>();
   repliesShownMap = new Map<string, boolean>();
   loadingRepliesMap = new Map<string, boolean>();
-  
   // Кэширование запросов и времени
   private lastUpdateTimeMap = new Map<string, number>();
   private loadCommentsPromises = new Map<string, Promise<void>>();
@@ -31,6 +31,7 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
   // Инъектированные сторы
   private socketStore: SocketStore;
   private userStore: UserStore;
+  private postStore: PostStore | null = null;
 
 constructor(socketStore: SocketStore, userStore: UserStore) {
   super(); // Вызываем конструктор базового класса
@@ -38,7 +39,7 @@ constructor(socketStore: SocketStore, userStore: UserStore) {
   // Сохраняем ссылки на инъектированные сторы
   this.socketStore = socketStore;
   this.userStore = userStore;
-
+  this.postStore = null;
   const annotations: Record<string, AnnotationMapEntry> = {
     commentsMap: observable,
     repliesMap: observable,
@@ -156,6 +157,13 @@ constructor(socketStore: SocketStore, userStore: UserStore) {
     });
   }
 
+  /**
+   * Устанавливает хранилище постов
+   */
+  setPostStore(postStore: PostStore | null) {
+    this.postStore = postStore;
+  }
+  
   /**
    * Добавляет комментарий в хранилище
    */
@@ -484,7 +492,7 @@ constructor(socketStore: SocketStore, userStore: UserStore) {
   /**
    * Обработчик нового комментария
    */
- handleNewComment = ({ postId, comment }: { postId: string; comment: CommentType }) => {
+handleNewComment = ({ postId, comment }: { postId: string; comment: CommentType }) => {
   // Делаем копию комментария для дальнейшей обработки
   const processedComment: CommentType = {
     ...comment,
@@ -526,6 +534,21 @@ constructor(socketStore: SocketStore, userStore: UserStore) {
       if (parentComment) {
         parentComment.repliesCount = (parentComment.repliesCount || 0) + 1;
       }
+      
+      // Обновляем общий счетчик комментариев для поста
+       if (processedComment.postId) {
+        const currentPostTotal = this.totalItemsMap.get(processedComment.postId) || 0;
+        const newTotal = currentPostTotal + 1;
+        logger.log(`[CommentStore] Updating comment count for post ${processedComment.postId}: ${currentPostTotal} → ${newTotal}`);
+        this.totalItemsMap.set(processedComment.postId, newTotal);
+        
+        // Call update in PostStore
+        if (this.postStore) {
+          this.updatePostCommentCount(processedComment.postId);
+        } else {
+          logger.error(`[CommentStore] Cannot update PostStore: postStore is ${this.postStore}`);
+        }
+      }
     }
   } 
   // Если это комментарий к посту
@@ -541,11 +564,42 @@ constructor(socketStore: SocketStore, userStore: UserStore) {
       
       // Обновляем счетчик общего количества комментариев
       const currentTotal = this.totalItemsMap.get(postId) || 0;
-      this.totalItemsMap.set(postId, currentTotal + 1);
+      const newTotal = currentTotal + 1;
+      logger.log(`[CommentStore] Updating comment count for post ${postId}: ${currentTotal} → ${newTotal}`);
+      this.totalItemsMap.set(postId, newTotal);
+      
+      // Update the count in PostStore
+      if (this.postStore) {
+        this.updatePostCommentCount(postId);
+      } else {
+        logger.error(`[CommentStore] Cannot update PostStore: postStore is ${this.postStore}`);
+      }
     }
   }
 };
 
+// Обновляем счетчик комментариев в PostStore
+private updatePostCommentCount(postId: string): void {
+  if (!this.postStore) {
+    logger.warn(`[CommentStore] PostStore not available for updating comment count`);
+    return;
+  }
+  
+  // Get the current total from our store
+  const currentTotal = this.totalItemsMap.get(postId) || 0;
+  
+  try {
+    // Log before updating
+    logger.log(`[CommentStore] Calling PostStore.updatePostCommentCount(${postId}, ${currentTotal})`);
+    
+    // Update the count in PostStore
+    this.postStore.updatePostCommentCount(postId, currentTotal);
+    
+    logger.log(`[CommentStore] Successfully updated post ${postId} comment count to ${currentTotal} in PostStore`);
+  } catch (error) {
+    logger.error(`[CommentStore] Failed to update post comment count: ${error}`);
+  }
+}
 /**
  * Обновляет данные пользователя во всех комментариях 
  */
@@ -804,49 +858,66 @@ updateCommentUserData = (commentId: string, user: User) => {
   /**
    * Получает комментарий по ID
    */
-  getCommentById(commentId: string): CommentType | undefined {
-    // Сначала ищем в комментариях ко всем постам
-    for (const [, comments] of this.commentsMap.entries()) {
-      const found = comments.find(comment => comment.id === commentId);
-      if (found) return found;
-    }
-    
-    // Затем ищем во всех ответах
-    for (const replies of this.repliesMap.values()) {
-      const found = replies.find(reply => reply.id === commentId);
-      if (found) return found;
-    }
-    
-    return undefined;
+getCommentById(commentId: string): CommentType | undefined {
+  // Сначала ищем в комментариях ко всем постам
+  for (const [, comments] of this.commentsMap.entries()) {
+    const found = comments.find(comment => comment.id === commentId);
+    if (found) return found;
   }
+  
+  // Затем ищем во всех ответах
+  for (const replies of this.repliesMap.values()) {
+    const found = replies.find(reply => reply.id === commentId);
+    if (found) return found;
+  }
+  
+  return undefined;
+}
 
   /**
    * Получает комментарий по slug
    */
-  getCommentBySlug(slug: string): CommentType | null {
+
+getCommentBySlug(slug: string, logWarning: boolean = true): CommentType | null {
+  if (logWarning) {
     logger.log(`[CommentStore] Searching for comment by slug: ${slug}`);
-    
-    // Ищем среди всех комментариев ко всем постам
-    for (const comments of this.commentsMap.values()) {
-      const found = comments.find(comment => comment.slug === slug);
-      if (found) {
-        logger.log(`[CommentStore] Found comment in commentsMap: ${found.id}`);
-        return found;
-      }
-    }
-
-    // Ищем среди всех ответов
-    for (const replies of this.repliesMap.values()) {
-      const found = replies.find(reply => reply.slug === slug);
-      if (found) {
-        logger.log(`[CommentStore] Found comment in repliesMap: ${found.id}`);
-        return found;
-      }
-    }
-
-    logger.warn(`[CommentStore] Comment with slug ${slug} not found`);
-    return null;
   }
+  
+  for (const [postId, comments] of this.commentsMap.entries()) {
+    if (logWarning) {
+      logger.log(`[CommentStore] Searching in post ${postId}, ${comments.length} comments`);
+    }
+    for (const comment of comments) {
+      if (logWarning) {
+        logger.log(`[CommentStore] Checking comment: id=${comment.id}, slug=${comment.slug}`);
+      }
+      if (comment.slug === slug || comment.id === slug) {
+        logger.log(`[CommentStore] Found comment by ${comment.slug === slug ? 'slug' : 'id'}: ${comment.id}`);
+        return comment;
+      }
+    }
+  }
+  
+  for (const [parentId, replies] of this.repliesMap.entries()) {
+    if (logWarning) {
+      logger.log(`[CommentStore] Searching in replies for ${parentId}, ${replies.length} replies`);
+    }
+    for (const reply of replies) {
+      if (logWarning) {
+        logger.log(`[CommentStore] Checking reply: id=${reply.id}, slug=${reply.slug}`);
+      }
+      if (reply.slug === slug || reply.id === slug) {
+        logger.log(`[CommentStore] Found reply by ${reply.slug === slug ? 'slug' : 'id'}: ${reply.id}`);
+        return reply;
+      }
+    }
+  }
+  
+  if (logWarning) {
+    logger.warn(`[CommentStore] Comment with slug ${slug} not found`);
+  }
+  return null;
+}
 
   /**
    * Получает комментарий по slug из API
@@ -855,7 +926,7 @@ updateCommentUserData = (commentId: string, user: User) => {
     logger.log(`[CommentStore] Fetching comment by slug: ${slug}`);
     
     // Проверяем, есть ли комментарий в кэше
-    const cachedComment = this.getCommentBySlug(slug);
+    const cachedComment = this.getCommentBySlug(slug, false);
     if (cachedComment) {
       logger.log(`[CommentStore] Comment with slug ${slug} found in cache`);
       
@@ -892,10 +963,32 @@ updateCommentUserData = (commentId: string, user: User) => {
             const comment = this.extractCommentFromResponse(response);
 
             if (comment) {
-              // Добавляем комментарий в хранилище
+              // Кэшируем пользователя
+              if (comment.user) {
+                this.userStore.addCachedUser(comment.user);
+              }
+              
+              // ДОБАВЛЯЕМ В КОЛЛЕКЦИИ
               runInAction(() => {
-                this.addComment(comment);
+                if (comment.postId) {
+                  // Это комментарий к посту - добавляем в commentsMap
+                  const existingComments = this.commentsMap.get(comment.postId) || [];
+                  if (!existingComments.find(c => c.id === comment.id)) {
+                    existingComments.push(comment);
+                    this.commentsMap.set(comment.postId, existingComments);
+                  }
+                  logger.log(`[CommentStore] Added comment to post ${comment.postId} commentsMap`);
+                } else if (comment.parentId) {
+                  // Это ответ на комментарий - добавляем в repliesMap
+                  const existingReplies = this.repliesMap.get(comment.parentId) || [];
+                  if (!existingReplies.find(r => r.id === comment.id)) {
+                    existingReplies.push(comment);
+                    this.repliesMap.set(comment.parentId, existingReplies);
+                  }
+                  logger.log(`[CommentStore] Added reply to comment ${comment.parentId} repliesMap`);
+                }
               });
+              
               resolve(comment);
             } else {
               logger.warn(`[CommentStore] No comment found for slug: ${slug}`);
@@ -1071,7 +1164,7 @@ updateCommentUserData = (commentId: string, user: User) => {
    * Получает ответы на комментарий по его slug
    */
   getRepliesBySlug(commentSlug: string): CommentType[] {
-    const comment = this.getCommentBySlug(commentSlug);
+    const comment = this.getCommentBySlug(commentSlug, false);
     if (!comment) {
       logger.warn(`[CommentStore] Comment with slug ${commentSlug} not found`);
       return [];
@@ -1083,7 +1176,7 @@ updateCommentUserData = (commentId: string, user: User) => {
    * Проверяет, отображаются ли ответы на комментарий по его slug
    */
   isRepliesShownBySlug(commentSlug: string): boolean {
-    const comment = this.getCommentBySlug(commentSlug);
+    const comment = this.getCommentBySlug(commentSlug, false);
     if (!comment) return false;
     return this.isRepliesShown(comment.id);
   }
@@ -1092,7 +1185,7 @@ updateCommentUserData = (commentId: string, user: User) => {
    * Устанавливает состояние отображения ответов на комментарий по его slug
    */
   setRepliesShownBySlug(commentSlug: string, shown: boolean) {
-    const comment = this.getCommentBySlug(commentSlug);
+    const comment = this.getCommentBySlug(commentSlug, false);
     if (!comment) {
       logger.warn(`[CommentStore] Comment with slug ${commentSlug} not found`);
       return;
@@ -1132,8 +1225,16 @@ updateCommentUserData = (commentId: string, user: User) => {
   isLoading = (postId: string): boolean => {
     return this.loadingRepliesMap.get(postId) || false;
   };
+  clearComments = action("clearComments", (postId: string): void => {
+    logger.log(`[CommentStore] Clearing comments for post ${postId}`);
+    this.commentsMap.set(postId, []);
+  });
 
-  
+  // Очистка ответов для комментария - БЕЗ ДЕКОРАТОРА  
+  clearReplies = action("clearReplies", (commentId: string): void => {
+    logger.log(`[CommentStore] Clearing replies for comment ${commentId}`);
+    this.repliesMap.set(commentId, []);
+  });
 
   /**
    * Устанавливает способ сортировки комментариев
@@ -1148,6 +1249,12 @@ updateCommentUserData = (commentId: string, user: User) => {
     this.applySortToAllCollections();
   });
 
+  getTotalReplies(commentId: string): number {
+    const total = this.totalItemsMap.get(commentId) || this.getReplies(commentId).length;
+    logger.log(`[CommentStore]: getTotalReplies(${commentId}) = ${total}`);
+    return total;
+  }
+  
   /**
    * Освобождает ресурсы при уничтожении
    */

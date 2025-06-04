@@ -8,7 +8,6 @@ import CommentStore from "./stores/CommentStore";
 import SendFormStore from "./stores/SendFormStore";
 import NavigationStore from "./stores/NavigationStore";
 
-// Экспортируем интерфейс Stores
 export interface Stores {
   authStore: AuthStore;
   socketStore: SocketStore;
@@ -53,7 +52,9 @@ export function createStores(): Stores {
   
   // Обновляем заглушку postStore
   Object.assign(tempPostStore, postStore);
-  
+
+  commentStore.setPostStore(postStore);
+  logger.log("[Stores] Set PostStore reference in CommentStore");
   // Создаем остальные сторы
   const sendFormStore = new SendFormStore(socketStore, userStore);
   const navigationStore = new NavigationStore();

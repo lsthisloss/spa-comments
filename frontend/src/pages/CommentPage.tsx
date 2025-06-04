@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Empty, Button, Spin } from 'antd';
 import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
 import { useCommentStore, useUserStore, usePostStore } from '../hooks/useStore';
@@ -17,26 +17,26 @@ const CommentPage = observer(() => {
   const userStore = useUserStore();
   const postStore = usePostStore();
   
-  // Добавить использование хука здесь
   const navigationHelper = useNavigationHelper();
   
   const navigate = useNavigate();
-  const location = useLocation();
   const params = useParams();
   
+  // REF ДЛЯ ОТСЛЕЖИВАНИЯ МОНТИРОВАНИЯ
+  const mountedRef = useRef(true);
+  
   // Получаем slug комментария из URL
-  const commentSlug = useMemo(() => {
-    if (params.commentId) {
-      return params.commentId;
-    }
-    
-    // Fallback: извлекаем из pathname или state
-    const pathParts = location.pathname.split('/');
-    return pathParts[pathParts.length - 1] || '';
-  }, [params.commentId, location.pathname]);
+const commentSlug = useMemo(() => {
+  logger.log('[CommentPage] URL params:', params);
+  
+  if (params.slug) {
+    logger.log('[CommentPage] Using params.slug:', params.slug);
+    return params.slug;
+  }
+}, [params]);
   
   // Состояние компонента
-  const commentFetchedRef = useRef(false);
+  const commentFetchedRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState<Comment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,46 +45,55 @@ const CommentPage = observer(() => {
   
   // Инициализация компонента
   useEffect(() => {
+    mountedRef.current = true;
     logger.log(`[CommentPage] Component mounted for slug: ${commentSlug}`);
     
     return () => {
+      mountedRef.current = false;
       logger.log(`[CommentPage] Component unmounting for slug: ${commentSlug}`);
     };
   }, [commentSlug]);
   
-  // Загрузка комментария
+  // Загрузка комментария 
   useEffect(() => {
-    if (!commentSlug) {
-      logger.log(`[CommentPage] No commentSlug provided`);
+    if (!commentSlug || !mountedRef.current) {
+      logger.log(`[CommentPage] No commentSlug provided or component not mounted`);
       return;
     }
     
     // Предотвращаем повторную загрузку того же комментария
-    if (commentFetchedRef.current && comment?.slug === commentSlug) {
+    if (commentFetchedRef.current === commentSlug) {
       logger.log(`[CommentPage] Comment ${commentSlug} already fetched, skipping`);
       return;
     }
     
     setLoading(true);
     setError(null);
-    commentFetchedRef.current = false;
+    commentFetchedRef.current = null;
     
     logger.log(`[CommentPage] Loading comment with slug: ${commentSlug}`);
     
     // Загрузка комментария по slug
     commentStore.fetchCommentBySlug(commentSlug)
       .then(fetchedComment => {
+        if (!mountedRef.current) {
+          logger.log(`[CommentPage] Component unmounted during fetch, aborting state updates`);
+          return;
+        }
+        
         if (fetchedComment) {
           logger.log(`[CommentPage] Comment found: ${fetchedComment.id}`);
           setComment(fetchedComment);
           setLoading(false);
-          commentFetchedRef.current = true;
+          commentFetchedRef.current = commentSlug;
           
           // Загружаем пост, к которому относится комментарий
           if (fetchedComment.postSlug) {
             postStore.fetchPostBySlug(fetchedComment.postSlug)
               .catch(err => {
-                logger.warn(`[CommentPage] Error loading post: ${err.message}`);
+                if (mountedRef.current) {
+                  logger.warn(`[CommentPage] Error loading post: ${err.message}`);
+                }
               });
           }
         } else {
@@ -94,17 +103,63 @@ const CommentPage = observer(() => {
         }
       })
       .catch(err => {
+        if (!mountedRef.current) {
+          logger.log(`[CommentPage] Component unmounted during error handling, aborting state updates`);
+          return;
+        }
+        
         logger.error(`[CommentPage] Error loading comment: ${err.message}`);
         setError('Failed to load comment');
         setLoading(false);
       });
-  }, [commentSlug, commentStore, postStore, comment]);
+  }, [commentSlug, commentStore, postStore]);
+
+  // Обработчик повторной попытки - ДОБАВЛЯЕМ ПРОВЕРКУ МОНТИРОВАНИЯ
+  const handleRetry = useCallback(() => {
+    if (!commentSlug || !mountedRef.current) return;
+    
+    setLoading(true);
+    setError(null);
+    commentFetchedRef.current = null;
+    
+    logger.log(`[CommentPage] Retrying to load comment with slug: ${commentSlug}`);
+    
+    commentStore.fetchCommentBySlug(commentSlug)
+      .then(fetchedComment => {
+        if (!mountedRef.current) return;
+        
+        if (fetchedComment) {
+          setComment(fetchedComment);
+          setLoading(false);
+          commentFetchedRef.current = commentSlug;
+          
+          if (fetchedComment.postSlug) {
+            postStore.fetchPostBySlug(fetchedComment.postSlug)
+              .catch(err => {
+                if (mountedRef.current) {
+                  logger.warn(`[CommentPage] Error loading post: ${err.message}`);
+                }
+              });
+          }
+        } else {
+          setError('Comment not found');
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        if (!mountedRef.current) return;
+        
+        logger.error(`[CommentPage] Error loading comment: ${err.message}`);
+        setError('Failed to load comment');
+        setLoading(false);
+      });
+  }, [commentSlug, commentStore, postStore]);
 
   // Обработчик смены сортировки ответов
-  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    setRepliesSort(sort);
-  }, []);
-
+const handleSortChange = useCallback((sort: 'date' | 'likes') => {
+  logger.log(`[CommentPage] Setting local sort to ${sort} - NO SERVER REQUEST`);
+  setRepliesSort(sort);
+}, []);
   // Обработчик загрузки дополнительных ответов
   const handleLoadMoreReplies = useCallback(() => {
     if (!comment?.id) return;
@@ -127,40 +182,6 @@ const CommentPage = observer(() => {
     logger.log(`[CommentPage] Reply created successfully`);
   }, []);
 
-  // Обработчик повторной попытки
-  const handleRetry = useCallback(() => {
-    if (!commentSlug) return;
-    
-    setLoading(true);
-    setError(null);
-    commentFetchedRef.current = false;
-    
-    logger.log(`[CommentPage] Retrying to load comment with slug: ${commentSlug}`);
-    
-    commentStore.fetchCommentBySlug(commentSlug)
-      .then(fetchedComment => {
-        if (fetchedComment) {
-          setComment(fetchedComment);
-          setLoading(false);
-          commentFetchedRef.current = true;
-          
-          if (fetchedComment.postSlug) {
-            postStore.fetchPostBySlug(fetchedComment.postSlug)
-              .catch(err => {
-                logger.warn(`[CommentPage] Error loading post: ${err.message}`);
-              });
-          }
-        } else {
-          setError('Comment not found');
-          setLoading(false);
-        }
-      })
-      .catch(err => {
-        logger.error(`[CommentPage] Error loading comment: ${err.message}`);
-        setError('Failed to load comment');
-        setLoading(false);
-      });
-  }, [commentSlug, commentStore, postStore]);
 
   // Обработчик возврата назад
   const handleGoBack = useCallback(() => {
@@ -245,15 +266,15 @@ const CommentPage = observer(() => {
           {/* Секция ответов */}
           <div className="comments-section">
             {comment.repliesCount && comment.repliesCount > 0 ? (
-              <CommentsThread 
-                key={`replies-${comment.slug}-${repliesSort}`}
-                parentSlug={comment.slug}
-                loading={false}
-                onLoadMore={handleLoadMoreReplies}
-                onSortChange={handleSortChange}
-                autoLoad={false}
-                enableNestedReplies={true}
-              />
+                <CommentsThread 
+                  key={`replies-${comment.slug}`}
+                  parentSlug={comment.slug}
+                  loading={false}
+                  onLoadMore={handleLoadMoreReplies}
+                  onSortChange={handleSortChange}
+                  autoLoad={true}
+                  enableNestedReplies={true}
+                />
             ) : (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <Empty 

@@ -31,7 +31,7 @@ const PostPage = observer(() => {
   // Component state
   const [loading, setLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentsSort, setCommentsSort] = useState<'date' | 'likes'>('date');
+  const [, setCommentsSort] = useState<'date' | 'likes'>('date');
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -46,42 +46,7 @@ const PostPage = observer(() => {
     };
   }, [slug]);
   
-  // Load comments for the current post
-  const loadComments = useCallback((postSlug: string, reset = false) => {
-    if (!mountedRef.current) {
-      logger.log(`[PostPage] Skipping loadComments - component not mounted`);
-      return Promise.resolve();
-    }
-    
-    if (reset) {
-      commentsLoadedRef.current = false;
-    }
-    
-    if (!commentsLoadedRef.current) {
-      setCommentsLoading(true);
-      
-      logger.log(`[PostPage] Loading comments for post: ${postSlug}`);
-      return commentStore.loadCommentsBySlug(postSlug, 10, 1, commentsSort, false)
-        .then(() => {
-          if (mountedRef.current) {
-            commentsLoadedRef.current = true;
-            setCommentsLoading(false);
-            logger.log(`[PostPage] Comments loaded for post: ${postSlug}`);
-          } else {
-            logger.log(`[PostPage] Component unmounted, skipping comments update`);
-          }
-        })
-        .catch(err => {
-          if (mountedRef.current) {
-            logger.error(`[PostPage] Error loading comments: ${err.message}`);
-            setCommentsLoading(false);
-          }
-        });
-    }
-    
-    return Promise.resolve();
-  }, [commentsSort, commentStore]);
-  
+
   // Load post and comments - исправляем логику
   useEffect(() => {
     if (!slug || !mountedRef.current) {
@@ -119,13 +84,6 @@ const PostPage = observer(() => {
           setLoading(false);
           postFetchedRef.current = slug;
           
-          // Загружаем комментарии после установки поста
-          setTimeout(() => {
-            if (mountedRef.current) {
-              loadComments(slug);
-            }
-          }, 100);
-          
           // Update comment count in post store to keep UI consistent
           if (fetchedPost.commentCount !== undefined) {
             postStore.updatePostCommentCountBySlug(slug, fetchedPost.commentCount);
@@ -145,29 +103,16 @@ const PostPage = observer(() => {
           setLoading(false);
         }
       });
-  }, [slug, location.state, loadComments, postStore]);
+  }, [slug, location.state, postStore]);
 
   // Handle comment sort change
-  const handleSortChange = useCallback((sort: 'date' | 'likes') => {
-    if (!mountedRef.current) return;
-    
-    setCommentsSort(sort);
-    
-    if (post && post.slug) {
-      setCommentsLoading(true);
-      commentStore.loadCommentsBySlug(post.slug, 10, 1, sort, false)
-        .then(() => {
-          if (mountedRef.current) {
-            setCommentsLoading(false);
-          }
-        })
-        .catch(() => {
-          if (mountedRef.current) {
-            setCommentsLoading(false);
-          }
-        });
-    }
-  }, [post, commentStore]);
+const handleSortChange = useCallback((sort: 'date' | 'likes') => {
+  if (!mountedRef.current) return;
+  
+  logger.log(`[PostPage] Setting local sort to ${sort} - NO SERVER REQUEST`);
+  
+  setCommentsSort(sort);
+  }, []);
 
   // Load more comments
   const handleLoadMoreComments = useCallback(() => {
@@ -191,53 +136,48 @@ const PostPage = observer(() => {
   const handleCommentSuccess = useCallback(() => {
     if (!post?.slug || !mountedRef.current) return;
     
-    // Force reload comments after adding a new one
-    commentsLoadedRef.current = false;
-    loadComments(post.slug, true);
-    
-    // Update post comment count in all feeds
     const newCount = (post.commentCount || 0) + 1;
     postStore.updatePostCommentCountBySlug(post.slug, newCount);
-  }, [post, loadComments, postStore]);
+    
+    logger.log(`[PostPage] Comment success callback, count updated to ${newCount}`);
+  }, [post, postStore]);
 
   // Handle back navigation
   const handleGoBack = useCallback(() => {
   navigationHelper.goBack();
 }, [navigationHelper]);
-  // Retry loading post
-  const handleRetry = useCallback(() => {
-    if (!slug || !mountedRef.current) return;
-    
-    setLoading(true);
-    setError(null);
-    commentsLoadedRef.current = false;
-    postFetchedRef.current = null;
-    
-    logger.log(`[PostPage] Retrying to load post with slug: ${slug}`);
-    
-    // Re-fetch без очистки кэша (пусть fetchPostBySlug сам решает)
-    postStore.fetchPostBySlug(slug)
-      .then(fetchedPost => {
-        if (!mountedRef.current) return;
-        
-        if (fetchedPost) {
-          setPost(fetchedPost);
-          setLoading(false);
-          postFetchedRef.current = slug;
-          loadComments(slug, true);
-        } else {
-          setError('Post not found');
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (mountedRef.current) {
-          logger.error(`[PostPage] Error loading post: ${err.message}`);
-          setError(`Failed to load post: ${err.message}`);
-          setLoading(false);
-        }
-      });
-  }, [slug, loadComments, postStore]);
+
+const handleRetry = useCallback(() => {
+  if (!slug || !mountedRef.current) return;
+  
+  setLoading(true);
+  setError(null);
+  commentsLoadedRef.current = false;
+  postFetchedRef.current = null;
+  
+  logger.log(`[PostPage] Retrying to load post with slug: ${slug}`);
+  
+  postStore.fetchPostBySlug(slug)
+    .then(fetchedPost => {
+      if (!mountedRef.current) return;
+      
+      if (fetchedPost) {
+        setPost(fetchedPost);
+        setLoading(false);
+        postFetchedRef.current = slug;
+      } else {
+        setError('Post not found');
+        setLoading(false);
+      }
+    })
+    .catch((err) => {
+      if (mountedRef.current) {
+        logger.error(`[PostPage] Error loading post: ${err.message}`);
+        setError(`Failed to load post: ${err.message}`);
+        setLoading(false);
+      }
+    });
+}, [slug, postStore]);
 
   // Не рендерим пока компонент не смонтирован
   if (!mountedRef.current) {
@@ -306,7 +246,7 @@ const PostPage = observer(() => {
 
           <div className="comments-section">
             <CommentsThread 
-              key={`comments-${post.slug}-${commentsSort}`}
+              key={`comments-${post.slug}`}
               postSlug={post.slug}
               loading={commentsLoading}
               onSortChange={handleSortChange}

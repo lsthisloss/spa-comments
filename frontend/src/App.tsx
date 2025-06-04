@@ -13,7 +13,6 @@ import { appInitializer } from './services/AppInitializer';
 import { Spin } from 'antd';
 import { useUserStore, useAuthStore } from './hooks/useStore';
 import { StoresProvider } from './contexts/StoresContext';
-import ConnectionMonitor from './components/ConnectionMonitor';
 
 // Компонент проверки авторизации с использованием хуков
 const RequireAuth = observer(({ children }: { children: React.ReactNode }) => {
@@ -45,6 +44,13 @@ const AppContent = observer(() => {
   const [, setInitChecked] = useState(false);
   const userStore = useUserStore();
   const authStore = useAuthStore();
+
+  useEffect(() => {
+    logger.log('[AppContent] Component mounted');
+    return () => {
+      logger.log('[AppContent] Component unmounting');
+    };
+  }, []);
 
   useEffect(() => {
     const initApp = async () => {
@@ -80,53 +86,68 @@ const AppContent = observer(() => {
     );
   }
 
-  // Показываем ожидание готовности сокетов
-  if (appInitializer.initialized && !appInitializer.socketsReady) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        height: '100vh' 
-      }}>
-        <Spin size="large" />
-        <p style={{ marginTop: 16 }}>Connecting to server...</p>
-      </div>
-    );
-  }
-
+  // ⭐ НОВЫЙ ПОДХОД: ВСЕГДА РЕНДЕРИМ РОУТЫ + OVERLAY
   return (
     <ErrorBoundary>
-      <Routes>
-        <Route
-          path="/auth"
-          element={
-            <OnlyGuest>
-              <Layout>{() => <AuthPage />}</Layout>
-            </OnlyGuest>
-          }
-        />
-        <Route
-          path="/*"
-          element={
-            <RequireAuth>
-              <Layout>
-                {(props) => (
-                  <Routes>
-                    <Route path="/" element={<MainPage {...props} />} />
-                    <Route path="/profile" element={<UserProfilePage />} />
-                    <Route path="/user/:username" element={<UserProfilePage />} />
-                    <Route path="/post/:slug" element={<PostPage />} />
-                    <Route path="/comment/:slug" element={<CommentPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                )}
-              </Layout>
-            </RequireAuth>
-          }
-        />
-      </Routes>
+      {/* ⭐ OVERLAY ПОВЕРХ РОУТОВ */}
+      {appInitializer.initialized && !appInitializer.socketsReady && (
+        <div style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16 }}>Connecting to server...</p>
+        </div>
+      )}
+      
+      {/* ⭐ РОУТЫ ВСЕГДА РЕНДЕРЯТСЯ */}
+          <Routes>
+            <Route
+              path="/auth"
+              element={
+                <OnlyGuest>
+                  <Layout>{() => <AuthPage />}</Layout>
+                </OnlyGuest>
+              }
+            />
+            <Route
+              path="/*"
+              element={
+                <RequireAuth>
+                  <Layout>
+                    {(props) => (
+                      // ⭐ ТОЛЬКО КОГДА ВСЕ ГОТОВО - ПОКАЗЫВАЕМ РОУТЫ
+                      appInitializer.initialized && appInitializer.socketsReady ? (
+                        <Routes>
+                          <Route path="/" element={<MainPage {...props} />} />
+                          <Route path="/profile" element={<UserProfilePage />} />
+                          <Route path="/user/:username" element={<UserProfilePage />} />
+                          <Route path="/post/:slug" element={<PostPage />} />
+                          <Route path="/comment/:slug" element={<CommentPage />} />
+                          <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                      ) : (
+                        // ⭐ ПОКАЗЫВАЕМ LOADING ВМЕСТО РОУТОВ
+                        <div style={{ padding: '20px', textAlign: 'center' }}>
+                          <Spin size="large" />
+                          <p>Initializing...</p>
+                        </div>
+                      )
+                    )}
+                  </Layout>
+                </RequireAuth>
+              }
+            />
+          </Routes>
     </ErrorBoundary>
   );
 });
@@ -135,7 +156,6 @@ const AppContent = observer(() => {
 const App = () => {
   return (
     <StoresProvider>
-      <ConnectionMonitor />
       <AppContent />
     </StoresProvider>
   );

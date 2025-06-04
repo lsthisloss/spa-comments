@@ -79,7 +79,7 @@ class AppInitializer {
       });
 
       // Запускаем мониторинг подключения
-      this.startConnectionMonitoring();
+      //this.startConnectionMonitoring();
 
       logger.info("[AppInit] Application initialization completed");
     } catch (error) {

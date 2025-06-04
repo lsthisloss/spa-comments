@@ -15,7 +15,7 @@ function app_run_dev() {
     docker-compose -f docker-compose.dev.yml down
     
     echo -e "\n${YELLOW}Building development images...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml build
+    docker-compose -f docker-compose.dev.yml build --no-cache
     
     if [ $? -ne 0 ]; then
         echo -e "\n${RED}Error building images. Please check the Dockerfiles and try again.${NORMAL}\n"

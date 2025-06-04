@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Empty, Spin, Button, Dropdown, Badge } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
@@ -22,8 +22,8 @@ interface CommentsThreadProps {
   enableNestedReplies?: boolean;
 }
 
-const CommentsThread = observer(({ 
-  postId, 
+const CommentsThread = observer(({
+  postId,
   postSlug,
   parentId,
   parentSlug,
@@ -40,40 +40,73 @@ const CommentsThread = observer(({
     // First try direct IDs
     let effectivePostId = postId;
     let effectiveParentId = parentId;
-    
+
     // Then try to resolve from slugs
     if (!effectivePostId && postSlug) {
       const post = postStore.getPostBySlug(postSlug);
       effectivePostId = post?.id;
     }
-    
+
     if (!effectiveParentId && parentSlug) {
-      const comment = commentStore.getCommentBySlug(parentSlug);
+      const comment = commentStore.getCommentBySlug(parentSlug, false);
       effectiveParentId = comment?.id;
     }
-    
+
     // Determine if we're showing post comments or comment replies
     const targetId = effectivePostId || effectiveParentId;
     const isPost = !!effectivePostId;
-    
+
     return { targetId, isPost, effectivePostId, effectiveParentId };
   }, [postId, postSlug, parentId, parentSlug, postStore, commentStore]);
-  
+
   const { targetId, isPost } = resolveEntityIds;
-  
+
   // Handle missing target
   if (!targetId) {
     return <Empty description="No post or comment ID specified" />;
   }
-  
+
   // Get comments or replies based on entity type
-  const comments = isPost 
-    ? commentStore.getComments(targetId)
-    : commentStore.getReplies(targetId);
+  const allComments = isPost ? commentStore.getComments(targetId) : commentStore.getReplies(targetId);
+  
+  const totalComments = isPost ? commentStore.getTotalComments(targetId) : commentStore.getTotalReplies(targetId);
+const [sortingInProgress] = useState(false);
+
+
+const [localSort, setLocalSort] = useState<'date' | 'likes'>('date');
+const sortedComments = useMemo(() => {
+  if (!allComments || allComments.length === 0) return [];
+  
+  // Создаем копию массива для сортировки
+  return [...allComments].sort((a, b) => {
+    if (localSort === 'likes') {
+      // Сортировка по лайкам (по убыванию)
+      return (b.likes || 0) - (a.likes || 0);
+    } else {
+      // Сортировка по дате (по убыванию - новые сверху)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  });
+}, [allComments, localSort]);
+
+
+const handleSortChange = useCallback((key: string) => {
+  // СНАЧАЛА проверяем, нужно ли сортировать
+  if ((key === 'date' || key === 'likes') && key !== localSort) {
+    logger.log(`CommentsThread: Setting local sort to ${key}`);
     
-  const totalComments = isPost 
-    ? commentStore.getTotalComments(targetId)
-    : comments.length;
+    // Обновляем локальную сортировку
+    setLocalSort(key as 'date' | 'likes');
+    
+    // Вызываем callback для синхронизации с родителем если нужно
+    if (onSortChange) {
+      onSortChange(key as 'date' | 'likes');
+    }
+  } else if (key === localSort) {
+    // Добавить логирование для отладки
+    logger.log(`[CommentsThread] Sort ${key} already active, ignoring click`);
+  }
+}, [localSort, onSortChange]);
 
   // Setup virtualization
   const { estimateItemHeight, getItemKey } = useCommentsFeed();
@@ -82,41 +115,72 @@ const CommentsThread = observer(({
     totalHeight,
     measureElement,
     handleImageLoad,
-  } = useVirtualItems(comments, getItemKey, estimateItemHeight);
+  } = useVirtualItems(sortedComments, getItemKey, estimateItemHeight);
 
-  // Sort handler
-  const handleSortChange = useCallback((key: string) => {
-    if (onSortChange && (key === 'date' || key === 'likes')) {
-      logger.log(`CommentsThread: Requesting sort change to ${key}`);
-      onSortChange(key as 'date' | 'likes');
-    }
-  }, [onSortChange]);
-    
-  // Load comments/replies if needed
+
+
   useEffect(() => {
-    if (autoLoad !== false && !targetId) return;
-    
-    // Special handling for viewing a single comment's replies
-    if (resolveEntityIds.effectiveParentId && !resolveEntityIds.effectivePostId) {
-      // Always show replies for parent comment
-      commentStore.setRepliesShown(resolveEntityIds.effectiveParentId, true);
-      
-      // Load replies if none exist
-      const replies = commentStore.getReplies(resolveEntityIds.effectiveParentId);
-      if (!replies || replies.length === 0) {
+    if (autoLoad === false || !targetId) return;
+
+    logger.log(`[CommentsThread] Auto-load check for targetId: ${targetId}, isPost: ${isPost}`);
+
+    if (isPost) {
+      const existingComments = commentStore.getComments(targetId);
+      const hasComments = existingComments && existingComments.length > 0;
+
+      if (!hasComments) {
+        logger.log(`[CommentsThread] Auto-loading comments for post: ${targetId}`);
+
         if (onLoadMore) {
           onLoadMore();
         } else {
-          commentStore.loadComments(resolveEntityIds.effectiveParentId, 10, 1, undefined, true);
+          // Используем postSlug если есть, иначе пытаемся найти пост по ID
+          if (postSlug) {
+            commentStore.loadCommentsBySlug(postSlug, 10, 1, 'date', false)
+              .then(() => {
+                logger.log(`[CommentsThread] Comments loaded for post slug: ${postSlug}`);
+              })
+              .catch((error) => {
+                logger.error(`[CommentsThread] Failed to load comments for post slug ${postSlug}:`, error);
+              });
+          } else {
+            logger.warn(`[CommentsThread] No postSlug provided for auto-loading comments`);
+          }
         }
+      } else {
+        logger.log(`[CommentsThread] Post ${targetId} already has ${existingComments.length} comments, skipping auto-load`);
+      }
+    } else {
+      // Для комментариев (не постов)
+      logger.log(`[CommentsThread] Loading replies for comment: ${targetId}`);
+
+      const existingReplies = commentStore.getReplies(targetId);
+      logger.log(`[CommentsThread] Current replies count: ${existingReplies.length}`);
+
+      if (existingReplies.length === 0) {
+        logger.log(`[CommentsThread] Auto-loading replies for comment: ${targetId}`);
+
+        if (onLoadMore) {
+          onLoadMore();
+        } else {
+          commentStore.loadComments(targetId, 1, 10, 'date');
+        }
+      } else {
+        logger.log(`[CommentsThread] Comment ${targetId} already has ${existingReplies.length} replies, skipping auto-load`);
       }
     }
-  }, [autoLoad, targetId, resolveEntityIds.effectiveParentId, resolveEntityIds.effectivePostId, onLoadMore, commentStore]);
-
+  }, [
+    autoLoad,
+    targetId,
+    isPost,
+    postSlug,
+    onLoadMore,
+    commentStore
+  ]);
   // Comment rendering
   const renderComment = useCallback((virtualItem: { item: Comment; index: number }, measureRef: (el: HTMLElement | null) => void) => {
     const comment = virtualItem.item as Comment;
-    
+
     return (
       <div
         ref={measureRef}
@@ -134,21 +198,21 @@ const CommentsThread = observer(({
 
   // UI Components
   const loadingIndicator = (
-    <div style={{ textAlign: 'center', padding: '20px' }}>
-      {loading ? (
-        <>
-          <Spin size="small" />
-          <p style={{ margin: '8px 0 0 0', color: '#666' }}>
-            Loading {isPost ? 'comments' : 'replies'}...
-          </p>
-        </>
-      ) : comments.length >= totalComments ? (
-        <p style={{ color: '#999', margin: 0 }}>
-          {isPost ? 'All comments loaded' : 'All replies loaded'}
+  <div style={{ textAlign: 'center', padding: '20px' }}>
+    {loading ? (
+      <>
+        <Spin size="small" />
+        <p style={{ margin: '8px 0 0 0', color: '#666' }}>
+          Loading {isPost ? 'comments' : 'replies'}...
         </p>
-      ) : null}
-    </div>
-  );
+      </>
+    ) : sortedComments.length >= totalComments ? (
+      <p style={{ color: '#999', margin: 0 }}>
+        {isPost ? 'All comments loaded' : 'All replies loaded'}
+      </p>
+    ) : null}
+  </div>
+);
 
   const headerComponent = (
     <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
@@ -158,16 +222,16 @@ const CommentsThread = observer(({
           <Badge count={totalComments} size="small" style={{ marginLeft: '4px' }} />
         </div>
 
-        <Dropdown 
-          menu={{ 
+        <Dropdown
+          menu={{
             items: [
               { key: 'date', label: <span>🕒 By date</span> },
               { key: 'likes', label: <span>❤️ By likes</span> }
             ],
             onClick: ({ key }) => handleSortChange(key),
-            selectedKeys: [commentStore.sort]
-          }} 
-          trigger={['click']} 
+            selectedKeys: [localSort],
+          }}
+          trigger={['click']}
           placement="bottomRight"
         >
           <Button
@@ -176,7 +240,7 @@ const CommentsThread = observer(({
             size="small"
             style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#666', fontSize: '12px' }}
           >
-            Sort
+           Sort
           </Button>
         </Dropdown>
       </div>
@@ -188,7 +252,7 @@ const CommentsThread = observer(({
     <div className="comments-thread">
       {headerComponent}
       <VirtualList
-        items={comments}
+        items={sortedComments}
         renderItem={renderComment}
         getItemKey={getItemKey}
         totalHeight={totalHeight}
@@ -197,9 +261,14 @@ const CommentsThread = observer(({
         onEndReached={onLoadMore}
         loading={loading}
         loadingIndicator={loadingIndicator}
-        allLoaded={comments.length >= totalComments}
+        allLoaded={sortedComments ? sortedComments.length >= totalComments : false}
         loadingMessage="Loading comments..."
         emptyMessage="No comments available"
+          debugOptions={{ 
+          sortingInProgress,
+          targetId,
+          isPost 
+        }}
       />
     </div>
   );
