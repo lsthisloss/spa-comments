@@ -83,7 +83,7 @@ export class PostsGateway
     );
     console.log(`[WS] userId: ${clientData?.user?.id}`);
 
-    // ЕСЛИ ПОДКЛЮЧЕНИЕ С ФЛАГОМ testDataGeneration=true
+    // Маркируем пользователя сразу при подключении
     if (
       (testDataGeneration || clientData?.testDataGeneration) &&
       clientData?.user?.id
@@ -117,6 +117,7 @@ export class PostsGateway
   }
 
   @UseGuards(WsJwtGuard)
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('addPost')
   async handleAddPost(
     @ConnectedSocket() client: Socket,
@@ -138,6 +139,7 @@ export class PostsGateway
 
       const isTestDataGeneration =
         client.handshake?.query?.testDataGeneration === 'true' ||
+        client.handshake?.auth?.testDataGeneration === 'true' ||
         userData?.testDataGeneration === true;
 
       const isAdmin = userRole === 'admin' || userRole === 'superadmin';
@@ -150,7 +152,7 @@ export class PostsGateway
         return { success: false, message: 'User not authenticated' };
       }
 
-      // МАРКИРУЕМ ПОЛЬЗОВАТЕЛЯ КАК ТЕСТОВОГО ЕСЛИ testDataGeneration=true
+      // ✅ ИСПРАВЛЕНИЕ: Маркируем пользователя ПЕРЕД проверками
       if (isTestDataGeneration) {
         this.testService.markAsTestUser(userId);
         console.log(`[ADD POST] ✅ MARKED TEST USER: ${userId}`);
@@ -179,7 +181,7 @@ export class PostsGateway
         this.updateUserRateLimit(userId);
       }
 
-      //  ОТПРАВЛЯЕМ В ОЧЕРЕДЬ И ПОЛУЧАЕМ РЕАЛЬНЫЙ ID
+      // ОТПРАВЛЯЕМ В ОЧЕРЕДЬ И ПОЛУЧАЕМ РЕАЛЬНЫЙ ID
       const result = await this.postsService.sendPostToQueue(createPostDto);
 
       console.log(`Post created for user ${userId}: ${result.postId}`);

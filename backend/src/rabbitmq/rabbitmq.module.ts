@@ -10,6 +10,7 @@ import { CommonModule } from '../common/common.module';
 import { TestModule } from '../test/test.module';
 import { Post } from '../posts/entities/post.entity';
 import { User } from '../users/entities/user.entity';
+import { SearchModule } from '../search/search.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { User } from '../users/entities/user.entity';
     forwardRef(() => UsersModule),
     CommonModule,
     TestModule,
+    SearchModule,
   ],
   providers: [RabbitMQService, CommentsConsumer, PostsConsumer],
   exports: [RabbitMQService],

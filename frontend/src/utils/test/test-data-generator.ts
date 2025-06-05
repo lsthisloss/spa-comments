@@ -2,29 +2,32 @@
  *  генератор тестовых данных 
  */
 
-import { TestUserGenerator } from './test/user-generator';
-import { crashTestQueue } from './test/crash-test';
-import { DEFAULT_CONFIG } from './test/config';
+import { TestUserGenerator } from './user-generator';
+import { crashTestQueue } from './crash-test';
+import { DEFAULT_CONFIG } from './config';
 
-// Упрощенная генерация тестовых данных
+// добавлен параметр generateWithMedia
 export async function generateTestData(
   usersCount: number,
   postsPerUser: number,
-  saveToDatabase: boolean = true
+  saveToDatabase: boolean = true,
+  generateWithMedia: boolean = true
 ): Promise<void> {
+  const mediaText = generateWithMedia ? 'with images and files' : 'text only';
+  
   console.log(`🚀 Starting SIMPLIFIED ${saveToDatabase ? 'REAL' : 'TEST'} data generation`);
   console.log(`👥 Users: ${usersCount} × 📝 Posts: ${postsPerUser} = ${usersCount * postsPerUser} total`);
   console.log(`📡 Socket URL: ${DEFAULT_CONFIG.socketURL}`);
   console.log(`💾 Save to database: ${saveToDatabase ? 'YES' : 'NO'}`);
-  console.log(`📷 NO avatars - simplified mode`);
+  console.log(`📷 Media generation: ${generateWithMedia ? 'ENABLED (images + files)' : 'DISABLED (text only)'}`);
   
   const startTime = Date.now();
-  const BATCH_SIZE = Math.min(DEFAULT_CONFIG.limits.batchSize, 2); // Уменьшаем batch размер
+  const BATCH_SIZE = Math.min(DEFAULT_CONFIG.limits.batchSize, 2);
   let totalSuccess = 0;
   let totalErrors = 0;
   
-  // Создаем генератор с настройкой сохранения
-  const userGenerator = new TestUserGenerator(DEFAULT_CONFIG, saveToDatabase);
+  // передаем параметр медиа в конструктор
+  const userGenerator = new TestUserGenerator(DEFAULT_CONFIG, saveToDatabase, generateWithMedia);
   
   try {
     // Обрабатываем пользователей по батчам
@@ -32,7 +35,7 @@ export async function generateTestData(
       const batchEnd = Math.min(i + BATCH_SIZE, usersCount);
       const batch = [];
       
-      console.log(`\n📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: users ${i + 1}-${batchEnd}`);
+      console.log(`\n📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: users ${i + 1}-${batchEnd} (${mediaText})`);
       
       // Создаем промисы для текущего батча
       for (let j = i; j < batchEnd; j++) {
@@ -75,7 +78,7 @@ export async function generateTestData(
     const duration = Math.round((Date.now() - startTime) / 1000);
     console.log(`\n🎉 SIMPLIFIED ${saveToDatabase ? 'REAL' : 'TEST'} data generation completed in ${duration} seconds!`);
     console.log(`📊 Results: ${totalSuccess} successful, ${totalErrors} failed`);
-    console.log(`📷 NO avatars generated - simplified mode`);
+    console.log(`📷 Media: ${generateWithMedia ? 'Images and files generated' : 'Text only mode'}`);
     
     if (saveToDatabase) {
       console.log(`💾 All data saved to PostgreSQL database!`);

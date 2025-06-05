@@ -8,9 +8,14 @@ import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { WebSocketServer } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { CommentResponseDto } from './dto/comment-response.dto';
-import { ElasticsearchService } from '@nestjs/elasticsearch';
 import { slugify } from '../utils/slugify';
 import { User } from '../users/entities/user.entity';
+import { SearchService } from '../search/search.service';
+import type {
+  CommentIndexInput,
+  AuthorIndexInput,
+  PostContextInput,
+} from '../search/types/search-result.types';
 
 @Injectable()
 export class CommentsService {
@@ -25,7 +30,7 @@ export class CommentsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly rabbitMQService: RabbitMQService,
-    private readonly elasticsearchService: ElasticsearchService,
+    private readonly searchService: SearchService,
   ) {}
 
   /**
@@ -140,9 +145,6 @@ export class CommentsService {
     console.log(`Comment sent to queue "${queueName}":`, createCommentDto);
   }
 
-  /**
-   * Сохранение комментария из очереди
-   */
   async saveCommentFromQueue(
     createCommentDto: CreateCommentDto,
   ): Promise<Comment> {
@@ -199,49 +201,75 @@ export class CommentsService {
 
     // Сохраняем комментарий
     const savedComment = await this.commentRepository.save(comment);
-    const post = await this.postRepository.findOne({
-      where: { id: createCommentDto.postId },
-    });
 
-    if (!post) {
-      throw new Error('Post not found');
+    try {
+      const [user, post] = await Promise.all([
+        this.userRepository.findOne({
+          where: { id: createCommentDto.userId },
+          select: [
+            'id',
+            'userName',
+            'avatarUrl',
+            'avatarShape',
+            'slug',
+            'email',
+            'role',
+          ],
+        }),
+        this.postRepository.findOne({
+          where: { id: createCommentDto.postId },
+          select: ['id', 'slug', 'content'],
+        }),
+      ]);
+
+      if (user) {
+        const commentIndexData: CommentIndexInput = {
+          id: savedComment.id,
+          content: savedComment.content,
+          slug: savedComment.slug,
+          likes: savedComment.likes || 0,
+          repliesCount: savedComment.repliesCount || 0,
+          imageUrl: savedComment.imageUrl ?? undefined,
+          fileUrl: savedComment.fileUrl ?? undefined,
+          fileName: savedComment.fileName ?? undefined,
+          fileType: savedComment.fileType ?? undefined,
+          userId: savedComment.userId,
+          postId: savedComment.postId,
+          parentId: savedComment.parentId ?? undefined,
+          createdAt: savedComment.createdAt,
+          updatedAt: savedComment.updatedAt,
+        };
+
+        const authorIndexData: AuthorIndexInput = {
+          id: user.id,
+          userName: user.userName,
+          avatarUrl: user.avatarUrl,
+          avatarShape: user.avatarShape,
+          slug: user.slug,
+          email: user.email,
+          role: user.role,
+        };
+
+        const postContextData: PostContextInput | undefined = post
+          ? {
+              id: post.id,
+              slug: post.slug,
+              content: post.content,
+            }
+          : undefined;
+
+        await this.searchService.indexComment(
+          commentIndexData,
+          authorIndexData,
+          postContextData,
+        );
+        console.log(`✅ Comment ${savedComment.id} indexed in Elasticsearch`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to index comment ${savedComment.id}:`, error);
     }
 
-    const user = await this.userRepository.findOne({
-      where: { id: createCommentDto.userId },
-      select: [
-        'id',
-        'userName',
-        'avatarUrl',
-        'avatarShape',
-        'slug',
-        'email',
-        'role',
-      ],
-    });
-
-    // --- Индексация в Elasticsearch ---
-    await this.elasticsearchService.index({
-      index: 'comments',
-      id: savedComment.id,
-      document: {
-        id: savedComment.id,
-        content: savedComment.content,
-        slug: savedComment.slug,
-        author: user
-          ? {
-              id: user.id,
-              userName: user.userName,
-              avatarUrl: user.avatarUrl,
-              avatarShape: user.avatarShape,
-              slug: user.slug,
-              email: user.email,
-              role: user.role,
-            }
-          : null,
-      },
-    });
-    // Увеличиваем счетчик комментариев в посте
+    // ВАША ЛОГИКА: Увеличиваем счетчик комментариев в посте
     if (!savedComment.parentId) {
       // Только для комментариев верхнего уровня обновляем счетчик в посте
       const commentCount = await this.commentRepository.count({
@@ -285,10 +313,6 @@ export class CommentsService {
 
     return savedComment;
   }
-
-  /**
-   * Удаление комментария
-   */
   async deleteComment(commentId: string): Promise<boolean> {
     const comment = await this.commentRepository.findOne({
       where: { id: commentId },
@@ -298,10 +322,21 @@ export class CommentsService {
       return false;
     }
 
+    // Удаляем из Elasticsearch
+    try {
+      await this.searchService.deleteComment(commentId);
+      console.log(`✅ Comment ${commentId} deleted from Elasticsearch`);
+    } catch (error) {
+      console.error(
+        `❌ Failed to delete comment ${commentId} from Elasticsearch:`,
+        error,
+      );
+    }
+
     // Удаляем комментарий
     await this.commentRepository.delete(commentId);
 
-    // Правильно обновляем счетчики после удаления
+    // ВАША ЛОГИКА: Правильно обновляем счетчики после удаления
     if (!comment.parentId) {
       // Если это комментарий к посту
       const commentCount = await this.commentRepository.count({
@@ -329,7 +364,6 @@ export class CommentsService {
 
     return true;
   }
-
   /**
    * Получение комментария по ID
    */

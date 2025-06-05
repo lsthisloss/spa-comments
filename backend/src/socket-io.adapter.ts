@@ -2,7 +2,17 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { INestApplicationContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { SessionService } from './auth/session.service';
+import { ServerOptions, Server } from 'socket.io';
+interface SocketData {
+  user?: { id: string; userName: string };
+  testMode?: boolean;
+  testDataGeneration?: boolean;
+  captchaVerified?: boolean;
+}
 
+type AuthenticatedSocket = import('socket.io').Socket & {
+  data: SocketData;
+};
 export class AuthenticatedSocketIoAdapter extends IoAdapter {
   private sessionService: SessionService | null = null;
 
@@ -10,11 +20,17 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
     super(app);
   }
 
-  createIOServer(port: number, options?: any): any {
-    const server: import('socket.io').Server = super.createIOServer(
-      port,
-      options,
-    ) as import('socket.io').Server;
+  createIOServer(port: number, options?: ServerOptions): any {
+    const server = super.createIOServer(port, {
+      ...options,
+      cors: {
+        origin: '*',
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
+    }) as Server;
+
+    console.log('[SOCKET] Creating server with WebSocket-only transport');
 
     // Получаем экземпляр сервиса сессий
     try {
@@ -23,16 +39,37 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
       console.error('Could not get SessionService:', e);
     }
 
-    type AuthenticatedSocket = import('socket.io').Socket & {
-      data: { user?: { id: string; userName: string } };
-    };
-
     const authMiddleware = (
       socket: AuthenticatedSocket,
       next: (err?: Error) => void,
     ): void => {
+      // Добавляем лог при новом подключении
+      console.log(
+        `[SOCKET] New connection to ${socket.nsp.name}, transport: ${socket.conn.transport.name}`,
+      );
+
+      // ДОБАВЛЯЕМ поддержку флага testDataGeneration
+      const isTestDataGeneration =
+        socket.handshake.query?.testDataGeneration === 'true';
+
+      if (isTestDataGeneration) {
+        console.log(
+          `[Socket] Test mode connection to ${socket.nsp.name} (testDataGeneration: ${isTestDataGeneration})`,
+        );
+        // Устанавливаем флаг в данных сокета
+        socket.data = {
+          ...(socket.data || {}),
+          testDataGeneration: isTestDataGeneration,
+          captchaVerified: true,
+        } as SocketData;
+        return next();
+      }
+
       // Разрешаем подключение к /users без токена
       if (socket.nsp.name === '/users') {
+        console.log(
+          `[SOCKET] Anonymous connection allowed to ${socket.nsp.name}`,
+        );
         return next();
       }
 
@@ -57,11 +94,13 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
           {},
         );
         console.log('[SOCKET AUTH] payload:', payload);
-        (socket.data as { user?: { id: string; userName: string } }).user = {
-          id: payload.sub,
-          userName: payload.userName,
-        };
-
+        socket.data = {
+          ...(socket.data || {}),
+          user: {
+            id: payload.sub,
+            userName: payload.userName,
+          },
+        } as SocketData;
         // Проверяем, есть ли уже активная сессия
         if (this.sessionService) {
           const existingSession = this.sessionService.registerSession(
@@ -91,7 +130,14 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
 
     // Обработчик отключения сокета
     server.on('connection', (socket: AuthenticatedSocket) => {
-      socket.on('disconnect', () => {
+      console.log(
+        `[SOCKET] Client connected: ${socket.id}, namespace: ${socket.nsp.name}`,
+      );
+
+      socket.on('disconnect', (reason) => {
+        console.log(
+          `[SOCKET] Client disconnected: ${socket.id}, reason: ${reason}`,
+        );
         const data = socket.data as { user?: { id: string; userName: string } };
         if (this.sessionService && data.user?.id) {
           this.sessionService.removeSession(socket.id);
@@ -104,11 +150,15 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
 
     // Apply to all current and future namespaces
     server.on('new_namespace', (namespace) => {
+      console.log(`[SOCKET] New namespace created: ${namespace.name}`);
       namespace.use(authMiddleware);
     });
 
     // Apply to already existing namespaces (important for /posts, /comments, etc)
     for (const nsp of server._nsps.values()) {
+      console.log(
+        `[SOCKET] Applying middleware to existing namespace: ${nsp.name}`,
+      );
       nsp.use(authMiddleware);
     }
 

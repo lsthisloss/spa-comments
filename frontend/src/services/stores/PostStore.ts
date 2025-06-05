@@ -37,6 +37,13 @@ interface FeedState {
   userId?: string;
 }
 
+interface WindowWithCrashTest extends Window {
+  __CRASH_TEST_MODE__?: boolean;
+}
+
+declare const window: WindowWithCrashTest;
+
+
 /**
  * Хранилище для управления постами
  */
@@ -92,6 +99,9 @@ class PostStore extends BaseStore<Post> implements IPostStore {
 
   postsMap = observable.map<string, Post>();
   private fetchPostPromises = new Map<string, Promise<Post | null>>();
+  private newPostBuffer: Map<FeedType, Post[]> = new Map();
+  private newPostTimeout: Map<FeedType, NodeJS.Timeout> = new Map();
+  private readonly NEW_POST_BATCH_DELAY = 300; // 300ms для краш-теста
 
   // Состояние для сохранения feed (только для главной ленты)
   feedScrollPosition = 0;
@@ -134,6 +144,8 @@ class PostStore extends BaseStore<Post> implements IPostStore {
       handleLoadNewPosts: action,
       addPost: action,
       handleNewPost: action,
+      batchNewPost: action,
+      processBatchedNewPosts: action,
       saveFeedState: action,
       restoreFeedState: action,
       onBackToFeed: action,
@@ -178,7 +190,166 @@ class PostStore extends BaseStore<Post> implements IPostStore {
   get hasFollowingItems(): boolean {
     return this.feeds.following.list.length > 0;
   }
+  /**
+   * Настройка socket слушателей
+   */
+  setupSocketListeners = action(() => {
+    if (!this.socketStore.posts) {
+      logger.log("[PostStore] socket not available, will setup when ready");
 
+      const disposer = reaction(
+        () => this.socketStore.posts,
+        (postsSocket) => {
+          if (postsSocket) {
+            this.setupSocketHandlers(postsSocket);
+            disposer();
+          }
+        }
+      );
+      return;
+    }
+
+    this.setupSocketHandlers(this.socketStore.posts);
+  });
+
+  /**
+   * Установка обработчиков socket событий
+   */
+  setupSocketHandlers(postsSocket: ReturnType<typeof io>) {
+    // Убираем старые обработчики
+    postsSocket.off("newPost");
+    postsSocket.off("newFollowingPost");
+    postsSocket.off("postLiked");
+    postsSocket.off("postUnliked");
+
+    // Добавляем дебаунсированные обработчики для новых постов
+    postsSocket.on("newPost", (post: Post) => {
+      logger.log("[PostStore] New post received", post.id);
+      this.batchNewPost(post, "feed");
+    });
+
+    postsSocket.on("newFollowingPost", (post: Post) => {
+      logger.log("[PostStore] New following post received", post.id);
+      this.batchNewPost(post, "following");
+    });
+
+    // Лайки обрабатываем сразу - они не создают каскадных обновлений
+    postsSocket.on("postLiked", (data: { postId: string; likes: number; userId: string }) => {
+      this.updatePostLikes(data.postId, data.likes, true, data.userId);
+    });
+
+    postsSocket.on("postUnliked", (data: { postId: string; likes: number; userId: string }) => {
+      this.updatePostLikes(data.postId, data.likes, false, data.userId);
+    });
+
+    logger.log("[PostStore] socket handlers setup complete with batching");
+  }
+
+  batchNewPost = action((post: Post, feedType: FeedType) => {
+    // Проверяем краш-тест режим
+    const isCrashTest = window.__CRASH_TEST_MODE__ || false;
+    const batchDelay = isCrashTest ? this.NEW_POST_BATCH_DELAY : 100;
+
+    // Инициализируем буфер если нужно
+    if (!this.newPostBuffer.has(feedType)) {
+      this.newPostBuffer.set(feedType, []);
+    }
+
+    const buffer = this.newPostBuffer.get(feedType)!;
+
+    // Проверяем дубликаты в буфере
+    if (!buffer.some(p => p.id === post.id)) {
+      buffer.push(post);
+      logger.log(`[PostStore] Added post ${post.id} to ${feedType} batch buffer (${buffer.length} posts)`);
+    }
+
+    // Очищаем предыдущий таймер
+    const existingTimeout = this.newPostTimeout.get(feedType);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Устанавливаем новый таймер
+    const timeout = setTimeout(() => {
+      this.processBatchedNewPosts(feedType);
+    }, batchDelay);
+
+    this.newPostTimeout.set(feedType, timeout);
+  });
+
+  //  Обработка батча новых постов
+  processBatchedNewPosts = action((feedType: FeedType) => {
+    const buffer = this.newPostBuffer.get(feedType) || [];
+    if (buffer.length === 0) return;
+
+    const isCrashTest = window.__CRASH_TEST_MODE__ || false;
+
+    logger.log(`[PostStore] Processing batch of ${buffer.length} new posts for ${feedType}${isCrashTest ? ' (crash test mode)' : ''}`);
+
+    // Используем runInAction для группировки операций MobX
+    runInAction(() => {
+      buffer.forEach(post => {
+        this.handleNewPostInternal(post, feedType);
+      });
+
+      // Очищаем буфер в том же runInAction
+      this.newPostBuffer.set(feedType, []);
+    });
+
+    this.newPostTimeout.delete(feedType);
+  });
+
+  private handleNewPostInternal(post: Post, type: FeedType) {
+    if (!post.createdAt) {
+      post.createdAt = new Date().toISOString();
+    }
+
+    // Проверяем, есть ли уже пост в postsMap
+    let observablePost = this.postsMap.get(post.id);
+    if (!observablePost) {
+      observablePost = observable(post);
+      this.postsMap.set(post.id, observablePost);
+    }
+
+    const feed = this.getFeed(type);
+
+    // Проверяем дубликаты
+    const existsInList = feed.list.some(p => p.id === post.id);
+    const existsInBuffer = feed.buffer.some(p => p.id === post.id);
+
+    if (existsInList || existsInBuffer) {
+      return;
+    }
+
+    const isCrashTest = window.__CRASH_TEST_MODE__ || false;
+    const isSpam = feed.buffer.length >= (isCrashTest ? 20 : 5);
+
+    const isCurrentUserPost = post.userId === this.userStore.user?.id;
+
+    if (isCurrentUserPost) {
+      feed.list.unshift(observablePost);
+      logger.log(`[PostStore] Current user post ${post.id} added directly to ${type} feed`);
+
+      // Добавляем в ленту пользователя
+      const userFeed = this.getUserFeedState();
+      if (userFeed.userId === post.userId && !userFeed.list.some(p => p.id === post.id)) {
+        userFeed.list.unshift(observablePost);
+        userFeed.total += 1;
+      }
+    } else if (isSpam || feed.manualUpdateMode || isCrashTest) {
+      if (!feed.manualUpdateMode && (isSpam || isCrashTest)) {
+        feed.manualUpdateMode = true;
+        logger.log(`[PostStore] Manual mode enabled for ${type} due to ${isCrashTest ? 'crash test' : 'buffer overflow'}`);
+      }
+
+      feed.buffer.unshift(observablePost);
+      feed.newPostsCount = feed.buffer.length;
+    } else {
+      feed.list.unshift(observablePost);
+    }
+
+    feed.latestPost = observablePost;
+  }
   async fetchUserPosts(userId: string, page = 1): Promise<void> {
     // Check if we already have this user's posts cached and not forcing a reset
     if (page === 1 &&
@@ -620,110 +791,98 @@ class PostStore extends BaseStore<Post> implements IPostStore {
   });
 
   handleNewPost = action((post: Post, type: FeedType) => {
-    if (!post.createdAt) {
-      post.createdAt = new Date().toISOString();
+    // В обычном режиме обрабатываем сразу, в краш-тесте - через батч
+    const isCrashTest = window.__CRASH_TEST_MODE__ || false;
+
+    if (isCrashTest) {
+      this.batchNewPost(post, type);
+    } else {
+      this.handleNewPostInternal(post, type);
     }
+  });
 
-    const observablePost = observable(post);
-    this.postsMap.set(post.id, observablePost);
+  processPosts = action((posts: Post[]) => {
+    // Группируем все операции в один runInAction
+    runInAction(() => {
+      const uniqueUsers = new Map<string, User>();
 
-    const feed = this.getFeed(type);
+      posts.forEach(post => {
+        // Кэшируем пользователей
+        if (post.user && post.user.id && post.user.userName) {
+          const roleValidated = this.userStore.validateUserRole(post.user.role);
 
-    // Проверяем дубликаты
-    const existsInList = feed.list.some(p => p.id === post.id);
-    const existsInBuffer = feed.buffer.some(p => p.id === post.id);
+          const fullUser: User = {
+            id: post.user.id,
+            userName: post.user.userName,
+            email: post.user.email || '',
+            role: roleValidated,
+            avatarUrl: post.user.avatarUrl || null,
+            avatarShape: post.user.avatarShape || 'circle',
+            slug: post.user.slug || post.user.userName.toLowerCase(),
+            createdAt: post.user.createdAt || new Date().toISOString(),
+            updatedAt: post.user.updatedAt || new Date().toISOString(),
+            followers: post.user.followers || [],
+            following: post.user.following || [],
+            settings: post.user.settings || { debugMode: false },
+          };
 
-    if (existsInList || existsInBuffer) {
-      logger.log(`[PostStore] Post ${post.id} already exists in ${type}, skipping`);
-      return;
-    }
+          uniqueUsers.set(fullUser.id, fullUser);
+        }
 
-    const isSpam = feed.buffer.length >= 5;
-    const isCurrentUserPost = post.userId === this.userStore.user?.id;
+        // Обрабатываем commentCount
+        if (post.commentCount === undefined || post.commentCount === null) {
+          const serverCommentCount = (post as Post).repliesCount || 0;
+          post.commentCount = serverCommentCount;
+        }
+      });
+
+      // Кэшируем пользователей
+      uniqueUsers.forEach(user => {
+        this.userStore.addCachedUser(user);
+      });
+
+      // Обрабатываем посты
+      posts.forEach(post => {
+        const existingPost = this.postsMap.get(post.id);
+
+        if (existingPost) {
+          Object.assign(existingPost, post);
+        } else {
+          const observablePost = observable(post);
+          this.postsMap.set(post.id, observablePost);
+        }
+      });
+    });
+  });
+
+  forceFlushBatches = action(() => {
+    logger.log("[PostStore] Force flushing all batches");
 
     runInAction(() => {
-      if (isCurrentUserPost) {
-        feed.list.unshift(observablePost);
-        logger.log(`[PostStore] Current user post ${post.id} added directly to ${type} feed`);
+      // Очищаем все таймеры
+      this.newPostTimeout.forEach(timeout => {
+        if (timeout) clearTimeout(timeout);
+      });
+      this.newPostTimeout.clear();
 
-        // Добавляем в ленту пользователя
-        const userFeed = this.getUserFeedState();
-        if (userFeed.userId === post.userId && !userFeed.list.some(p => p.id === post.id)) {
-          userFeed.list.unshift(observablePost);
-          userFeed.total += 1;
-          logger.log(`[PostStore] Also added user post ${post.id} to user feed`);
+      // Обрабатываем все буферы
+      this.newPostBuffer.forEach((buffer, feedType) => {
+        if (buffer.length > 0) {
+          logger.log(`[PostStore] Processing ${buffer.length} posts from ${feedType} buffer`);
+
+          // Обрабатываем буфер прямо здесь, а не через отдельный action
+          buffer.forEach(post => {
+            this.handleNewPostInternal(post, feedType);
+          });
+
+          // Очищаем буфер
+          this.newPostBuffer.set(feedType, []);
         }
-      } else if (isSpam || feed.manualUpdateMode) {
-        if (!feed.manualUpdateMode && isSpam) {
-          feed.manualUpdateMode = true;
-          logger.log(`[PostStore] Manual mode enabled for ${type} due to buffer overflow`);
-        }
-
-        feed.buffer.unshift(observablePost);
-        feed.newPostsCount = feed.buffer.length;
-        logger.log(`[PostStore] Post ${post.id} added to ${type} buffer, size: ${feed.buffer.length}`);
-      } else {
-        feed.list.unshift(observablePost);
-        logger.log(`[PostStore] Post ${post.id} added directly to ${type} feed`);
-      }
-
-      feed.latestPost = observablePost;
+      });
     });
+
+    logger.log("[PostStore] All batches flushed successfully");
   });
-
-  /**
-   * Настройка socket слушателей
-   */
-  setupSocketListeners = action(() => {
-    if (!this.socketStore.posts) {
-      logger.log("[PostStore] socket not available, will setup when ready");
-
-      const disposer = reaction(
-        () => this.socketStore.posts,
-        (postsSocket) => {
-          if (postsSocket) {
-            this.setupSocketHandlers(postsSocket);
-            disposer();
-          }
-        }
-      );
-      return;
-    }
-
-    this.setupSocketHandlers(this.socketStore.posts);
-  });
-
-  /**
-   * Установка обработчиков socket событий
-   */
-  setupSocketHandlers(postsSocket: ReturnType<typeof io>) {
-    // Убираем старые обработчики
-    postsSocket.off("newPost");
-    postsSocket.off("newFollowingPost");
-    postsSocket.off("postLiked");
-    postsSocket.off("postUnliked");
-
-    // Добавляем только основные события
-    postsSocket.on("newPost", (post: Post) => {
-      logger.log("[PostStore] New post received", post.id);
-      this.handleNewPost(post, "feed");
-    });
-
-    postsSocket.on("newFollowingPost", (post: Post) => {
-      logger.log("[PostStore] New following post received", post.id);
-      this.handleNewPost(post, "following");
-    });
-
-    postsSocket.on("postLiked", (data: { postId: string; likes: number; userId: string }) => {
-      this.updatePostLikes(data.postId, data.likes, true, data.userId);
-    });
-
-    postsSocket.on("postUnliked", (data: { postId: string; likes: number; userId: string }) => {
-      this.updatePostLikes(data.postId, data.likes, false, data.userId);
-    });
-
-    logger.log("[PostStore] socket handlers setup complete");
-  }
 
   /**
    * Обновление лайков поста
@@ -908,125 +1067,53 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     return this.commentStore.loadComments(postId);
   });
 
-
-// Update processPosts to use repliesCount from server
-
-processPosts = action((posts: Post[]) => {
-  const uniqueUsers = new Map<string, User>();
-
-  posts.forEach(post => {
-    // Кэшируем пользователей - проверяем обязательные поля
-    if (post.user && post.user.id && post.user.userName) {
-      const roleValidated = this.userStore.validateUserRole(post.user.role);
-
-      // Создаем полный объект User с обязательными полями
-      const fullUser: User = {
-        id: post.user.id,
-        userName: post.user.userName,
-        email: post.user.email || '',
-        role: roleValidated,
-        avatarUrl: post.user.avatarUrl || null,
-        avatarShape: post.user.avatarShape || 'circle',
-        slug: post.user.slug || post.user.userName.toLowerCase(),
-        createdAt: post.user.createdAt || new Date().toISOString(),
-        updatedAt: post.user.updatedAt || new Date().toISOString(),
-        followers: post.user.followers || [],
-        following: post.user.following || [],
-        settings: post.user.settings || { debugMode: false },
-      };
-
-      uniqueUsers.set(fullUser.id, fullUser);
-    }
-
-    // Используем repliesCount с серва как commentCount для постов (надо рефакторнуть)
-    if (post.commentCount === undefined || post.commentCount === null) {
-      const serverCommentCount = (post as Post).repliesCount || 0;
-      post.commentCount = serverCommentCount;
-      
-      if (serverCommentCount > 0) {
-        //logger.log(`[PostStore] Set commentCount to ${serverCommentCount} (from server repliesCount) for post ${post.id}`);
-      } else {
-        //logger.log(`[PostStore] Initialized commentCount to 0 for post ${post.id}`);
-      }
-    }
-  });
-
-  // Кэшируем уникальных пользователей используя существующий метод
-  uniqueUsers.forEach(user => {
-    this.userStore.addCachedUser(user);
-  });
-
-  if (uniqueUsers.size > 0) {
-    logger.log(`[PostStore] Cached ${uniqueUsers.size} users with roles`);
-  }
-
-  // Используем ОБЩИЕ объекты для postsMap и feeds
-  posts.forEach(post => {
-    // Проверяем, есть ли уже этот пост в postsMap
-    const existingPost = this.postsMap.get(post.id);
-
-    if (existingPost) {
-      // Обновляем существующий пост вместо создания нового
-      runInAction(() => {
-        Object.assign(existingPost, post);
-        logger.log(`[PostStore] Updated existing post ${post.id} in postsMap`);
-      });
-    } else {
-      // Создаем новый observable пост только если его нет
-      const observablePost = observable(post);
-      this.postsMap.set(post.id, observablePost);
-      //logger.log(`[PostStore] Added new post ${post.id} to postsMap`);
-    }
-  });
-});
-
   /**
    * Добавление поста
    */
-addPost = action((post: Post, feedType?: FeedType) => {
-  runInAction(() => {
-    // Кэшируем пользователя только если его еще нет в кэше
-    if (post.user && post.user.id) {
-      const existingUser = this.userStore.getCachedUser(post.user.id);
-      if (!existingUser) {
-        this.userStore.addCachedUser(post.user);
-      }
-    } else if (!post.user && post.userId) {
-      // Если нет user объекта, но есть userId, пробуем восстановить из кэша
-      const cachedUser = this.userStore.getCachedUser(post.userId);
-      if (cachedUser) {
-        post.user = cachedUser;
-        logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
-      } else {
-        logger.warn(`[PostStore] Could not restore user data for post ${post.id}, userId: ${post.userId}`);
-      }
-    }
-
-    // СНАЧАЛА обрабатываем пост через processPosts для единообразия
-    this.processPosts([post]);
-
-    // ЗАТЕМ используем ссылку из postsMap для feeds
-    const mappedPost = this.postsMap.get(post.id);
-    if (!mappedPost) {
-      logger.error(`[PostStore] Post ${post.id} not found in postsMap after processing!`);
-      return;
-    }
-
-    if (feedType) {
-      const feed = this.feeds[feedType];
-      if (feed) {
-        const existingIndex = feed.list.findIndex(p => p.id === post.id);
-        if (existingIndex >= 0) {
-          feed.list[existingIndex] = mappedPost; // Используем mappedPost
-          logger.log(`[PostStore] Updated existing post ${post.id} in ${feedType} feed with postsMap reference`);
+  addPost = action((post: Post, feedType?: FeedType) => {
+    runInAction(() => {
+      // Кэшируем пользователя только если его еще нет в кэше
+      if (post.user && post.user.id) {
+        const existingUser = this.userStore.getCachedUser(post.user.id);
+        if (!existingUser) {
+          this.userStore.addCachedUser(post.user);
+        }
+      } else if (!post.user && post.userId) {
+        // Если нет user объекта, но есть userId, пробуем восстановить из кэша
+        const cachedUser = this.userStore.getCachedUser(post.userId);
+        if (cachedUser) {
+          post.user = cachedUser;
+          logger.log(`[PostStore] Restored user ${cachedUser.userName} from cache for post ${post.id}`);
         } else {
-          feed.list.push(mappedPost); // Используем mappedPost
-          logger.log(`[PostStore] Added new post ${post.id} to ${feedType} feed with postsMap reference`);
+          logger.warn(`[PostStore] Could not restore user data for post ${post.id}, userId: ${post.userId}`);
         }
       }
-    }
+
+      // СНАЧАЛА обрабатываем пост через processPosts для единообразия
+      this.processPosts([post]);
+
+      // ЗАТЕМ используем ссылку из postsMap для feeds
+      const mappedPost = this.postsMap.get(post.id);
+      if (!mappedPost) {
+        logger.error(`[PostStore] Post ${post.id} not found in postsMap after processing!`);
+        return;
+      }
+
+      if (feedType) {
+        const feed = this.feeds[feedType];
+        if (feed) {
+          const existingIndex = feed.list.findIndex(p => p.id === post.id);
+          if (existingIndex >= 0) {
+            feed.list[existingIndex] = mappedPost; // Используем mappedPost
+            logger.log(`[PostStore] Updated existing post ${post.id} in ${feedType} feed with postsMap reference`);
+          } else {
+            feed.list.push(mappedPost); // Используем mappedPost
+            logger.log(`[PostStore] Added new post ${post.id} to ${feedType} feed with postsMap reference`);
+          }
+        }
+      }
+    });
   });
-});
 
   /**
    * Перемещение скролла к началу страницы
@@ -1040,29 +1127,29 @@ addPost = action((post: Post, feedType?: FeedType) => {
    * Добавление поста во все ленты
    */
   addPostToAllFeeds = action((post: Post) => {
-  // Используем ссылку из postsMap вместо исходного объекта
-  const mappedPost = this.postsMap.get(post.id);
-  if (!mappedPost) {
-    logger.warn(`[PostStore] Post ${post.id} not found in postsMap when adding to feeds`);
-    return;
-  }
-
-  // Добавляем пост в основную ленту, если его там нет
-  const mainFeed = this.feeds.feed;
-  if (!mainFeed.list.some(p => p.id === post.id)) {
-    logger.log(`[PostStore] Adding post ${post.id} to main feed using postsMap reference`);
-    mainFeed.list.push(mappedPost); // Используем mappedPost вместо post
-  }
-
-  // Добавляем в ленту пользователя, если это его пост
-  if (post.userId && this.feeds.user.userId === post.userId) {
-    const userFeed = this.feeds.user;
-    if (!userFeed.list.some(p => p.id === post.id)) {
-      logger.log(`[PostStore] Adding post ${post.id} to user feed using postsMap reference`);
-      userFeed.list.push(mappedPost); // Используем mappedPost вместо post
+    // Используем ссылку из postsMap вместо исходного объекта
+    const mappedPost = this.postsMap.get(post.id);
+    if (!mappedPost) {
+      logger.warn(`[PostStore] Post ${post.id} not found in postsMap when adding to feeds`);
+      return;
     }
-  }
-});
+
+    // Добавляем пост в основную ленту, если его там нет
+    const mainFeed = this.feeds.feed;
+    if (!mainFeed.list.some(p => p.id === post.id)) {
+      logger.log(`[PostStore] Adding post ${post.id} to main feed using postsMap reference`);
+      mainFeed.list.push(mappedPost); // Используем mappedPost вместо post
+    }
+
+    // Добавляем в ленту пользователя, если это его пост
+    if (post.userId && this.feeds.user.userId === post.userId) {
+      const userFeed = this.feeds.user;
+      if (!userFeed.list.some(p => p.id === post.id)) {
+        logger.log(`[PostStore] Adding post ${post.id} to user feed using postsMap reference`);
+        userFeed.list.push(mappedPost); // Используем mappedPost вместо post
+      }
+    }
+  });
 
   /**
    * Сохранение состояния feed
@@ -1153,110 +1240,110 @@ addPost = action((post: Post, feedType?: FeedType) => {
   /**
    * Получение поста по slug
    */
-// Update fetchPostBySlug to ensure proper reference handling
+  // Update fetchPostBySlug to ensure proper reference handling
 
-fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
-  try {
-    const cacheKey = `slug:${slug}`;
+  fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
+    try {
+      const cacheKey = `slug:${slug}`;
 
-    // Check if a fetch is already in progress
-    if (this.fetchPostPromises?.has(cacheKey)) {
-      logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
-      return this.fetchPostPromises.get(cacheKey)!;
-    }
+      // Check if a fetch is already in progress
+      if (this.fetchPostPromises?.has(cacheKey)) {
+        logger.log(`[PostStore] Reusing existing fetch promise for slug ${slug}`);
+        return this.fetchPostPromises.get(cacheKey)!;
+      }
 
-    logger.log(`[PostStore] Fetching post by slug: ${slug}`);
+      logger.log(`[PostStore] Fetching post by slug: ${slug}`);
 
-    // Check if post exists in store
-    const existingPost = this.getPostBySlug(slug);
-    if (existingPost) {
-      logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
+      // Check if post exists in store
+      const existingPost = this.getPostBySlug(slug);
+      if (existingPost) {
+        logger.log(`[PostStore] Found post ${slug} in store, returning cached version`);
 
-      // Create a resolved promise for consistency
-      const cachedPromise = Promise.resolve(existingPost);
-      this.fetchPostPromises?.set(cacheKey, cachedPromise);
+        // Create a resolved promise for consistency
+        const cachedPromise = Promise.resolve(existingPost);
+        this.fetchPostPromises?.set(cacheKey, cachedPromise);
 
-      // Clean up promise cache after a short delay
-      setTimeout(() => {
-        this.fetchPostPromises?.delete(cacheKey);
-      }, 1000);
-
-      return existingPost;
-    }
-
-    if (!this.socketStore.posts?.connected) {
-      logger.error('[PostStore] Socket not available');
-      throw new Error('Socket connection not available');
-    }
-
-    // Create a promise for handling the request
-    const fetchPromise = new Promise<Post | null>((resolve, reject) => {
-      this.socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse) => {
-        logger.log(`[PostStore] Response for slug ${slug}:`, response);
-
-        // Handle server exception responses
-        if (response && response.status === 'error') {
-          logger.error(`[PostStore] Server error: ${response.message}`);
-          reject(new Error(response.message || 'Server error'));
-          return;
-        }
-
-        // Handle other error formats (array with "exception")
-        if (Array.isArray(response) && response[0] === 'exception') {
-          const errorMsg = response[1]?.message || 'Unknown server error';
-          logger.error(`[PostStore] Server exception: ${errorMsg}`);
-          reject(new Error(errorMsg));
-          return;
-        }
-
-        const post = this.extractPostFromResponse(response);
-
-        if (post) {
-          runInAction(() => {
-            // СНАЧАЛА обрабатываем пост через processPosts
-            this.processPosts([post]);
-            
-            // ЗАТЕМ добавляем в feeds используя ссылку из postsMap
-            this.addPostToAllFeeds(post);
-          });
-          
-          // Возвращаем ссылку из postsMap для консистентности
-          const mappedPost = this.postsMap.get(post.id);
-          resolve(mappedPost || post);
-        } else {
-          logger.error(`[PostStore] No post data found in response for ${slug}`);
-          resolve(null);
-        }
-      });
-
-      // Add timeout to prevent hanging requests
-      setTimeout(() => {
-        if (this.fetchPostPromises?.has(cacheKey)) {
-          logger.error(`[PostStore] Request timeout for slug ${slug}`);
-          reject(new Error('Request timed out'));
-        }
-      }, 15000); // 15 second timeout
-    });
-
-    // Save promise in cache
-    this.fetchPostPromises?.set(cacheKey, fetchPromise);
-
-    // Clean up promise from cache on completion
-    fetchPromise
-      .finally(() => {
+        // Clean up promise cache after a short delay
         setTimeout(() => {
           this.fetchPostPromises?.delete(cacheKey);
         }, 1000);
+
+        return existingPost;
+      }
+
+      if (!this.socketStore.posts?.connected) {
+        logger.error('[PostStore] Socket not available');
+        throw new Error('Socket connection not available');
+      }
+
+      // Create a promise for handling the request
+      const fetchPromise = new Promise<Post | null>((resolve, reject) => {
+        this.socketStore.posts!.emit("fetchPostBySlug", { slug }, (response: FetchPostResponse) => {
+          logger.log(`[PostStore] Response for slug ${slug}:`, response);
+
+          // Handle server exception responses
+          if (response && response.status === 'error') {
+            logger.error(`[PostStore] Server error: ${response.message}`);
+            reject(new Error(response.message || 'Server error'));
+            return;
+          }
+
+          // Handle other error formats (array with "exception")
+          if (Array.isArray(response) && response[0] === 'exception') {
+            const errorMsg = response[1]?.message || 'Unknown server error';
+            logger.error(`[PostStore] Server exception: ${errorMsg}`);
+            reject(new Error(errorMsg));
+            return;
+          }
+
+          const post = this.extractPostFromResponse(response);
+
+          if (post) {
+            runInAction(() => {
+              // СНАЧАЛА обрабатываем пост через processPosts
+              this.processPosts([post]);
+
+              // ЗАТЕМ добавляем в feeds используя ссылку из postsMap
+              this.addPostToAllFeeds(post);
+            });
+
+            // Возвращаем ссылку из postsMap для консистентности
+            const mappedPost = this.postsMap.get(post.id);
+            resolve(mappedPost || post);
+          } else {
+            logger.error(`[PostStore] No post data found in response for ${slug}`);
+            resolve(null);
+          }
+        });
+
+        // Add timeout to prevent hanging requests
+        setTimeout(() => {
+          if (this.fetchPostPromises?.has(cacheKey)) {
+            logger.error(`[PostStore] Request timeout for slug ${slug}`);
+            reject(new Error('Request timed out'));
+          }
+        }, 15000); // 15 second timeout
       });
 
-    return fetchPromise;
-  } catch (error: Error | unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error(`[PostStore] Error fetching post by slug: ${errorMessage}`);
-    this.fetchPostPromises?.delete(`slug:${slug}`);
-    throw error; // Re-throw the error to be handled by the component
-  }
-});
+      // Save promise in cache
+      this.fetchPostPromises?.set(cacheKey, fetchPromise);
+
+      // Clean up promise from cache on completion
+      fetchPromise
+        .finally(() => {
+          setTimeout(() => {
+            this.fetchPostPromises?.delete(cacheKey);
+          }, 1000);
+        });
+
+      return fetchPromise;
+    } catch (error: Error | unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`[PostStore] Error fetching post by slug: ${errorMessage}`);
+      this.fetchPostPromises?.delete(`slug:${slug}`);
+      throw error; // Re-throw the error to be handled by the component
+    }
+  });
 
   /**
    * Помечает ленту для обновления при следующей загрузке
@@ -1282,6 +1369,12 @@ fetchPostBySlug = action(async (slug: string): Promise<Post | null> => {
    */
   override dispose() {
     super.dispose();
+
+    // Очищаем таймеры батчинга
+    this.newPostTimeout.forEach(timeout => {
+      if (timeout) clearTimeout(timeout);
+    });
+    this.newPostTimeout.clear();
 
     Object.values(this.intervals).forEach(interval => {
       if (interval) clearInterval(interval);

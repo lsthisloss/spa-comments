@@ -114,7 +114,7 @@ const commentSlug = useMemo(() => {
       });
   }, [commentSlug, commentStore, postStore]);
 
-  // Обработчик повторной попытки - ДОБАВЛЯЕМ ПРОВЕРКУ МОНТИРОВАНИЯ
+  // Обработчик повторной попытки 
   const handleRetry = useCallback(() => {
     if (!commentSlug || !mountedRef.current) return;
     

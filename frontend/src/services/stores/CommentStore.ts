@@ -968,7 +968,6 @@ getCommentBySlug(slug: string, logWarning: boolean = true): CommentType | null {
                 this.userStore.addCachedUser(comment.user);
               }
               
-              // ДОБАВЛЯЕМ В КОЛЛЕКЦИИ
               runInAction(() => {
                 if (comment.postId) {
                   // Это комментарий к посту - добавляем в commentsMap

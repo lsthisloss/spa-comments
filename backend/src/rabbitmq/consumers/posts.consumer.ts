@@ -9,6 +9,11 @@ import { TestService } from '../../test/test.service';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Post } from '../../posts/entities/post.entity';
+import { SearchService } from '../../search/search.service';
+import type {
+  PostIndexInput,
+  AuthorIndexInput,
+} from '../../search/types/search-result.types';
 
 @Injectable()
 export class PostsConsumer implements OnModuleInit {
@@ -39,6 +44,7 @@ export class PostsConsumer implements OnModuleInit {
     private readonly usersService: UsersService,
     private readonly commonWsService: CommonWsService,
     private readonly testService: TestService,
+    private readonly searchService: SearchService,
     @InjectRepository(Post)
     private readonly postRepository: Repository<Post>,
   ) {}
@@ -153,6 +159,8 @@ export class PostsConsumer implements OnModuleInit {
           return;
         }
 
+        await this.indexPostInElasticsearch(post, createPostDto.userId, true);
+
         const postWithUser = await this.enrichPostWithUserData(
           post,
           createPostDto.userId,
@@ -165,7 +173,7 @@ export class PostsConsumer implements OnModuleInit {
         return;
       }
 
-      // Для обычных пользователей (без изменений)...
+      // Для обычных пользователей...
       console.log(
         `[QUEUE] Processing regular user post: ${createPostDto.userId.substring(0, 8)}...`,
       );
@@ -255,6 +263,8 @@ export class PostsConsumer implements OnModuleInit {
         return;
       }
 
+      await this.indexPostInElasticsearch(post, createPostDto.userId, false);
+
       this.logger.log(
         `Post processed successfully: ${post.id} for user ${createPostDto.userId}`,
       );
@@ -287,6 +297,58 @@ export class PostsConsumer implements OnModuleInit {
     }
   }
 
+  // для индексации постов в Elasticsearch
+  // Исправляем метод indexPostInElasticsearch
+  private async indexPostInElasticsearch(
+    post: Post,
+    userId: string,
+    isTestUser: boolean,
+  ): Promise<void> {
+    try {
+      //ля тестовых пользователей ТОЖЕ используем данные из БД
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        console.warn(`❌ User ${userId} not found for post indexing`);
+        return;
+      }
+
+      const authorData: AuthorIndexInput = {
+        id: user.id,
+        userName: user.userName,
+        avatarUrl: user.avatarUrl,
+        avatarShape: user.avatarShape,
+        slug: user.slug,
+        email: user.email,
+        role: isTestUser ? 'test' : user.role,
+      };
+
+      const postIndexData: PostIndexInput = {
+        id: post.id,
+        content: post.content,
+        slug: post.slug,
+        likes: post.likes || 0,
+        repliesCount: post.repliesCount || 0,
+        imageUrl: post.imageUrl,
+        fileUrl: post.fileUrl,
+        fileName: post.fileName,
+        fileType: post.fileType,
+        userId: post.userId,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+      };
+
+      await this.searchService.indexPost(postIndexData, authorData);
+      console.log(
+        `✅ Post ${post.id} indexed in Elasticsearch (isTestUser: ${isTestUser})`,
+      );
+    } catch (error) {
+      console.error(
+        `❌ Failed to index post ${post.id} in Elasticsearch:`,
+        error,
+      );
+    }
+  }
+
   private checkRateLimit(userId: string): boolean {
     const now = Date.now();
     const userLimit = this.userPostCounts.get(userId);
@@ -302,7 +364,6 @@ export class PostsConsumer implements OnModuleInit {
     return userLimit.count < this.MAX_POSTS_PER_MINUTE;
   }
 
-  // УБИРАЕМ дублирующие методы и используем TestService
   private async enrichPostWithUserData<T extends object>(
     post: T,
     userId: string,
@@ -319,44 +380,37 @@ export class PostsConsumer implements OnModuleInit {
     }
   > {
     try {
-      // ИСПОЛЬЗУЕМ TestService для проверки тестового пользователя
       const isTestUser = this.testService.isTestUserId(userId);
 
-      if (isTestUser) {
-        console.log(`[POSTS] Processing test user post: ${userId}`);
+      const user = await this.usersService.findById(userId);
 
-        // ИСПОЛЬЗУЕМ TestService для генерации данных тестового пользователя
-        const testUserData = this.testService.generateTestUserData(userId);
-
+      if (!user) {
+        console.warn(`❌ User ${userId} not found`);
         return {
           ...post,
           user: {
             id: userId,
-            userName: testUserData.userName,
-            avatarUrl: testUserData.avatarUrl,
-            avatarShape: testUserData.avatarShape,
-            slug: testUserData.slug,
-            role: testUserData.role,
+            userName: 'Unknown',
+            avatarUrl: null,
+            avatarShape: 'circle',
+            role: isTestUser ? 'test' : 'user',
           },
         };
       }
-
-      // Для обычных пользователей получаем данные из БД
-      const user = await this.usersService.findById(userId);
 
       return {
         ...post,
         user: {
           id: userId,
-          userName: user?.userName || 'Anonymous',
-          avatarUrl: user?.avatarUrl || null,
-          avatarShape: user?.avatarShape || 'circle',
-          slug: user?.slug,
-          role: user?.role || 'user',
+          userName: user.userName,
+          avatarUrl: user.avatarUrl,
+          avatarShape: user.avatarShape,
+          slug: user.slug,
+          role: isTestUser ? 'test' : user.role,
         },
       };
-    } catch {
-      this.logger.warn(`Failed to get user data for ${userId}`);
+    } catch (error) {
+      this.logger.warn(`Failed to get user data for ${userId}:`, error);
       return {
         ...post,
         user: {

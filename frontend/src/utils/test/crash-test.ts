@@ -1,5 +1,5 @@
 /**
- *  краш-тестирование
+ * краш-тестирование
  */
 
 import { TestUserGenerator, PostCreationStats } from './user-generator';
@@ -17,6 +17,18 @@ export interface CrashTestResult {
   };
   duration: number;
 }
+
+// Типизация для window с краш-тест флагом
+interface WindowWithCrashTest extends Window {
+  __CRASH_TEST_MODE__?: boolean;
+  stores?: {
+    postStore?: {
+      forceFlushBatches?: () => void;
+    };
+  };
+}
+
+declare const window: WindowWithCrashTest;
 
 export class CrashTestRunner {
   private config: TestConfig;
@@ -36,6 +48,10 @@ export class CrashTestRunner {
     console.log(`📡 Socket URL: ${this.config.socketURL}`);
     console.log(`⚠️ Rate limit: 10 posts/minute per user - sending ${postsPerUser} posts RAPIDLY`);
     
+    // ФЛАГ КРАШ-ТЕСТА
+    window.__CRASH_TEST_MODE__ = true;
+    console.log(`🔥 CRASH TEST MODE: Enabled (batching posts for stability)`);
+    
     const startTime = Date.now();
     let successfulUsers = 0;
     let failedUsers = 0;
@@ -49,7 +65,7 @@ export class CrashTestRunner {
 
     try {
       // Создаем всех пользователей ОДНОВРЕМЕННО для максимального краша
-      const allUserPromises = [];
+      const allUserPromises: Promise<void>[] = [];
       
       console.log(`\n🚀 Creating ${usersCount} users SIMULTANEOUSLY...`);
       
@@ -65,7 +81,7 @@ export class CrashTestRunner {
               
               console.log(`✅ User ${i + 1}: ${stats.created} created, ${stats.queued} queued, ${stats.rateLimited} rate limited, ${stats.errors} errors`);
             })
-            .catch((error) => {
+            .catch((error: Error) => {
               failedUsers++;
               console.error(`❌ User ${i + 1} failed:`, error.message);
             })
@@ -99,6 +115,28 @@ export class CrashTestRunner {
     } catch (error) {
       console.error('💥 Simplified crash test failed:', error);
       throw error;
+    } finally {
+      // ОЧИЩАЕМ ФЛАГ И ПРИНУДИТЕЛЬНО ОБРАБАТЫВАЕМ БУФЕРЫ
+      console.log(`🔄 Cleaning up crash test mode...`);
+      window.__CRASH_TEST_MODE__ = false;
+      
+      // Даем время на завершение последних socket событий
+      await new Promise<void>(resolve => setTimeout(resolve, 1000));
+      
+      // Принудительно очищаем все буферы в PostStore
+      try {
+        const postStore = window.stores?.postStore;
+        if (postStore && typeof postStore.forceFlushBatches === 'function') {
+          console.log(`🔄 Force flushing all batched posts...`);
+          postStore.forceFlushBatches();
+          
+          // Даем время на обработку буферов
+          await new Promise<void>(resolve => setTimeout(resolve, 500));
+          console.log(`✅ All batches flushed successfully`);
+        }
+      } catch (flushError) {
+        console.error('❌ Error flushing batches:', flushError);
+      }
     }
   }
 
@@ -132,6 +170,16 @@ export async function crashTestQueue(
   usersCount: number = 3,
   postsPerUser: number = 20
 ): Promise<CrashTestResult> {
+  console.log(`🎯 Starting crash test via crashTestQueue...`);
+  
   const runner = new CrashTestRunner();
-  return await runner.runCrashTest(usersCount, postsPerUser);
+  
+  try {
+    const result = await runner.runCrashTest(usersCount, postsPerUser);
+    console.log(`🎯 crashTestQueue completed successfully`);
+    return result;
+  } catch (error) {
+    console.error('🎯 crashTestQueue failed:', error);
+    throw error;
+  }
 }

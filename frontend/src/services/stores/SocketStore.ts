@@ -70,7 +70,9 @@ class SocketStore implements ISocketStore {
   // ---------------------------------------------------
   // Методы для установки состояний (actions)
   // ---------------------------------------------------
-
+  isUserAuthenticated(): boolean {
+    return this.authStore.isAuthenticated;
+  }
   setUsers = action((socket: ReturnType<typeof io> | null) => {
     this.users = socket;
   })
@@ -262,17 +264,41 @@ class SocketStore implements ISocketStore {
   /**
    * Переподключает только сокет пользователей
    */
-  reconnectUsersSocket = action(() => {
-    logger.info('[SocketStore] Reconnecting users socket only');
-    
-    if (this.users) {
+reconnectUsersSocket = action(() => {
+  logger.info('[SocketStore] Reconnecting users socket only');
+  
+  if (this.users) {
+    // Отключаем только если соединение активно
+    if (this.users.connected) {
+      logger.info(`[SocketStore] Disconnecting existing socket: ${this.users.id || 'no ID'}`);
       this.users.disconnect();
-      this.setUsers(null);
     }
+    this.setUsers(null);
+  }
+  
+  const wsUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  logger.info(`[SocketStore] Connecting to: ${wsUrl}/users`);
+  
+  try {
+    // Создаем новый сокет
+    const userSocket = io(`${wsUrl}/users`, {
+      transports: ['websocket', 'polling'],
+      timeout: 10000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
     
-    // Инициализируем сокет пользователей
-    this.initializeUsersSocket();
-  })
+    // Устанавливаем сокет и настраиваем обработчики
+    this.setUsers(userSocket);
+    this.setupUsersHandlers();
+    
+    return userSocket;
+  } catch (error) {
+    logger.error("[SocketStore] Error reconnecting users socket:", error);
+    return null;
+  }
+})
 
   /**
    * Проверяет все соединения и восстанавливает при необходимости
@@ -387,7 +413,9 @@ class SocketStore implements ISocketStore {
   private initializeUsersSocket() {
     if (this.users?.connected) return;
 
-    const wsUrl = import.meta.env.VITE_WS_URL;
+    const wsUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    
+    logger.log(`[SocketStore] Initializing users socket with URL: ${wsUrl}/users`);
     
     let socketConfig: Record<string, unknown> = {
       transports: ['websocket', 'polling'],
@@ -413,15 +441,30 @@ class SocketStore implements ISocketStore {
     } else {
       logger.log("[SocketStore] Initializing users socket (no auth required)");
     }
-    
-    const userSocket = io(`${wsUrl}/users`, socketConfig);
 
+  try {
+    const userSocket = io(`${wsUrl}/users`, socketConfig);
+    
+    logger.log(`[SocketStore] Socket.io connection creating for users namespace`);
+    
+    // Сразу добавляем обработчик подключения
+    userSocket.on('connect', () => {
+      logger.log(`[SocketStore] Users socket connected, ID: ${userSocket.id}`);
+      this.setConnected(true);
+    });
+    
     runInAction(() => {
       this.setUsers(userSocket);
     });
 
     this.setupUsersHandlers();
+    
+    return userSocket;
+  } catch (error) {
+    logger.error("[SocketStore] Failed to create users socket:", error);
+    return null;
   }
+}
 
   /**
    * Настраивает обработчики событий для сокета пользователей

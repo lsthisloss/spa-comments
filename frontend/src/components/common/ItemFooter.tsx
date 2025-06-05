@@ -13,7 +13,7 @@ interface FeedItemFooterProps<T extends FeedItemBase> {
   item: T & { 
     likedUserIds?: string[]; 
     repliesCount?: number; 
-    commentCount?: number; // Add commentCount for posts
+    commentCount?: number;
     fileUrl?: string; 
     fileName?: string; 
     fileType?: string; 
@@ -47,7 +47,62 @@ function FeedItemFooterComponent<T extends FeedItemBase>({
     [item.fileUrl, item.fileName, fileInfo.isImage]
   );
 
-  // Определяем правильное количество комментариев/ответов
+  const handleFileDownload = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!item.fileUrl || !item.fileName) {
+      logger.error('[ItemFooter] No file URL or filename for download');
+      return;
+    }
+
+    try {
+      const fileUrl = item.fileUrl.startsWith('http') 
+        ? item.fileUrl 
+        : `${apiUrl}${item.fileUrl}`;
+      
+      logger.log(`[ItemFooter] Downloading file: ${item.fileName} from ${fileUrl}`);
+
+      // Fetch файл
+      const response = await fetch(fileUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Получаем blob
+      const blob = await response.blob();
+      
+      // Создаем временную ссылку для скачивания
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = item.fileName;
+      
+      // Добавляем в DOM, кликаем и удаляем
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Очищаем URL объект
+      window.URL.revokeObjectURL(downloadUrl);
+      
+      logger.log(`[ItemFooter] File downloaded successfully: ${item.fileName}`);
+      
+    } catch (error) {
+      logger.error('[ItemFooter] Download failed:', error);
+      
+      // Fallback - пробуем стандартное скачивание
+      const link = document.createElement('a');
+      link.href = item.fileUrl.startsWith('http') ? item.fileUrl : `${apiUrl}${item.fileUrl}`;
+      link.download = item.fileName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }, [item.fileUrl, item.fileName, apiUrl]);
   // Extract commentCount for posts to avoid complex expressions and 'any'
   const postCommentCount = (item as { commentCount?: number }).commentCount;
 
@@ -85,17 +140,22 @@ const commentCount = useMemo(() => {
     {
       key: 'download',
       label: (
-        <a
-          href={item.fileUrl && item.fileUrl.startsWith('http') ? item.fileUrl : `${apiUrl}${item.fileUrl ?? ''}`}
-          download={item.fileName || true}
-          rel="noopener noreferrer"
+        <div
+          onClick={handleFileDownload}
+          style={{ 
+            cursor: 'pointer',
+            padding: '4px 0',
+            display: 'flex',
+            alignItems: 'center'
+          }}
         >
           <DownloadOutlined style={{ paddingRight: 8 }} />
           Download {item.fileName}
-        </a>
+        </div>
       ),
     },
-  ] : [], [shouldShowDownload, item.fileUrl, item.fileName, apiUrl]);
+  ] : [], [shouldShowDownload, item.fileName, handleFileDownload]);
+
 
   return (
     <div className="item-footer">
@@ -143,7 +203,7 @@ const commentCount = useMemo(() => {
         )}
         
         {/* File download dropdown */}
-        {fileMenu.length > 0 && (
+         {fileMenu.length > 0 && (
           <Dropdown 
             menu={{ items: fileMenu }} 
             placement="bottom" 
@@ -155,6 +215,9 @@ const commentCount = useMemo(() => {
               icon={<DownloadOutlined />} 
               style={{ marginLeft: 8 }}
               title={`Download ${item.fileName}`}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
             />
           </Dropdown>
         )}

@@ -851,107 +851,148 @@ clearUser = action(() => {
   }
 
 
-  async updateAvatar(avatarData: {
-    type: 'upload' | 'initial',
-    value: string,
-    file?: File,
-    shape: 'circle' | 'square'
-  }): Promise<User | null> {
-    if (!this.user?.id || !this.socketStore.users) {
-      throw new Error("User not authenticated or socket not available");
-    }
-
-    // Для initial или если нужно только обновить форму аватара
-    if (avatarData.type === 'initial' || (avatarData.type === 'upload' && !avatarData.file)) {
-      return new Promise<User | null>((resolve, reject) => {
-        if (!this.socketStore.users) {
-          throw new Error("Users socket not available");
-        }
-        this.socketStore.users.emit(
-          "updateAvatarShape",
-          { avatarShape: avatarData.shape },
-          (res: { success: boolean; user?: User; message?: string }) => {
-            if (res.success && res.user) {
-              const updatedUser: User = {
-                ...this.user!,
-                avatarUrl: avatarData.type === 'initial' ? undefined : this.user!.avatarUrl,
-                avatarShape: res.user ? res.user.avatarShape : this.user!.avatarShape
-              };
-
-              runInAction(() => {
-                this.setUser(updatedUser);
-                this.usersCache.set(updatedUser.id, updatedUser);
-              });
-
-              this.updateUserAvatarInPosts(
-                this.user!.id,
-                updatedUser.avatarUrl || undefined, // null становится undefined
-                updatedUser.avatarShape
-              );
-
-              resolve(res.user);
-            } else {
-              reject(new Error(res.message || "Failed to update avatar shape"));
-            }
-          }
-        );
-      });
-    }
-
-    // Для загрузки нового файла аватара
-    if (avatarData.type === 'upload' && avatarData.file) {
-      return new Promise<User | null>((resolve, reject) => {
-        if (avatarData.file) {
-          this.fileToBase64(avatarData.file)
-            .then(base64 => {
-              if (!this.socketStore.users) {
-                throw new Error("Users socket not available");
-              }
-              this.socketStore.users.emit(
-                "uploadAvatar",
-                {
-                  file: {
-                    name: avatarData.file!.name,
-                    type: avatarData.file!.type,
-                    base64
-                  },
-                  avatarShape: avatarData.shape
-                },
-                (res: { success: boolean; user?: User; message?: string }) => {
-                  if (res.success && res.user) {
-                    const updatedUser: User = {
-                      ...this.user!,
-                      avatarUrl: res.user?.avatarUrl ?? this.user!.avatarUrl,
-                      avatarShape: res.user?.avatarShape ?? this.user!.avatarShape
-                    };
-
-                    runInAction(() => {
-                      this.setUser(updatedUser);
-                      this.usersCache.set(updatedUser.id, updatedUser);
-                    });
-
-                    this.updateUserAvatarInPosts(
-                      this.user!.id,
-                      res.user.avatarUrl || undefined, // null становится undefined
-                      res.user.avatarShape
-                    );
-
-                    resolve(res.user);
-                  } else {
-                    reject(new Error(res.message || "Failed to upload avatar"));
-                  }
-                }
-              );
-            })
-            .catch(error => {
-              reject(new Error(`Failed to process image: ${error.message}`));
-            });
-        }
-      });
-    }
-
-    return Promise.reject(new Error("Invalid avatar data"));
+async updateAvatar(avatarData: {
+  type: 'upload' | 'initial',
+  value: string,
+  file?: File,
+  shape: 'circle' | 'square'
+}): Promise<User | null> {
+  if (!this.user?.id || !this.socketStore.users) {
+    throw new Error("User not authenticated or socket not available");
   }
+
+  // Для initial или если нужно только обновить форму аватара
+  if (avatarData.type === 'initial' || (avatarData.type === 'upload' && !avatarData.file)) {
+    return new Promise<User | null>((resolve, reject) => {
+      if (!this.socketStore.users) {
+        throw new Error("Users socket not available");
+      }
+      this.socketStore.users.emit(
+        "updateAvatarShape",
+        { avatarShape: avatarData.shape },
+        (res: { success: boolean; user?: User; message?: string }) => {
+          if (res.success && res.user) {
+            const updatedUser: User = {
+              ...this.user!,
+              avatarUrl: avatarData.type === 'initial' ? undefined : this.user!.avatarUrl,
+              avatarShape: res.user ? res.user.avatarShape : this.user!.avatarShape
+            };
+
+            runInAction(() => {
+              this.setUser(updatedUser);
+              this.usersCache.set(updatedUser.id, updatedUser);
+            });
+
+            this.updateUserAvatarInPosts(
+              this.user!.id,
+              updatedUser.avatarUrl || undefined,
+              updatedUser.avatarShape
+            );
+
+            resolve(res.user);
+          } else {
+            reject(new Error(res.message || "Failed to update avatar shape"));
+          }
+        }
+      );
+    });
+  }
+
+  // Для загрузки нового файла аватара
+  if (avatarData.type === 'upload' && avatarData.file) {
+    return new Promise<User | null>((resolve, reject) => {
+      if (avatarData.file) {
+        // обработчик события avatarUploaded ДО отправки
+        const handleAvatarUploaded = (response: {
+          success: boolean;
+          user?: User;
+          avatarUrl?: string;
+          avatarShape?: string;
+          message?: string;
+        }) => {
+          console.log('[UserStore] Avatar upload event received:', response);
+          
+          if (response.success && response.user) {
+            const updatedUser: User = {
+              ...this.user!,
+              avatarUrl: response.user.avatarUrl ?? response.avatarUrl ?? this.user!.avatarUrl,
+              avatarShape: response.user.avatarShape ?? response.avatarShape as 'circle' | 'square' ?? this.user!.avatarShape
+            };
+
+            runInAction(() => {
+              this.setUser(updatedUser);
+              this.usersCache.set(updatedUser.id, updatedUser);
+            });
+
+            this.updateUserAvatarInPosts(
+              this.user!.id,
+              updatedUser.avatarUrl || undefined,
+              updatedUser.avatarShape
+            );
+
+            // Убираем обработчик после использования
+            if (this.socketStore.users) {
+              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+            }
+
+            resolve(response.user);
+          } else {
+            // Убираем обработчик при ошибке
+            if (this.socketStore.users) {
+              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+            }
+            reject(new Error(response.message || "Failed to upload avatar"));
+          }
+        };
+
+        // Устанавливаем обработчик
+        if (this.socketStore.users) {
+          this.socketStore.users.on('avatarUploaded', handleAvatarUploaded);
+        }
+
+        this.fileToBase64(avatarData.file)
+          .then(base64 => {
+            if (!this.socketStore.users) {
+              throw new Error("Users socket not available");
+            }
+            this.socketStore.users.emit(
+              "uploadAvatar",
+              {
+                file: {
+                  name: avatarData.file!.name,
+                  type: avatarData.file!.type,
+                  base64
+                },
+                avatarShape: avatarData.shape
+              },
+              (res: { success: boolean; user?: User; message?: string }) => {
+                console.log('[UserStore] Upload avatar callback:', res);
+                
+                // Callback может не содержать полных данных, основное обновление через событие
+                if (!res.success) {
+                  // Убираем обработчик при ошибке в callback
+                  if (this.socketStore.users) {
+                    this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+                  }
+                  reject(new Error(res.message || "Failed to upload avatar"));
+                }
+              }
+            );
+          })
+          .catch(error => {
+            // Убираем обработчик при ошибке конвертации
+            if (this.socketStore.users) {
+              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+            }
+            reject(new Error(`Failed to process image: ${error.message}`));
+          });
+      }
+    });
+  }
+
+  return Promise.reject(new Error("Invalid avatar data"));
+}
+
 
   /**
      * Проверяет, подписан ли текущий пользователь на указанного пользователя

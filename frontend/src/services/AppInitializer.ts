@@ -146,36 +146,59 @@ class AppInitializer {
     }
   }
 
-  private async waitForSockets(): Promise<void> {
-    let attempts = 0;
-    const maxAttempts = 30; // Уменьшили до 3 секунд
-
-    while (attempts < maxAttempts) {
-      const usersReady = socketStore.users?.connected === true;
-      
-      if (userStore.isAuthenticated) {
-        // Для авторизованных - проверяем все сокеты
-        const postsReady = socketStore.posts?.connected === true;
-        const commentsReady = socketStore.comments?.connected === true;
-        
-        if (usersReady && postsReady && commentsReady) {
-          logger.log("[AppInit] All authenticated sockets ready");
-          return;
-        }
-      } else {
-        // Для неавторизованных - только users сокет
-        if (usersReady) {
-          logger.log("[AppInit] Users socket ready");
-          return;
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
+private async waitForSockets(): Promise<void> {
+  logger.info("[AppInit] Waiting for socket connections...");
+  
+  // Проверяем, что сокет users существует, иначе создаем его
+  if (!socketStore.users) {
+    logger.info("[AppInit] Users socket doesn't exist, creating it");
+    socketStore.reconnectUsersSocket();
+    // Даем время на создание сокета
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  
+  // Максимальное время ожидания - 10 секунд
+  let attempts = 0;
+  const maxAttempts = 100;
+  
+  while (attempts < maxAttempts) {
+    // Проверяем статус подключения
+    const usersConnected = socketStore.users?.connected === true;
+    
+    // Для отладки показываем состояние
+    if (attempts % 10 === 0) {
+      logger.info(`[AppInit] Socket check (${attempts}): users=${usersConnected ? 'connected' : 'disconnected'}, id=${socketStore.users?.id || 'none'}`);
     }
     
-    throw new Error("Socket connection timeout. Server may be unavailable.");
+    // Пользователь авторизован - проверяем все сокеты
+    if (userStore.isAuthenticated) {
+      const postsConnected = socketStore.posts?.connected === true;
+      const commentsConnected = socketStore.comments?.connected === true;
+      
+      if (usersConnected && postsConnected && commentsConnected) {
+        logger.info("[AppInit] All authenticated sockets connected");
+        return;
+      }
+    } 
+    // Пользователь не авторизован - только users
+    else if (usersConnected) {
+      logger.info("[AppInit] Users socket connected successfully");
+      return;
+    }
+    
+    // Пробуем переподключиться каждые 30 попыток
+    if (attempts > 0 && attempts % 30 === 0 && !usersConnected) {
+      logger.warn("[AppInit] Socket connection timeout, attempting reconnect");
+      socketStore.reconnectUsersSocket();
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
   }
+  
+  // Превышено максимальное время ожидания
+  throw new Error("Socket connection timeout. Server may be unavailable.");
+}
 
   reset() {
     runInAction(() => {

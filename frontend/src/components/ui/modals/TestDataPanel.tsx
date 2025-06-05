@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { message } from 'antd';
 import { useUserStore } from '../../../hooks/useStore';
-import { generateTestData, crashTestQueue } from "../../../utils/test-data-generator";
+import { generateTestData, crashTestQueue } from "../../../utils/test/test-data-generator";
 
 interface TestDataPanelProps {
   isVisible: boolean;
@@ -114,43 +114,45 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
     }
   };
 
-  // Обработчики форм (копируем из DebugInfo)
+  // Обработчики форм 
   const handleGenerateTestData = () => {
-  if (usersCount < 1 || usersCount > 100) {
-    message.error('Количество пользователей должно быть от 1 до 100');
-    return;
-  }
+    if (usersCount < 1 || usersCount > 100) {
+      message.error('Количество пользователей должно быть от 1 до 100');
+      return;
+    }
 
-  if (postsPerUser < 1 || postsPerUser > 1000) {
-    message.error('Количество постов на пользователя должно быть от 1 до 1000');
-    return;
-  }
+    if (postsPerUser < 1 || postsPerUser > 1000) {
+      message.error('Количество постов на пользователя должно быть от 1 до 1000');
+      return;
+    }
 
-  const totalMessages = usersCount * postsPerUser;
+    const totalMessages = usersCount * postsPerUser;
 
-  if (totalMessages > 100000) {
-    message.warning({
-      content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100,000 и не имеет смысла для тестирования.`,
-      duration: 8,
+    if (totalMessages > 100000) {
+      message.warning({
+        content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100,000 и не имеет смысла для тестирования.`,
+        duration: 8,
+      });
+      return;
+    }
+
+    if (totalMessages > 10000) {
+      message.warning({
+        content: `Будет создано ${totalMessages.toLocaleString()} сообщений. Это может занять некоторое время.`,
+        duration: 4,
+      });
+    }
+
+    const mediaInfo = generateWithMedia ? 'с изображениями и файлами' : 'только текст';
+    
+    message.info({
+      content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений, ${mediaInfo})...`,
+      duration: 3,
     });
-    return;
-  }
 
-  if (totalMessages > 10000) {
-    message.warning({
-      content: `Будет создано ${totalMessages.toLocaleString()} сообщений. Это может занять некоторое время.`,
-      duration: 4,
-    });
-  }
-
-  message.info({
-    content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений)...`,
-    duration: 3,
-  });
-
-  // Передаем только количество пользователей и постов (дополнительные опции не поддерживаются)
-  generateTestData(usersCount, postsPerUser);
-};
+    // передаем параметр generateWithMedia
+    generateTestData(usersCount, postsPerUser, true, generateWithMedia);
+  };
 
   const handleCrashTest = () => {
     if (crashUsersCount < 1 || crashUsersCount > 20) {

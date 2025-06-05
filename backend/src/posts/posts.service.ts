@@ -8,8 +8,12 @@ import { User } from '../users/entities/user.entity';
 import { Comment } from '../comments/entities/comment.entity';
 import { PostResponseDto } from './dto/post-response.dto';
 import { UserBasicDto } from '../users/dto/user-basic.dto';
-import { ElasticsearchService } from '@nestjs/elasticsearch';
 import { slugify } from '../utils/slugify';
+import { SearchService } from '../search/search.service';
+import type {
+  PostIndexInput,
+  AuthorIndexInput,
+} from '../search/types/search-result.types';
 
 @Injectable()
 export class PostsService {
@@ -21,7 +25,7 @@ export class PostsService {
     @InjectRepository(Comment)
     private readonly commentRepository: Repository<Comment>,
     private readonly rabbitMQService: RabbitMQService,
-    private readonly elasticsearchService: ElasticsearchService,
+    private readonly searchService: SearchService,
   ) {}
 
   async sendPostToQueue(
@@ -123,31 +127,52 @@ export class PostsService {
     });
 
     await this.postRepository.save(post);
+
     const user = await this.userRepository.findOne({
       where: { id: post.userId },
-      select: ['id', 'userName', 'avatarUrl', 'avatarShape', 'slug', 'email'],
+      select: [
+        'id',
+        'userName',
+        'avatarUrl',
+        'avatarShape',
+        'slug',
+        'email',
+        'role',
+      ],
     });
 
-    // --- Индексация в Elasticsearch ---
-    await this.elasticsearchService.index({
-      index: 'posts',
-      id: post.id,
-      document: {
+    // типизированная индексация в Elasticsearch
+    if (user) {
+      const postIndexData: PostIndexInput = {
         id: post.id,
         content: post.content,
         slug: post.slug,
-        author: user
-          ? {
-              id: user.id,
-              userName: user.userName,
-              avatarUrl: user.avatarUrl,
-              avatarShape: user.avatarShape,
-              slug: user.slug,
-              email: user.email,
-            }
-          : null,
-      },
-    });
+        likes: post.likes,
+        repliesCount: post.repliesCount,
+        imageUrl: post.imageUrl,
+        fileUrl: post.fileUrl,
+        fileName: post.fileName,
+        fileType: post.fileType,
+        userId: post.userId,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+      };
+
+      const authorIndexData: AuthorIndexInput = {
+        id: user.id,
+        userName: user.userName,
+        avatarUrl: user.avatarUrl,
+        avatarShape: user.avatarShape,
+        slug: user.slug,
+        email: user.email,
+        role: user.role,
+      };
+
+      await this.searchService.indexPost(postIndexData, authorIndexData);
+      console.log(`✅ Post ${post.id} indexed in Elasticsearch`);
+    } else {
+      console.warn(`❌ User ${post.userId} not found for post indexing`);
+    }
 
     return post;
   }
@@ -541,7 +566,36 @@ export class PostsService {
       return null;
     }
   }
+  async findPostById(postId: string): Promise<Post | null> {
+    try {
+      return await this.postRepository.findOne({
+        where: { id: postId },
+      });
+    } catch (error) {
+      console.error(`Error finding post ${postId}:`, error);
+      return null;
+    }
+  }
 
+  async getUserById(userId: string): Promise<User | null> {
+    try {
+      return await this.userRepository.findOne({
+        where: { id: userId },
+        select: [
+          'id',
+          'userName',
+          'avatarUrl',
+          'avatarShape',
+          'slug',
+          'email',
+          'role',
+        ],
+      });
+    } catch (error) {
+      console.error(`Error finding user ${userId}:`, error);
+      return null;
+    }
+  }
   /**
    * Обновить счетчик комментариев в посте
    */

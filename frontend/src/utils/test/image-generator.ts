@@ -144,7 +144,7 @@ export function generateTestPostImage(index: number, size = 400): TestImage {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
   
-  // ДОБАВЛЯЕМ АНИМЕ-ПАТТЕРНЫ И ЭФФЕКТЫ
+  // АНИМЕ-ПАТТЕРНЫ И ЭФФЕКТЫ
   drawAnimeEffects(ctx, size, theme, index);
   
   // ОСНОВНОЙ ТЕКСТ В СТИЛЕ АНИМЕ

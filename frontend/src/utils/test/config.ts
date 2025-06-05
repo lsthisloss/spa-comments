@@ -31,7 +31,7 @@ export interface TestConfig {
 
 export const DEFAULT_CONFIG: TestConfig = {
   testToken: 'sk8-h4ck-t0k3n-1337',
-  socketURL: import.meta.env.VITE_WS_URL || 'ws://localhost:3001',
+  socketURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
   timeouts: {
     connection: 5000,
     operation: 30000,

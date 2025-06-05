@@ -61,28 +61,102 @@ class SendFormStore {
       initializeUser: action,
       setCaptchaVerified: action,
     });
+      this.setupUserListener();
+
   }
+private setupUserListener() {
+  // Слушаем изменения в userStore
+  if (this.userStore && this.userStore.user) {
+    // Реагируем на изменения пользователя в userStore
+    const updateFromUserStore = () => {
+      if (this.userStore.user) {
+        this.initializeUser(
+          this.userStore.user.id,
+          this.userStore.user.userName,
+          this.userStore.user.avatarUrl ?? undefined,
+          this.userStore.user.avatarShape
+        );
+      }
+    };
 
-  // Методы инициализации и установки
-  initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
-    // Проверяем, нужно ли обновлять данные
-    const needsUpdate = 
-      this.userId !== userId ||
-      this.userName !== userName ||
-      this.avatarUrl !== (avatarUrl || null) ||
-      this.avatarShape !== (avatarShape || 'circle');
-    
-    if (!needsUpdate) {
-      return; // Не обновляем, если данные не изменились
+    // Вызываем сразу для инициализации
+    updateFromUserStore();
+
+    // Автоматически обновляем при изменении пользователя
+    if (this.socketStore.users) {
+      this.socketStore.users.on('avatarUploaded', (response: {
+        success: boolean;
+        user?: { 
+          id: string;
+          userName: string;
+          avatarUrl?: string; 
+          avatarShape?: string;
+        };
+        avatarUrl?: string;
+        avatarShape?: string;
+      }) => {
+        console.log('[SendFormStore] Avatar updated event received:', response);
+        
+        if (response.success && response.user && this.userStore.user) {
+          // Обновляем данные формы из события
+          this.initializeUser(
+            response.user.id,
+            response.user.userName,
+            response.user.avatarUrl ?? response.avatarUrl,
+            (response.user.avatarShape ?? response.avatarShape) as 'circle' | 'square'
+          );
+        }
+      });
+
+      // Также слушаем обновления формы аватара
+      this.socketStore.users.on('avatarShapeUpdated', (response: {
+        success: boolean;
+        user?: { 
+          id: string;
+          userName: string;
+          avatarUrl?: string; 
+          avatarShape?: string;
+        };
+      }) => {
+        console.log('[SendFormStore] Avatar shape updated event received:', response);
+        
+        if (response.success && response.user && this.userStore.user) {
+          this.initializeUser(
+            response.user.id,
+            response.user.userName,
+            response.user.avatarUrl,
+            response.user.avatarShape as 'circle' | 'square'
+          );
+        }
+      });
     }
-    
-    
-    this.userId = userId;
-    this.userName = userName;
-    this.avatarUrl = avatarUrl || null;
-    this.avatarShape = avatarShape || 'circle';
-  });
+  }
+}
 
+
+initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
+  // Проверяем, нужно ли обновлять данные
+  const needsUpdate = 
+    this.userId !== userId ||
+    this.userName !== userName ||
+    this.avatarUrl !== (avatarUrl || null) ||
+    this.avatarShape !== (avatarShape || 'circle');
+  
+  if (!needsUpdate) {
+    console.log('[SendFormStore] No update needed, data is the same');
+    return; // Не обновляем, если данные не изменились
+  }
+  
+  console.log('[SendFormStore] Updating user data:', {
+    from: { userId: this.userId, userName: this.userName, avatarUrl: this.avatarUrl, avatarShape: this.avatarShape },
+    to: { userId, userName, avatarUrl, avatarShape }
+  });
+  
+  this.userId = userId;
+  this.userName = userName;
+  this.avatarUrl = avatarUrl || null;
+  this.avatarShape = avatarShape || 'circle';
+});
   // Сеттеры
   setCaptchaVerified = (value: boolean) => {
     this.captchaVerified = value;

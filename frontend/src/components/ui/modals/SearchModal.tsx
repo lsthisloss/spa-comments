@@ -1,26 +1,73 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, Input, Tabs, List, Avatar, Spin, Typography } from "antd";
+import { Modal, Input, Tabs, List, Avatar, Spin, Typography, Tag } from "antd";
 import { UserOutlined, MessageOutlined, InboxOutlined } from "@ant-design/icons";
 import { observer } from "mobx-react-lite";
 import { useNavigate } from "react-router-dom";
 import { useSocketStore } from "../../../hooks/useStore";
 
+const { Text, Paragraph } = Typography;
 
-const { Text } = Typography;
-
-export const SearchModal = observer(function SearchModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export const SearchModal = observer(function SearchModal({ 
+  visible, 
+  onClose 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+}) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  
   type SearchResults = {
-    users: { userName: string; email: string; avatarUrl?: string; slug?: string; avatarShape?: string }[];
-    posts: { title?: string; content?: string; slug?: string; author?: { userName: string; avatarUrl?: string; slug?: string; avatarShape?: string } }[];
-    comments: { text?: string; slug?: string; author?: { userName: string; avatarUrl?: string; slug?: string; avatarShape?: string } }[];
+    users: { 
+      userName: string; 
+      email: string; 
+      avatarUrl?: string; 
+      slug?: string; 
+      avatarShape?: string;
+      role?: string;
+    }[];
+    posts: { 
+      id: string;
+      content: string; 
+      slug?: string; 
+      likes?: number;
+      repliesCount?: number;
+      fileName?: string;
+      createdAt?: string;
+      author?: { 
+        userName: string; 
+        avatarUrl?: string; 
+        slug?: string; 
+        avatarShape?: string;
+      };
+    }[];
+    comments: { 
+      id: string;
+      content: string; 
+      slug?: string; 
+      likes?: number;
+      postId?: string;
+      createdAt?: string;
+      author?: { 
+        userName: string; 
+        avatarUrl?: string; 
+        slug?: string; 
+        avatarShape?: string;
+      };
+      post?: {
+        id: string;
+        slug: string;
+        content: string;
+      };
+    }[];
   };
+  
   const [results, setResults] = useState<SearchResults>({ users: [], posts: [], comments: [] });
   const [activeTab, setActiveTab] = useState("users");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const socketStore = useSocketStore();
+
   useEffect(() => {
     if (!visible) {
       setQuery("");
@@ -53,12 +100,25 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
       <Avatar icon={<UserOutlined />} />
     );
 
+  // Форматирование даты
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
+  // Сокращение текста
+  const truncateText = (text: string, maxLength: number) => {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength) + "...";
+  };
+
   return (
     <Modal
       open={visible}
       onCancel={onClose}
       footer={null}
-      width={600}
+      width={700}
       style={{ top: 40 }}
       destroyOnHidden
       className="search-modal"
@@ -80,7 +140,9 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
           items={[
             {
               key: "users",
-              label: <><UserOutlined /> Users</>,
+              label: <>
+                <UserOutlined /> Users ({results.users.length})
+              </>,
               children: (
                 <List
                   loading={loading}
@@ -92,7 +154,22 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
                     >
                       <List.Item.Meta
                         avatar={renderAvatar(user.avatarUrl)}
-                        title={user.userName}
+                        title={
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span>{user.userName}</span>
+                            {user.role && (
+                              <Tag 
+                                color={
+                                  user.role === 'admin' ? 'red' : 
+                                  user.role === 'superadmin' ? 'purple' : 
+                                  user.role === 'test' ? 'orange' : 'default'
+                                }
+                              >
+                                {user.role.toUpperCase()}
+                              </Tag>
+                            )}
+                          </div>
+                        }
                         description={user.email}
                       />
                     </List.Item>
@@ -103,7 +180,9 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
             },
             {
               key: "posts",
-              label: <><InboxOutlined /> Posts</>,
+              label: <>
+                <InboxOutlined /> Posts ({results.posts.length})
+              </>,
               children: (
                 <List
                   loading={loading}
@@ -115,21 +194,56 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
                     >
                       <List.Item.Meta
                         avatar={renderAvatar(post.author?.avatarUrl)}
-                        title={post.title || post.content?.slice(0, 40)}
-                        description={
-                          post.author?.userName && post.author?.slug ? (
-                            <span
-                              style={{ color: "#1677ff", cursor: "pointer" }}
-                              onClick={e => {
-                                e.stopPropagation();
-                                navigate(`/profile/${post.author?.slug}`);
-                              }}
+                        title={
+                          <div>
+                            {/* Автор сверху */}
+                            <div style={{ marginBottom: 4 }}>
+                              {post.author?.userName && post.author?.slug ? (
+                                <Text
+                                  style={{ color: "#1677ff", cursor: "pointer", fontWeight: 500 }}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    navigate(`/profile/${post.author?.slug}`);
+                                  }}
+                                >
+                                  {post.author.userName}
+                                </Text>
+                              ) : (
+                                <Text type="secondary">{post.author?.userName || "Unknown User"}</Text>
+                              )}
+                              {formatDate(post.createdAt) && (
+                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                  • {formatDate(post.createdAt)}
+                                </Text>
+                              )}
+                            </div>
+                            {/* Контент поста */}
+                            <Paragraph 
+                              style={{ margin: 0, color: "#333" }}
+                              ellipsis={{ rows: 2, expandable: false }}
                             >
-                              {post.author.userName}
-                            </span>
-                          ) : (
-                            <Text type="secondary">{post.author?.userName}</Text>
-                          )
+                              {post.content}
+                            </Paragraph>
+                          </div>
+                        }
+                        description={
+                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 4 }}>
+                            {post.fileName && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                📎 {post.fileName}
+                              </Text>
+                            )}
+                            {typeof post.likes === 'number' && post.likes > 0 && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                ❤️ {post.likes}
+                              </Text>
+                            )}
+                            {typeof post.repliesCount === 'number' && post.repliesCount > 0 && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                💬 {post.repliesCount}
+                              </Text>
+                            )}
+                          </div>
                         }
                       />
                     </List.Item>
@@ -140,7 +254,9 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
             },
             {
               key: "comments",
-              label: <><MessageOutlined /> Comments</>,
+              label: <>
+                <MessageOutlined /> Comments ({results.comments.length})
+              </>,
               children: (
                 <List
                   loading={loading}
@@ -148,25 +264,77 @@ export const SearchModal = observer(function SearchModal({ visible, onClose }: {
                   renderItem={comment => (
                     <List.Item
                       style={{ cursor: comment.slug ? "pointer" : "default" }}
-                      onClick={() => comment.slug && navigate(`/comment/${comment.slug}`)}
+                      onClick={() => {
+                        // Переходим к посту, где находится комментарий
+                        if (comment.post?.slug) {
+                          navigate(`/post/${comment.post.slug}#comment-${comment.id}`);
+                        } else if (comment.slug) {
+                          navigate(`/comment/${comment.slug}`);
+                        }
+                      }}
                     >
                       <List.Item.Meta
                         avatar={renderAvatar(comment.author?.avatarUrl)}
-                        title={comment.text?.slice(0, 40)}
-                        description={
-                          comment.author?.userName && comment.author?.slug ? (
-                            <span
-                              style={{ color: "#1677ff", cursor: "pointer" }}
-                              onClick={e => {
-                                e.stopPropagation();
-                                navigate(`/profile/${comment.author?.slug}`);
-                              }}
+                        title={
+                          <div>
+                            {/* Автор комментария сверху */}
+                            <div style={{ marginBottom: 4 }}>
+                              {comment.author?.userName && comment.author?.slug ? (
+                                <Text
+                                  style={{ color: "#1677ff", cursor: "pointer", fontWeight: 500 }}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    navigate(`/profile/${comment.author?.slug}`);
+                                  }}
+                                >
+                                  {comment.author.userName}
+                                </Text>
+                              ) : (
+                                <Text type="secondary">{comment.author?.userName || "Unknown User"}</Text>
+                              )}
+                              {formatDate(comment.createdAt) && (
+                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                  • {formatDate(comment.createdAt)}
+                                </Text>
+                              )}
+                            </div>
+                            {/* Содержимое комментария */}
+                            <Paragraph 
+                              style={{ margin: 0, color: "#333" }}
+                              ellipsis={{ rows: 2, expandable: false }}
                             >
-                              {comment.author.userName}
-                            </span>
-                          ) : (
-                            <Text type="secondary">{comment.author?.userName}</Text>
-                          )
+                              {comment.content}
+                            </Paragraph>
+                          </div>
+                        }
+                        description={
+                          <div style={{ marginTop: 4 }}>
+                            {/* Контекст поста */}
+                            {comment.post?.content && (
+                              <div style={{ 
+                                background: "#f5f5f5", 
+                                padding: "8px 12px", 
+                                borderRadius: 6,
+                                marginTop: 8,
+                                borderLeft: "3px solid #1677ff"
+                              }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  In post: 
+                                </Text>
+                                <Text style={{ fontSize: 12, marginLeft: 4 }}>
+                                  {truncateText(comment.post.content, 80)}
+                                </Text>
+                              </div>
+                            )}
+                            {/* Дополнительная информация */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 4 }}>
+                              {typeof comment.likes === 'number' && comment.likes > 0 && (
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  ❤️ {comment.likes}
+                                </Text>
+                              )}
+                            </div>
+                          </div>
                         }
                       />
                     </List.Item>

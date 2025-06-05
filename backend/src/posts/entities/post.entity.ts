@@ -21,6 +21,9 @@ export class Post {
   @CreateDateColumn()
   createdAt: Date;
 
+  @CreateDateColumn()
+  updatedAt: Date;
+
   @ManyToOne(() => User, (user) => user.posts, { eager: true })
   @JoinColumn({ name: 'userId' })
   user: User;

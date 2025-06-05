@@ -169,7 +169,7 @@ useEffect(() => {
     if (
       // СТАНДАРТНЫЙ СЛУЧАЙ - СКРОЛЛ ДО КОНЦА
       (isAtEnd && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current) ||
-      // НОВЫЙ СЛУЧАЙ - ВСЕ ЭЛЕМЕНТЫ ВИДНЫ, НО ЕСТЬ ЕЩЕ НА СЕРВЕРЕ
+      // ВСЕ ЭЛЕМЕНТЫ ВИДНЫ, НО ЕСТЬ ЕЩЕ НА СЕРВЕРЕ
       (allItemsVisible && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current)
     ) {
       isLoadingRef.current = true;

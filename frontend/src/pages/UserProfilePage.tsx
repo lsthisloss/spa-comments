@@ -184,20 +184,31 @@ const UserProfilePage = observer(() => {
   }, [user?.userName]);
 
   // Handlers
-  const handleAvatarSave = useCallback(async (avatarData: { 
-    type: 'upload' | 'initial', 
-    value: string, 
-    file?: File,
-    shape: 'circle' | 'square'
-  }) => {
-    try {
-      await userStore.updateAvatar(avatarData);
+  // ...existing code...
+
+// Handlers
+const handleAvatarSave = useCallback(async (avatarData: { 
+  type: 'upload' | 'initial', 
+  value: string, 
+  file?: File,
+  shape: 'circle' | 'square'
+}) => {
+  try {
+    console.log('[UserProfilePage] Starting avatar save:', avatarData);
+    const result = await userStore.updateAvatar(avatarData);
+    console.log('[UserProfilePage] Avatar save result:', result);
+    
+    if (result) {
       message.success('Avatar updated successfully');
-    } catch (error) {
-      message.error('Failed to update avatar');
-      console.error(error);
+      // Принудительное обновление компонента если нужно
+      setIsAvatarModalVisible(false);
     }
-  }, [userStore]);
+  } catch (error) {
+    console.error('[UserProfilePage] Avatar save error:', error);
+    message.error('Failed to update avatar');
+  }
+}, [userStore]);
+
 
   const handleGoBack = useCallback(() => {
     navigationHelper.goBack();
@@ -314,7 +325,7 @@ const UserProfilePage = observer(() => {
       
       <div className="user-profile__card">
         <div className="user-profile__profile-container">
-          {user?.avatarUrl ? (
+          {user?.avatarUrl ? ( // Render avatar with URL
             <Avatar
               size={96}
               src={user.avatarUrl}
@@ -324,7 +335,7 @@ const UserProfilePage = observer(() => {
               onClick={() => isOwnProfile && setIsAvatarModalVisible(true)}
               aria-label={`Avatar for ${user?.userName || "user"}`}
             />
-          ) : (
+          ) : ( // Render avatar with letter and color
             <Avatar
               size={96}
               icon={user ? null : <UserOutlined />}

@@ -86,7 +86,7 @@ const AppContent = observer(() => {
     );
   }
 
-  // НОВЫЙ ПОДХОД: ВСЕГДА РЕНДЕРИМ РОУТЫ + OVERLAY
+  // ВСЕГДА РЕНДЕРИМ РОУТЫ + OVERLAY
   return (
     <ErrorBoundary>
       {/* OVERLAY ПОВЕРХ РОУТОВ */}

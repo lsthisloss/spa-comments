@@ -87,7 +87,7 @@ const navigateToComment = useCallback((commentSlug: string, postSlug?: string) =
   // Сохраняем текущий путь перед переходом к комментарию
   const currentPath = location.pathname + location.search;
   
-  // ВАЖНО: Всегда сохраняем текущую страницу в стек с правильным контекстом
+  // Всегда сохраняем текущую страницу в стек с правильным контекстом
   if (currentPath.startsWith('/post/')) {
     const postId = currentPath.split('/').pop();
     

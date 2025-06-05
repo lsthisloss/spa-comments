@@ -45,9 +45,11 @@ export class QueueMonitorService {
   }
 
   isRabbitMQConnected(): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return (
       this.rabbitMQService.isConnected() &&
       this.rabbitMQService.connection &&
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       !this.rabbitMQService.connection.closed
     );
   }

@@ -21,6 +21,9 @@ export class Comment {
   @CreateDateColumn()
   createdAt: Date;
 
+  @CreateDateColumn()
+  updatedAt: Date;
+
   @ManyToOne(() => User, (user) => user.comments, { eager: true })
   @JoinColumn({ name: 'userId' })
   user: User;
