@@ -6,6 +6,7 @@ import {
   OnGatewayDisconnect,
   WebSocketServer,
   ConnectedSocket,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -13,12 +14,26 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { Socket, Server } from 'socket.io';
 import { AuthenticatedSocketData } from '../auth/jwt-payload.interface';
-import { CommonWsService } from '../common/common-ws.service';
 import { User } from './entities/user.entity';
+import { WsThrottlerGuard } from '../common/guards/ws-throttler.guard';
+import { CommonWsService } from '../common/common-ws.service';
 import { SessionService } from '../auth/session.service';
+import { RequestPatternGuard } from '../common/guards/request-pattern.guard';
 
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/users' })
-export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
+@UseGuards(WsThrottlerGuard, RequestPatternGuard)
+@WebSocketGateway({
+  namespace: '/users',
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+})
+export class UsersGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   @WebSocketServer()
   server: Server;
 
@@ -26,27 +41,37 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly usersService: UsersService,
     private readonly commonWsService: CommonWsService,
     private readonly sessionService: SessionService,
-  ) {}
+  ) {
+    console.log('[UsersGateway] Constructor called');
+  }
+
+  afterInit() {
+    console.log('[UsersGateway] Users namespace initialized');
+    console.log('[UsersGateway] Server object available:', !!this.server);
+  }
 
   handleConnection(client: Socket) {
-    console.log(`User client connected: ${client.id}`);
-    // Проверяем аутентификацию
-    const userData = client.data as AuthenticatedSocketData | undefined;
-    if (userData?.user?.id) {
-      console.log(
-        `-> Authenticated user connected: ${userData.user.id} (${userData.user.userName})`,
-      );
-    } else {
-      console.log(`-> Anonymous user connected: ${client.id}`);
-    }
+    console.log('='.repeat(50));
+    console.log(`[UsersGateway] 🔌 NEW CONNECTION DETECTED`);
+    console.log(`[UsersGateway] Client ID: ${client.id}`);
+    console.log(`[UsersGateway] Namespace: ${client.nsp.name}`);
+    console.log(`[UsersGateway] Transport: ${client.conn.transport.name}`);
+    console.log(`[UsersGateway] Client address: ${client.handshake.address}`);
+    console.log(`[UsersGateway] Query params:`, client.handshake.query);
+    console.log(`[UsersGateway] Headers:`, client.handshake.headers);
+    console.log('='.repeat(50));
   }
 
   handleDisconnect(client: Socket) {
-    console.log('User WS disconnected:', client.id);
-    // Удаляем информацию о сессии при отключении
-    this.sessionService.removeSession(client.id);
+    console.log(`[UsersGateway] ❌ Client disconnected: ${client.id}`);
   }
 
+  // Добавим простой тестовый метод
+  @SubscribeMessage('ping')
+  handlePing(@ConnectedSocket() client: Socket): void {
+    console.log(`[UsersGateway] Ping received from ${client.id}`);
+    client.emit('pong', { message: 'Hello from UsersGateway!' });
+  }
   @SubscribeMessage('login')
   async handleLogin(
     @MessageBody() data: { email: string; password: string },
@@ -385,7 +410,6 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @UseGuards(WsJwtGuard)
-  @UseGuards(WsJwtGuard)
   @SubscribeMessage('uploadAvatar')
   async handleUploadAvatar(
     @ConnectedSocket() client: Socket,
@@ -415,8 +439,8 @@ export class UsersGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const isTestDataGeneration =
         client.handshake?.query?.testDataGeneration === 'true';
 
-      // Обрабатываем аватар
-      const result = this.commonWsService.processAvatarUpload(
+      // Обрабатываем аватар - ДОБАВЛЯЕМ AWAIT!
+      const result = await this.commonWsService.processAvatarUpload(
         { file: data.file },
         userId,
         data.avatarShape || 'circle',

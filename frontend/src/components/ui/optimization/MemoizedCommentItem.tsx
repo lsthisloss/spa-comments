@@ -8,7 +8,12 @@ interface MemoizedCommentItemProps {
   onClick?: (id: string) => void;
   onHeightChange?: () => void;
 }
-
+/*
+  Компонент для отображения отдельного комментария в ленте.
+  Используется в ленте комментариев и на страницах постов.
+  При клике на комментарий вызывает onClick с его ID.
+  Позволяет обрабатывать изменение высоты комментария.
+*/
 export const MemoizedCommentItem = memo(({ comment, onClick, onHeightChange }: MemoizedCommentItemProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { navigateToEntity } = useNavigationHelper();
@@ -19,9 +24,16 @@ export const MemoizedCommentItem = memo(({ comment, onClick, onHeightChange }: M
     }
   }, [onHeightChange]);
   
-  const handleNavigate = useCallback((id: string) => {
-    navigateToEntity('comment', id, onClick);
-  }, [onClick, navigateToEntity]);
+const handleNavigate = useCallback((id: string) => {
+    // Сначала проверяем, есть ли переданный onClick
+    if (onClick) {
+      onClick(id);
+    } else {
+      // Fallback: используем navigateToEntity
+      navigateToEntity('comment', comment.slug || id);
+    }
+  }, [onClick, navigateToEntity, comment.slug]);
+
 
   return (
     <div 
@@ -50,3 +62,5 @@ export const MemoizedCommentItem = memo(({ comment, onClick, onHeightChange }: M
     prevProps.comment.fileUrl === nextProps.comment.fileUrl
   );
 });
+
+export default MemoizedCommentItem;

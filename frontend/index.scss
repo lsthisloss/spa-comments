@@ -38,29 +38,6 @@ html, body {
   animation: fade-in 0.15s ease-out forwards;
 }
 
-@keyframes fade-in {
-  0% { opacity: 0.6; }
-  100% { opacity: 1; }
-}
-
-/* Enhanced fade-in with theme support */
-.fade-in {
-  animation: universal-fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@keyframes universal-fade-in {
-  0% { 
-    opacity: 0; 
-    transform: translateY(10px) scale(0.98);
-  }
-  100% { 
-    opacity: 1; 
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* Theme-aware skeleton with CSS variables */
-
 
 
 *:focus-visible {
@@ -88,42 +65,44 @@ html, body {
     scroll-behavior: auto;
   }
 }
-
-/* Performance optimizations */
-.virtualized-item,
-.post-item,
-.comment-item {
-  contain: layout;
-  will-change: transform;
-  transform: translateZ(0);
+.post-container.fade-in,
+.comment-container.fade-in {
+  animation: universal-fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
-
-/* Adaptive animations for powerful devices */
-@media (min-width: 1024px) and (min-height: 768px) {
-  .fade-in,
-  .item-animating {
-    animation-duration: 0.25s;
+/* Core animations for consistent motion */
+@keyframes universal-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-  
-
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-
-/* Loading states with theme support */
-.loading-pulse {
-  animation: universal-pulse 1.5s ease-in-out infinite;
+@keyframes universal-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
-@keyframes universal-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+/* Smoother restore indicator animation */
+@keyframes smoothFadeInOut {
+  0% { opacity: 0; transform: translateY(10px); }
+  15% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(10px); }
 }
 
-/* Improved scroll container */
-.scroll-container {
-  contain: strict;
-  overscroll-behavior: contain;
-  scroll-snap-type: y proximity;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+/* Subtle highlight that won't conflict with scrolling */
+@keyframes subtle-highlight {
+  0% { background-color: transparent; }
+  30% { background-color: rgba(24, 144, 255, 0.08); }
+  100% { background-color: transparent; }
 }

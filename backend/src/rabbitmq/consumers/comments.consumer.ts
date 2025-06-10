@@ -113,7 +113,7 @@ export class CommentsConsumer implements OnModuleInit {
           },
         );
 
-        Object.assign(createCommentDto, fileResult);
+        void Object.assign(createCommentDto, fileResult);
         delete createCommentDto.image;
         delete createCommentDto.file;
       } else if (createCommentDto.file) {
@@ -123,7 +123,7 @@ export class CommentsConsumer implements OnModuleInit {
           { file: createCommentDto.file },
         );
 
-        Object.assign(createCommentDto, fileResult);
+        void Object.assign(createCommentDto, fileResult);
         delete createCommentDto.file;
       } else if (createCommentDto.image) {
         // Только изображение
@@ -132,7 +132,7 @@ export class CommentsConsumer implements OnModuleInit {
           { file: createCommentDto.image },
         );
 
-        Object.assign(createCommentDto, fileResult);
+        void Object.assign(createCommentDto, fileResult);
         delete createCommentDto.image;
       }
 
@@ -308,7 +308,6 @@ export class CommentsConsumer implements OnModuleInit {
     return this.userCommentCounts.size;
   }
 
-  // Дополняем существующий getStats() метод
   getStats() {
     return {
       ...this.stats,

@@ -4,128 +4,182 @@ import { message } from 'antd';
  * Утилиты для работы с файлами и изображениями
  */
 export class FileUtils {
-  /**
-   * Проверяет, является ли файл изображением допустимого формата и размера
-   */
+  // Константы для изображений
+  static readonly MAX_IMAGE_WIDTH = 320;
+  static readonly MAX_IMAGE_HEIGHT = 240;
+  static readonly MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB после сжатия
+  static readonly JPEG_QUALITY = 0.8;
+
+  // Константы для текстовых файлов
+  static readonly MAX_TEXT_FILE_SIZE = 100 * 1024; // 100KB
+
   static validateImageFile(file: File): boolean {
-    const fileName = file.name.toLowerCase();
-    const fileExtension = fileName.split('.').pop();
-    
-    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-    if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
-      message.error(`Invalid image format. Only JPG, PNG, and GIF files are allowed.`);
+    if (!file.type.startsWith('image/')) {
+      message.error('Please select an image file.');
       return false;
     }
 
-    const maxImageSize = 10 * 1024 * 1024;
-    if (file.size > maxImageSize) {
-      message.error('Image file size must be less than 10MB.');
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      message.error('Only JPG, PNG, and GIF images are allowed.');
+      return false;
+    }
+
+    // Проверяем исходный размер файла (до ресайза)
+    if (file.size > 10 * 1024 * 1024) { // 10MB
+      message.error('Image file is too large. Maximum size is 10MB.');
       return false;
     }
 
     return true;
   }
 
-  /**
-   * Проверяет, является ли файл текстовым документом допустимого формата и размера
-   */
   static validateTextFile(file: File): boolean {
     if (file.type !== 'text/plain') {
-      message.error('Only .txt files are allowed.');
+      message.error('Only TXT files are allowed.');
       return false;
     }
 
-    const maxTextFileSize = 100 * 1024; // 100KB
-    if (file.size > maxTextFileSize) {
-      message.error('Text file size must not exceed 100KB.');
+    if (file.size > this.MAX_TEXT_FILE_SIZE) {
+      message.error(`Text file is too large. Maximum size is ${this.MAX_TEXT_FILE_SIZE / 1024}KB.`);
       return false;
     }
 
     return true;
   }
 
-  /**
-   * Определяет тип файла по расширению и MIME-типу
-   */
-  static getFileType(file: File): 'image' | 'text' | 'unsupported' {
-    const fileName = file.name.toLowerCase();
-    const fileExtension = fileName.split('.').pop();
-    
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-    const isImageByExtension = fileExtension && imageExtensions.includes(fileExtension);
-    const isImageByMimeType = file.type.startsWith('image/');
-    
-    if (isImageByExtension || isImageByMimeType) {
-      return 'image';
-    } else if (fileExtension === 'txt' || file.type === 'text/plain') {
-      return 'text';
-    } else {
-      return 'unsupported';
-    }
-  }
-
-  /**
-   * Изменяет размер изображения для подгонки под ограничения
-   */
-  static resizeImageToFit(file: File, callback: (resizedDataUrl: string) => void): void {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    
-    img.onload = () => {
-      const maxWidth = 320;
-      const maxHeight = 240;
-      
-      let { width, height } = img;
-      
-      if (width > maxWidth || height > maxHeight) {
-        const widthRatio = maxWidth / width;
-        const heightRatio = maxHeight / height;
-        const ratio = Math.min(widthRatio, heightRatio);
-        
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height);
-        const resizedDataUrl = canvas.toDataURL(file.type, 0.9);
-        callback(resizedDataUrl);
-      }
-    };
-    
-    img.onerror = () => {
-      message.error('Failed to process image file.');
-    };
-    
+  static resizeImageToFit(file: File, callback: (dataUrl: string) => void): void {
     const reader = new FileReader();
+    
     reader.onload = (e) => {
-      if (e.target?.result) {
-        img.src = e.target.result as string;
-      }
+      const img = new Image();
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          message.error('Canvas not supported');
+          return;
+        }
+
+        // Вычисляем новые размеры с сохранением пропорций
+        const { width: newWidth, height: newHeight } = this.calculateResizeDimensions(
+          img.width, 
+          img.height, 
+          this.MAX_IMAGE_WIDTH, 
+          this.MAX_IMAGE_HEIGHT
+        );
+
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+
+        // Рисуем изображение с новыми размерами
+        ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+        // Определяем качество и формат в зависимости от исходного типа
+        let outputFormat = file.type;
+        let quality: number | undefined = this.JPEG_QUALITY;
+
+        // Для GIF конвертируем в PNG для лучшего качества при ресайзе
+        if (file.type === 'image/gif') {
+          outputFormat = 'image/png';
+          quality = undefined; // PNG не использует качество
+        }
+
+        // Конвертируем в нужный формат
+        const dataUrl = quality !== undefined 
+          ? canvas.toDataURL(outputFormat, quality)
+          : canvas.toDataURL(outputFormat);
+
+        // Проверяем финальный размер
+        const base64Data = dataUrl.split(',')[1];
+        const sizeInBytes = (base64Data.length * 3) / 4; // Приблизительный размер
+
+        if (sizeInBytes > this.MAX_IMAGE_SIZE_BYTES) {
+          // Если все еще слишком большой, уменьшаем качество
+          const reducedQuality = Math.max(0.3, (quality || this.JPEG_QUALITY) * 0.7);
+          const reducedDataUrl = canvas.toDataURL('image/jpeg', reducedQuality);
+          callback(reducedDataUrl);
+        } else {
+          callback(dataUrl);
+        }
+
+        console.log(`[FileUtils] Image resized: ${img.width}x${img.height} → ${newWidth}x${newHeight}, quality: ${quality}`);
+      };
+      
+      img.src = e.target?.result as string;
     };
+    
     reader.readAsDataURL(file);
   }
 
-  /**
-   * Преобразует файл в формат base64
-   */
-  static readFileAsBase64(file: File): Promise<string> {
+  private static calculateResizeDimensions(
+    originalWidth: number, 
+    originalHeight: number, 
+    maxWidth: number, 
+    maxHeight: number
+  ): { width: number; height: number } {
+    // Если изображение уже меньше максимальных размеров, не изменяем
+    if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
+      return { width: originalWidth, height: originalHeight };
+    }
+
+    // Вычисляем соотношение сторон
+    const aspectRatio = originalWidth / originalHeight;
+    
+    let newWidth = maxWidth;
+    let newHeight = maxWidth / aspectRatio;
+    
+    // Если высота превышает максимальную, корректируем по высоте
+    if (newHeight > maxHeight) {
+      newHeight = maxHeight;
+      newWidth = maxHeight * aspectRatio;
+    }
+    
+    return { 
+      width: Math.round(newWidth), 
+      height: Math.round(newHeight) 
+    };
+  }
+
+  static getFileType(file: File): 'image' | 'text' | 'unknown' {
+    if (file.type.startsWith('image/')) {
+      return 'image';
+    }
+    
+    if (file.type === 'text/plain') {
+      return 'text';
+    }
+    
+    return 'unknown';
+  }
+
+  static async readFileAsBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
+      
       reader.onload = () => {
-        if (reader.result) {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        } else {
-          reject(new Error('Failed to read file'));
-        }
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
       };
-      reader.onerror = () => reject(reader.error);
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+      
       reader.readAsDataURL(file);
     });
+  }
+
+  static formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }

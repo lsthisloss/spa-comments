@@ -96,7 +96,7 @@ export class CommentsGateway
           },
         );
 
-        Object.assign(createCommentDto, fileResult);
+        void Object.assign(createCommentDto, fileResult);
         delete createCommentDto.file;
         delete createCommentDto.imageUrl;
       } else if (createCommentDto.file) {
@@ -105,7 +105,7 @@ export class CommentsGateway
           { file: createCommentDto.file },
         );
 
-        Object.assign(createCommentDto, fileResult);
+        void Object.assign(createCommentDto, fileResult);
         delete createCommentDto.file;
       }
 
@@ -132,14 +132,14 @@ export class CommentsGateway
     @MessageBody()
     data: {
       parentId?: string; // ID поста или комментария
-      postId?: string; // Для обратной совместимости
+      postId?: string;
       page?: number;
       limit: number;
       sort?: 'date' | 'likes';
     },
   ) {
     try {
-      // Используем parentId или postId (для обратной совместимости)
+      // Используем parentId или postId
       const parentId = data.parentId || data.postId;
       if (!parentId) {
         return { comments: [], total: 0, error: 'No parentId provided' };

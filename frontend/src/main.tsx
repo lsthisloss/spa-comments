@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import AppLoader from './components/AppLoader';
+import AppLoader from './components/ui/AppLoader';
 import './styles/main.scss';
 import '@ant-design/v5-patch-for-react-19';
 

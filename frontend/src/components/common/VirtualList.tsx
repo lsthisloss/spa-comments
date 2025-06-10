@@ -1,335 +1,376 @@
-import React, { ReactNode, useEffect, useRef } from 'react';
-import type { VirtualItem as TanStackVirtualItem } from '@tanstack/react-virtual';
-import { DebugInfo } from "../ui/modals/DebugInfo";
+import React, { useRef, useEffect, useCallback } from 'react';
+import { Spin } from 'antd';
+import { observer } from 'mobx-react-lite';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
+import { DebugInfo } from '../ui/modals/DebugInfo';
 import { logger } from '../../utils/Logger';
 import { LoadingIndicator } from '../ui/particles/LoadingIndicator';
-import { Empty } from 'antd';
 
-export interface VirtualListItem<T> extends TanStackVirtualItem {
-  item: T;
-  position?: number;
-  height?: number;
-}
+/*
+  Типы пропсов для VirtualList
+  - items: массив элементов для отображения
+  - renderItem: функция для рендеринга каждого элемента
+  - getItemKey: функция для получения уникального ключа элемента
+  - estimateItemHeight: функция для оценки высоты элемента
+  - onEndReached: функция, вызываемая при достижении конца списка
+  - loading: флаг загрузки
+  - emptyComponent: компонент для отображения при пустом списке
+  - emptyMessage: сообщение для отображения при пустом списке
+  - className: CSS класс для контейнера
+  - allLoaded: флаг, указывающий, что все элементы загружены
+  - debugOptions: опции для отладки
+  - manualMode: флаг, указывающий на ручной режим загрузки
+  - feedContextId: идентификатор контекста фида для отладки
+*/
 
 interface VirtualListProps<T> {
   items: T[];
-  preserveData?: boolean;
-  renderItem: (virtualItem: VirtualListItem<T>, measureRef: (el: HTMLElement | null) => void) => ReactNode;
-  getItemKey: (item: T, index: number) => string;
-  totalHeight: number;
-  virtualItems: VirtualListItem<T>[];
-  measureElement: (el: HTMLElement | null, index: number) => void;
+  renderItem: (item: T, index: number) => React.ReactNode;
+  getItemKey: (item: T) => string;
+  estimateItemHeight: (item: T) => number;
   onEndReached?: () => void;
   loading?: boolean;
-  loadingIndicator?: ReactNode;
-  emptyComponent?: ReactNode;
+  emptyComponent?: React.ReactNode;
   emptyMessage?: string;
-  loadingMessage?: string;
   className?: string;
-  style?: React.CSSProperties;
   allLoaded?: boolean;
   debugOptions?: Record<string, unknown>;
   manualMode?: boolean;
-  onScrollToTop?: () => void;
-  onScrollDown?: () => void;
-  enableManualModeTracking?: boolean;
   feedContextId?: string;
 }
 
-function VirtualList<T>(props: VirtualListProps<T>) {
+/*
+  Компонент виртуального списка с поддержкой MobX и React Virtual
+  - Использует tanstack/react-virtual для виртуализации
+  - Поддерживает автоподгрузку, отложенную загрузку и ручной режим
+  - Логирует изменения состояния и события
+  - Поддерживает отладочную информацию
+*/
+
+const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualListProps<T>) => {
   const {
     items,
     renderItem,
     getItemKey,
-    totalHeight,
-    virtualItems,
-    measureElement,
+    estimateItemHeight,
     onEndReached,
     loading = false,
-    loadingIndicator,
-    emptyComponent,
     emptyMessage = 'No items found',
-    loadingMessage = 'Loading items...',
     className = '',
-    style,
     allLoaded = false,
     debugOptions = {},
     manualMode = false,
-    onScrollDown,
-    enableManualModeTracking = false,
-    feedContextId,
-    preserveData = false,
+    feedContextId = 'default',
   } = props;
 
-  // ФЛАГИ СОСТОЯНИЙ
-  const isDataLoadedRef = useRef(false);           // Данные загружены
-  const isRenderedRef = useRef(false);             // Элементы отрендерены  
-  const isUserScrolledRef = useRef(false);         // Пользователь скроллил
-  const canLoadMoreRef = useRef(false);            // Можно загружать еще
-  const isLoadingRef = useRef(false);              // Идет загрузка
-  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Update the data preservation logic in the first useEffect
-  
-useEffect(() => {
-  if (preserveData && isDataLoadedRef.current && virtualItems.length > 0 && !isRenderedRef.current) {
-    logger.log(`[VirtualList] Virtual items ready after preservation, enabling scroll`);
-    isRenderedRef.current = true;
-    canLoadMoreRef.current = true;
-  }
-}, [preserveData, virtualItems.length]);
+  // Рефы для отслеживания состояния
+  const renderCountRef = useRef(0);
+  const prevItemsLengthRef = useRef(items.length);
+  const prevLoadingRef = useRef(loading);
+  const lastLoadTriggeredRef = useRef(0);
+  const isLoadingMoreRef = useRef(false);
 
-useEffect(() => {
-  const wasEmpty = !isDataLoadedRef.current;
-  const hasData = items.length > 0;
+  /*
+    Счетчик для принудительного обновления компонента
+    - Используем useState для создания счетчика
+    - Используем useCallback для мемоизации функции forceUpdate
+  */
+  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  const forceUpdate = useCallback(() => {
+    setForceUpdateCounter(prev => prev + 1);
+    //logger.log('[VirtualList] Force update triggered');
+  }, []);
 
-  // Check if we should preserve data
-  if (preserveData && isDataLoadedRef.current && hasData) {
-    logger.log(`[VirtualList] Preserving data, skipping reset (${items.length} items)`);
-    
-    // IMPORTANT: Restore proper state when preserving data
-    if (!isRenderedRef.current && virtualItems.length > 0) {
-      isRenderedRef.current = true;
-      canLoadMoreRef.current = true;
-      logger.log(`[VirtualList] PRESERVED: Restored rendered state and CAN_LOAD_MORE`);
+  /*
+    Стабильный estimateSize для виртуализатора
+    - Используем useCallback для мемоизации функции
+    - Проверяем индекс и наличие элемента
+    - Возвращаем высоту элемента или 150px по умолчанию
+  */
+  const stableEstimateSize = useCallback((index: number) => {
+    if (index < 0 || index >= items.length) {
+      return 150;
     }
-    
-    return;
+
+    const item = items[index];
+    if (!item) {
+      return 150;
+    }
+
+    try {
+      const height = estimateItemHeight(item);
+      return height || 150;
+    } catch {
+      return 150;
+    }
+  }, [items, estimateItemHeight]);
+
+  /*
+    Объект виртуализатора
+    - Используем useWindowVirtualizer из tanstack/react-virtual
+    - Передаем количество элементов, оценку размера и параметры оверскана
+    - Устанавливаем scrollMargin в 0, чтобы избежать проблем с отступами
+  */
+  const virtualizer = useWindowVirtualizer({
+    count: items.length,
+    estimateSize: stableEstimateSize,
+    overscan: 5,
+    scrollMargin: 0,
+  });
+
+  // Наконец получаем виртуализированные элементы 
+  const virtualItems = virtualizer.getVirtualItems();
+
+  /*
+    Ссылки на предыдущие значения для логирования
+    - prevItemsLengthRef: длина массива items
+    - prevLoadingRef: состояние загрузки
+    - loadingChanged: флаг, указывающий на изменение состояния загрузки
+    - itemsChanged: флаг, указывающий на изменение длины массива items
+    - renderCountRef: счетчик рендеров
+  */
+
+  const itemsChanged = items.length !== prevItemsLengthRef.current;
+  const loadingChanged = loading !== prevLoadingRef.current;
+
+  /*  Логика для отслеживания изменений
+    - Если длина массива items изменилась, увеличиваем счетчик рендеров
+    - Если состояние загрузки изменилось, обновляем prevLoadingRef
+  */
+
+  if (itemsChanged) {
+    renderCountRef.current += 1;
+    prevItemsLengthRef.current = items.length;
+    //logger.log(`[VirtualList] Items changed: ${items.length}, loading: ${loading}, render: #${renderCountRef.current}`);
   }
 
-  if (wasEmpty && hasData) {
-    isDataLoadedRef.current = true;
-    logger.log(`[VirtualList] DATA LOADED: ${items.length} items`);
+  if (loadingChanged) {
+    prevLoadingRef.current = loading;
+    //logger.log(`[VirtualList] Loading state changed: ${loading}`);
   }
+  // Мемоизация ключа элемента, чтобы избежать лишних вычислений
+  const memoizedGetItemKey = useCallback((item: T) => {
+    try {
+      const key = getItemKey(item);
+      return key || `fallback-${Date.now()}-${Math.random()}`;
+    } catch (error) {
+      return `error-${Date.now()}-${Math.random()}` + error;
+    }
+  }, [getItemKey]);
 
-  if (!hasData) {
-    isDataLoadedRef.current = false;
-    isRenderedRef.current = false;
-    isUserScrolledRef.current = false;
-    canLoadMoreRef.current = false;
-    isLoadingRef.current = false;
 
-    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-
-    logger.log(`[VirtualList] DATA RESET`);
-  }
-}, [items.length, preserveData, virtualItems.length]);
-  // 2. ОТСЛЕЖИВАНИЕ РЕНДЕРИНГА
+  // Сброс флага загрузки при изменении состояния
   useEffect(() => {
-    const hasData = isDataLoadedRef.current;
-    const hasVirtual = virtualItems.length > 0;
-
-    if (hasData && hasVirtual && !isRenderedRef.current) {
-      isRenderedRef.current = true;
-
-      // ЗАДЕРЖКА перед разрешением загрузки
-      renderTimeoutRef.current = setTimeout(() => {
-        canLoadMoreRef.current = true;
-        logger.log(`[VirtualList] RENDERED: ${virtualItems.length} virtual items, CAN_LOAD_MORE enabled`);
-      }, 1500); // 1.5 секунды задержка
+    if (!loading) {
+      isLoadingMoreRef.current = false;
     }
+  }, [loading]);
+
+  /*
+    Обработчики событий для обновления состояния
+    - bufferedPostsLoaded: просто логируем
+    - newPost: делаем force update и скроллим вверх, если это текущий пользователь
+    - appendNewItems: просто логируем, не делаем force update
+  */
+  useEffect(() => {
+    const handleBufferedPostsLoaded = () => {
+      logger.log('[VirtualList] Buffered posts loaded, maintaining scroll position');
+    };
+
+    const handleNewPost = (event: CustomEvent) => {
+      // Force update при получении нового поста, иначе виртуальный список сломает размеры
+      // Если это событие от текущего пользователя, то скроллим вверх
+      forceUpdate();
+      logger.log('[VirtualList] Force update triggered by new post');
+
+      if (event.detail?.isCurrentUser) {
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+      }
+    };
+
+    const handleAppendNewItems = (event: CustomEvent) => {
+      logger.log('[VirtualList] appendNewItems event received:', event.detail);
+      // НЕ делаем force update для обычной подгрузки
+    };
+    /*
+      Добавляем обработчики событий
+      - Используем window.addEventListener для глобальных событий
+      - Используем useEffect для очистки обработчиков при размонтировании компонента
+    */
+    window.addEventListener('bufferedPostsLoaded', handleBufferedPostsLoaded);
+    window.addEventListener('newPost', handleNewPost as EventListener);
+    window.addEventListener('appendNewItems', handleAppendNewItems as EventListener);
 
     return () => {
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
+      window.removeEventListener('bufferedPostsLoaded', handleBufferedPostsLoaded);
+      window.removeEventListener('newPost', handleNewPost as EventListener);
+      window.removeEventListener('appendNewItems', handleAppendNewItems as EventListener);
     };
-  }, [virtualItems.length]);
-
+  }, [forceUpdate]);
 
   useEffect(() => {
-      if (!isRenderedRef.current) {
-    logger.log(`[VirtualList] Skipping scroll detection - not rendered yet№`);
-    return;
-  }
-
-    //logger.log(`[VirtualList] Scroll check: canLoadMore=${canLoadMoreRef.current}, isLoading=${isLoadingRef.current}, items=${items.length}, virtual=${virtualItems.length}`);
+    logger.log(`[VirtualList] Feed context changed to: ${feedContextId}`);
+  }, [feedContextId]);
 
 
-    // ПРОВЕРКА СОРТИРОВКИ
-    const isSorting = debugOptions?.sortingInProgress === true;
-    if (isSorting) {
-      logger.log(`[VirtualList] LOADING BLOCKED: sorting in progress`);
-      return; // БЛОКИРУЕМ ЗАГРУЗКУ ПРИ СОРТИРОВКЕ
+  /*
+    Автоподгрузка при достижении конца списка
+    - Проверяем, что onEndReached задан и не в ручном режиме
+    - Проверяем, что есть элементы в списке
+    - Проверяем, что пользователь близко к концу списка
+    - Загружаем новые элементы, если прошло достаточно времени с последней загрузки
+  */
+  useEffect(() => {
+    // Если не нужна автоподгрузка - выходим
+    if (!onEndReached || manualMode || allLoaded || loading) return;
+
+    // Если нет элементов - выходим
+    if (virtualItems.length === 0) return;
+
+    if (items.length === 0 && allLoaded) {
+      //logger.log(`[VirtualList] Feed is empty and fully loaded, skipping auto-load`);
+      return;
     }
 
-    // АНАЛИЗ ВИДИМОСТИ
-    const firstVisible = virtualItems[0]?.index ?? 0;
-    const lastVisible = virtualItems[virtualItems.length - 1]?.index ?? 0;
+    const lastVisibleIndex = virtualItems[virtualItems.length - 1].index;
     const totalItems = items.length;
-    const hasMoreOnServer = !allLoaded;
+    const remainingItems = totalItems - lastVisibleIndex - 1;
 
-    const isAtEnd = lastVisible >= totalItems - 3; // Стандартная - когда до конца 3 элемента
+    // Загружаем только если пользователь близко к концу
+    if (remainingItems < 10) {
+      const now = Date.now();
 
-    const allItemsVisible = virtualItems.length === totalItems && totalItems > 0;
+      // Проверка что пользователь действительно скроллит вниз
+      const scrollY = window.scrollY;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      const isNearBottom = scrollY + windowHeight >= documentHeight - 1000; // 1000px от конца
 
-    if (firstVisible > 0 && !isUserScrolledRef.current) {
-      isUserScrolledRef.current = true;
-    }
-
-    if (
-      // СТАНДАРТНЫЙ СЛУЧАЙ - СКРОЛЛ ДО КОНЦА
-      (isAtEnd && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current) ||
-      // ВСЕ ЭЛЕМЕНТЫ ВИДНЫ, НО ЕСТЬ ЕЩЕ НА СЕРВЕРЕ
-      (allItemsVisible && hasMoreOnServer && canLoadMoreRef.current && !isLoadingRef.current)
-    ) {
-      isLoadingRef.current = true;
-      canLoadMoreRef.current = false;
-
-      if (onEndReached) {
-        logger.log(
-          `[VirtualList] LOADING MORE: atEnd=${isAtEnd}, allVisible=${allItemsVisible}, ` +
-          `totalItems=${totalItems}, visible=${lastVisible}`
-        );
+      if (now - lastLoadTriggeredRef.current > 1000 && isNearBottom) {
+        lastLoadTriggeredRef.current = now;
+        //logger.log(`[VirtualList] Auto-load: remaining ${remainingItems}, near bottom, loading more...`);
         onEndReached();
+      } else if (!isNearBottom) {
+        //logger.log(`[VirtualList] Not near bottom, skipping auto-load (scroll: ${scrollY}, remaining: ${remainingItems})`);
       }
     }
 
-    if (enableManualModeTracking && !manualMode && onScrollDown && firstVisible > 0) {
-      onScrollDown();
-    }
-  }, [virtualItems, items.length, allLoaded, onEndReached, enableManualModeTracking, manualMode, onScrollDown, debugOptions]);
+    //const firstIndex = virtualItems[0].index;
+    //logger.log(`[VirtualList] ${firstIndex}-${lastVisibleIndex}/${totalItems} (${remainingItems} left)`);
 
-  // 4. ОТСЛЕЖИВАНИЕ СОСТОЯНИЯ LOADING
-  useEffect(() => {
-    const wasLoading = isLoadingRef.current;
-    const isCurrentlyLoading = loading;
+  }, [virtualItems, items.length, onEndReached, manualMode, allLoaded, loading]);
 
-    if (wasLoading && !isCurrentlyLoading) {
-      // Загрузка завершена
-      isLoadingRef.current = false;
+  // Дебаг объект для отладки
+  const debugProps = React.useMemo(() => {
+    const firstIndex = virtualItems[0]?.index ?? -1;
+    const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
 
-      // Восстанавливаем возможность загрузки через 1 секунду
-      loadTimeoutRef.current = setTimeout(() => {
-        canLoadMoreRef.current = true;
-        logger.log(`[VirtualList] LOADING COMPLETE: CAN_LOAD_MORE restored`);
-      }, 1);
-    }
-
-    if (!wasLoading && isCurrentlyLoading) {
-      isLoadingRef.current = true;
-      logger.log(`[VirtualList] LOADING STARTED`);
-    }
-
-    return () => {
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    return {
+      visibleRange: `${firstIndex}-${lastIndex}`,
+      itemsCount: items.length,
+      totalHeight: virtualizer.getTotalSize(),
+      virtualItems: virtualItems.length,
+      loading,
+      allLoaded,
+      manualMode,
+      feedType: debugOptions.feedType || 'unknown',
+      contextType: 'tanstack-render-based',
+      feedKey: feedContextId,
+      remainingItems: items.length - lastIndex - 1,
+      renderCount: renderCountRef.current,
+      isLoadingMore: isLoadingMoreRef.current,
+      ...debugOptions,
     };
-  }, [loading]);
+  }, [virtualItems, items.length, virtualizer, loading, allLoaded, manualMode, debugOptions, feedContextId]);
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-    };
-  }, []);
-
-  // Логика состояний
-  const hasItems = items.length > 0;
-  const isInitialLoading = loading && !hasItems;
-  const isLoadingMore = loading && hasItems;
-  const isEmpty = !loading && !hasItems;
-  const shouldShowPaginationIndicator = hasItems;
-
-  // Показать начальную загрузку
-  if (isInitialLoading) {
-    const loadingContent = React.isValidElement(loadingIndicator)
-      ? loadingIndicator
-      : <LoadingIndicator
-        loading={true}
-        allLoaded={false}
-        hasItems={false}
-        onVisible={() => { }}
-        emptyMessage={loadingMessage || "Loading content..."}
-      />;
-
+  // Ранний возврат для отладки
+  if (loading && items.length === 0) {
     return (
-      <div className="virtual-list-container-empty-state">
-        {loadingContent}
+      <div className={`virtual-list-container ${className}`} style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px',
+        width: '100%'
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <Spin size="large" />
+          <span style={{ color: '#666', fontSize: '14px' }}>
+            Loading feed...
+          </span>
+        </div>
       </div>
     );
   }
 
-  // Показать пустое состояние
-  if (isEmpty) {
-    const emptyContent = React.isValidElement(emptyComponent)
-      ? emptyComponent
-      : <Empty description={emptyMessage || "No content available"} />;
 
-    return (
-      <div className="virtual-list-container-empty-state">
-        {emptyContent}
-      </div>
-    );
-  }
-
-  const debugProps = {
-    itemsCount: items.length,
-    virtualItems,
-    loading,
-    allLoaded,
-    totalHeight,
-    measuredItems: virtualItems.length,
-    isDataLoaded: isDataLoadedRef.current,
-    isRendered: isRenderedRef.current,
-    canLoadMore: canLoadMoreRef.current,
-    isLoading: isLoadingRef.current,
-    userScrolled: isUserScrolledRef.current,
-    manualMode,
-    hasItems,
-    isInitialLoading,
-    isLoadingMore,
-    isEmpty,
-    shouldShowPaginationIndicator,
-    feedContextId,
-    ...(debugOptions || {})
-  };
-
+  // Основной рендер виртуального списка
   return (
-    <div className={`virtual-list-container ${className}`}>
+    <div className={`virtual-list-container ${className}`} style={{ width: '100%' }}>
       <div
-        className="virtual-list-container-items"
+        key={forceUpdateCounter > 0 ? `newpost-${forceUpdateCounter}` : 'stable'}
         style={{
-          height: `${totalHeight}px`,
-          ...style
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtualItems.map((virtualItem) => {
-          const itemKey = getItemKey(virtualItem.item, virtualItem.index);
-          const topPosition = virtualItem.position ?? virtualItem.start ?? 0;
+          const item = items[virtualItem.index];
+
+          if (!item) {
+            return (
+              <div key={`error-${virtualItem.index}`} style={{ height: '150px', background: 'red' }}>
+                Error: No item at index {virtualItem.index}
+              </div>
+            );
+          }
+
+          const key = memoizedGetItemKey(item);
 
           return (
             <div
-              key={itemKey}
-              id={`virtual-item-${itemKey}`}
+              key={key}
               data-index={virtualItem.index}
-              className="virtual-list-container-item"
+              data-item-id={('id' in item ? String(item.id) : 'no-id')}
+              ref={virtualizer.measureElement}
               style={{
-                transform: `translateY(${topPosition}px)`
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItem.start}px)`,
               }}
             >
-              {renderItem(virtualItem, (el) => measureElement(el, virtualItem.index))}
+              {renderItem(item, virtualItem.index)}
             </div>
           );
         })}
       </div>
 
-      {/* Индикатор пагинации */}
-      {shouldShowPaginationIndicator && (
-        <div className="virtual-list-container-pagination-indicator">
-          <LoadingIndicator
-            loading={isLoadingMore}
-            allLoaded={allLoaded && !isLoadingMore}
-            hasItems={true}
-            onVisible={() => { }}
-            emptyMessage="No more items"
-            itemCount={items.length}
-          />
-        </div>
-      )}
-
-      {<DebugInfo {...debugProps} />}
+      <LoadingIndicator
+        loading={loading}
+        allLoaded={allLoaded}
+        hasItems={items.length > 0}
+        onVisible={onEndReached || (() => { })}
+        itemCount={items.length}
+        isListReady={!loading}
+        itemType={debugOptions.feedType === 'comments' ? 'comments' : 'posts'}
+        emptyMessage={emptyMessage}
+        showRetryButton={false}
+      />
+      <DebugInfo {...debugProps} />
     </div>
   );
-}
+});
+
+VirtualList.displayName = 'VirtualList';
 
 export default VirtualList;

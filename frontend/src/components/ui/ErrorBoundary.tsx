@@ -1,6 +1,6 @@
 import React from 'react';
 import { Result, Button } from 'antd';
-import { logger } from "../utils/Logger";
+import { logger } from "../../utils/Logger";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -10,6 +10,10 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
+/*
+  Компонент ErrorBoundary для перехвата ошибок в React приложении.
+  Показывает сообщение об ошибке и кнопку для перезагрузки страницы.
+*/
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);

@@ -7,7 +7,16 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  namespace: '/', // Основной namespace
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+})
 export class AppGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
@@ -17,24 +26,32 @@ export class AppGateway
   private interval: NodeJS.Timeout;
 
   afterInit() {
+    console.log('[AppGateway] Socket.IO server initialized');
+
     this.interval = setInterval(() => {
       this.server.emit('heartbeat', { message: 'Server heartbeat' });
     }, 10000);
   }
 
   handleConnection(client: Socket) {
-    console.log('App WS connected to:', client.nsp.name, 'client:', client.id);
+    console.log(
+      `[AppGateway] Client connected: ${client.id} to namespace: ${client.nsp.name}`,
+    );
+    console.log(`[AppGateway] Transport: ${client.conn.transport.name}`);
   }
 
   handleDisconnect(client: Socket) {
-    console.log('Client disconnected:', client.id);
+    console.log(`[AppGateway] Client disconnected: ${client.id}`);
   }
 
   broadcastEvent(event: string, data: any) {
-    console.log(`Broadcasting event: ${event} with data:`, data);
+    console.log(`[AppGateway] Broadcasting event: ${event}`);
     this.server.emit(event, data);
   }
+
   onModuleDestroy() {
-    clearInterval(this.interval);
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
   }
 }

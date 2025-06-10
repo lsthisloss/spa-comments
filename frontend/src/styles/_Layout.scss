@@ -1,13 +1,10 @@
 @import './base/variables';
 
-// Принудительный скроллбар для стабильности
-
 
 :root {
-  --main-content-width: 600px;
-  --total-width: 760px;
+  --main-content-width: 540px;
+  --total-width: 700px;
   --sidebar-width: 160px; 
-
 }
 
 .main-page {

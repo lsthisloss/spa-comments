@@ -19,7 +19,6 @@ import { SearchModule } from './search/search.module';
 import { CommonModule } from './common/common.module';
 import { Stats } from 'fs';
 
-// Добавьте простой контроллер для health check
 import { Controller, Get } from '@nestjs/common';
 
 @Controller()
@@ -37,7 +36,6 @@ export class HealthController {
 
 @Module({
   imports: [
-    // ServeStaticModule ПЕРВЫМ в списке для приоритета
     ServeStaticModule.forRoot({
       rootPath:
         process.env.NODE_ENV === 'production'
@@ -89,7 +87,6 @@ export class HealthController {
 
     ConfigModule.forRoot({
       isGlobal: true,
-      // load: [databaseConfig], // Закомментируем если файла нет
     }),
 
     TypeOrmModule.forRoot({

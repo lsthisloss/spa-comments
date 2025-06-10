@@ -1,15 +1,16 @@
 import { observer } from 'mobx-react-lite';
-import { Card, Switch, Divider, Typography, Space, Tooltip } from 'antd';
+import { Card, Switch, Divider, Typography, Space, Tooltip, message } from 'antd';
 import { BugOutlined, EyeOutlined, AlertOutlined } from '@ant-design/icons';
 import AdminPanel from '../admin/AdminPanel';
 import { useUserStore } from '../../hooks/useStore';
 const { Title, Text } = Typography;
 
-interface UserSettingsProps {
-  onDebugModeChange?: (enabled: boolean) => void;
-}
-
-const UserSettings = observer(({ onDebugModeChange }: UserSettingsProps) => {
+/*
+  Компонент UserSettings отображает настройки пользователя, включая режим отладки.
+  Позволяет пользователю включать и отключать режим отладки для отображения информации о виртуальном списке.
+  Также отображает панель администратора для супер-администраторов.
+*/
+const UserSettings = observer(() => {
 
   const userStore = useUserStore();
   const user = userStore.user;
@@ -18,11 +19,15 @@ const UserSettings = observer(({ onDebugModeChange }: UserSettingsProps) => {
 
   const debugMode = user.settings?.debugMode ?? false;
 
-  const handleDebugModeChange = (checked: boolean) => {
-    userStore.updateUserSettings({
-      debugMode: checked
-    });
-    onDebugModeChange?.(checked);
+  
+  const handleDebugModeChange = async (checked: boolean) => {
+    try {
+      await userStore.updateUserSettings({ debugMode: checked });
+      message.success(`Debug mode ${checked ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      message.error('Failed to update debug mode setting');
+      console.error('Debug mode update error:', error);
+    }
   };
 
   return (

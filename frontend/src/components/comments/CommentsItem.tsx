@@ -5,6 +5,11 @@ import { useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useUserStore, useCommentStore } from '../../hooks/useStore';
 
+/*
+  Компонент для отображения отдельного комментария в ленте.
+  Используется в ленте комментариев и на страницах постов.
+  Позволяет лайкать комментарии и отображать дополнительные действия.
+*/
 interface CommentItemProps {
   item: Comment; 
   disableShowMore?: boolean; 

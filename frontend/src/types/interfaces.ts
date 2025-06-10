@@ -46,6 +46,7 @@ export interface Post extends FeedItemBase {
   commentCount?: number;
   imageHeight?: number;
   repliesCount?: number;  
+  [key: string]: unknown;
 }
 
 // Интерфейс комментария
@@ -57,6 +58,7 @@ export interface Comment extends FeedItemBase {
   repliesShown?: boolean; 
   numericId?: string; 
   repliesCount?: number;
+  [key: string]: unknown;
 }
 
 // UI-свойства

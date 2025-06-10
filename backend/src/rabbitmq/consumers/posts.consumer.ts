@@ -26,7 +26,7 @@ export class PostsConsumer implements OnModuleInit {
     { count: number; resetTime: number }
   >();
   private readonly MAX_POSTS_PER_MINUTE = 10;
-  private readonly TEST_USER_MAX_POSTS = 100; // Увеличенный лимит для тестовых пользователей
+  private readonly TEST_USER_MAX_POSTS = 100;
   private readonly RATE_LIMIT_WINDOW = 60 * 1000;
   private readonly CACHE_TTL = 10 * 60 * 1000;
 
@@ -49,18 +49,79 @@ export class PostsConsumer implements OnModuleInit {
     private readonly postRepository: Repository<Post>,
   ) {}
 
+  private cleanupCaches() {
+    const now = Date.now();
+    let rateLimitCleaned = 0;
+    let cacheCleared = false;
+
+    // Очищаем истекшие rate limits
+    for (const [userId, limit] of this.userPostCounts.entries()) {
+      if (now > limit.resetTime) {
+        this.userPostCounts.delete(userId);
+        rateLimitCleaned++;
+      }
+    }
+
+    // ОСТОРОЖНАЯ очистка кеша обработанных постов
+    // Очищаем только если кеш стал очень большим И прошло достаточно времени
+    if (this.processedPostIds.size > 2000) {
+      // Увеличиваем лимит
+      this.logger.warn(
+        `Processed posts cache size: ${this.processedPostIds.size}, clearing...`,
+      );
+
+      // Очищаем не весь кеш, а только часть (старые записи)
+      // Так как Set не имеет timestamps, очищаем полностью только при критическом размере
+      if (this.processedPostIds.size > 5000) {
+        this.processedPostIds.clear();
+        cacheCleared = true;
+        this.logger.log('Processed posts cache cleared due to critical size');
+      }
+    }
+
+    // Логируем только если что-то очистили
+    if (rateLimitCleaned > 0 || cacheCleared) {
+      this.logger.log(
+        `Cache cleanup: ${rateLimitCleaned} rate limits, cache cleared: ${cacheCleared}`,
+      );
+    }
+  }
+
+  // Добавляем новый метод для более умной очистки кеша
+  private smartCacheCleanup() {
+    const cacheSize = this.processedPostIds.size;
+
+    // Очищаем кеш только если он критически большой
+    if (cacheSize > 10000) {
+      this.logger.warn(
+        `Critical cache size reached: ${cacheSize}, performing emergency cleanup`,
+      );
+      this.processedPostIds.clear();
+      this.logger.log('Emergency cache cleanup completed');
+    }
+  }
+
   async onModuleInit() {
     try {
       await this.rabbitMQService.consume(this.queueName, (msg) => {
         void this.handleMessage(msg);
       });
 
+      // Уменьшаем частоту очистки кеша и делаем ее более осторожной
       setInterval(
         () => {
           this.cleanupCaches();
         },
-        5 * 60 * 1000,
-      );
+        10 * 60 * 1000,
+      ); // Увеличиваем до 10 минут
+
+      // Добавляем дополнительный интервал для критической очистки
+      setInterval(
+        () => {
+          this.smartCacheCleanup();
+        },
+        30 * 60 * 1000,
+      ); // Каждые 30 минут проверяем критический размер
 
       this.logger.log(`Consumer subscribed to queue: ${this.queueName}`);
     } catch (error) {
@@ -68,6 +129,32 @@ export class PostsConsumer implements OnModuleInit {
         `Error initializing consumer: ${(error as Error).message}`,
       );
     }
+  }
+
+  emergencyCleanup() {
+    const oldCacheSize = this.processedPostIds.size;
+    const oldRateLimitSize = this.userPostCounts.size;
+
+    this.processedPostIds.clear();
+    this.userPostCounts.clear();
+    this.resetStats();
+
+    this.logger.warn(
+      `PostsConsumer emergency cleanup performed: cleared ${oldCacheSize} processed posts, ${oldRateLimitSize} rate limits`,
+    );
+  }
+
+  // Добавляем метод для мониторинга состояния consumer
+  getConsumerHealth() {
+    return {
+      isHealthy: true,
+      cacheSize: this.processedPostIds.size,
+      rateLimitEntries: this.userPostCounts.size,
+      stats: this.stats,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString(),
+    };
   }
 
   private async handleMessage(msg: any) {
@@ -109,7 +196,6 @@ export class PostsConsumer implements OnModuleInit {
         return;
       }
 
-      // ДЛЯ ТЕСТОВЫХ ПОЛЬЗОВАТЕЛЕЙ - СОХРАНЯЕМ В БД С ИЗОБРАЖЕНИЯМИ
       if (isTestUser) {
         console.log(
           `[TEST] Processing test user post in DB: ${createPostDto.userId}`,
@@ -118,7 +204,7 @@ export class PostsConsumer implements OnModuleInit {
         const processedData = { ...createPostDto };
 
         // Обрабатываем файлы для тестовых пользователей
-        this.processFiles(processedData);
+        await this.processFiles(processedData);
 
         const messageHash = this.generateMessageHash(createPostDto);
         if (this.processedPostIds.has(messageHash)) {
@@ -173,7 +259,7 @@ export class PostsConsumer implements OnModuleInit {
         return;
       }
 
-      // Для обычных пользователей...
+      // Для обычных пользователей
       console.log(
         `[QUEUE] Processing regular user post: ${createPostDto.userId.substring(0, 8)}...`,
       );
@@ -182,20 +268,21 @@ export class PostsConsumer implements OnModuleInit {
       let hasFiles = false;
 
       if (createPostDto.image && createPostDto.file) {
-        const fileResult = this.commonWsService.processContentWithMultipleFiles(
-          createPostDto.content,
-          {
-            image: createPostDto.image,
-            file: createPostDto.file,
-          },
-        );
+        const fileResult =
+          await this.commonWsService.processContentWithMultipleFiles(
+            createPostDto.content,
+            {
+              image: createPostDto.image,
+              file: createPostDto.file,
+            },
+          );
 
         Object.assign(processedData, fileResult);
         delete processedData.image;
         delete processedData.file;
         hasFiles = !!(fileResult?.fileUrl || fileResult?.imageUrl);
       } else if (createPostDto.file) {
-        const fileResult = this.commonWsService.processContentWithFile(
+        const fileResult = await this.commonWsService.processContentWithFile(
           createPostDto.content,
           { file: createPostDto.file },
         );
@@ -204,7 +291,7 @@ export class PostsConsumer implements OnModuleInit {
         delete processedData.file;
         hasFiles = !!fileResult?.fileUrl;
       } else if (createPostDto.image) {
-        const fileResult = this.commonWsService.processContentWithFile(
+        const fileResult = await this.commonWsService.processContentWithFile(
           createPostDto.content,
           { file: createPostDto.image },
         );
@@ -298,14 +385,12 @@ export class PostsConsumer implements OnModuleInit {
   }
 
   // для индексации постов в Elasticsearch
-  // Исправляем метод indexPostInElasticsearch
   private async indexPostInElasticsearch(
     post: Post,
     userId: string,
     isTestUser: boolean,
   ): Promise<void> {
     try {
-      //ля тестовых пользователей ТОЖЕ используем данные из БД
       const user = await this.usersService.findById(userId);
       if (!user) {
         console.warn(`❌ User ${userId} not found for post indexing`);
@@ -424,28 +509,30 @@ export class PostsConsumer implements OnModuleInit {
     }
   }
 
-  // Остальные методы остаются без изменений...
-  private processFiles(processedData: Partial<CreatePostDto>): void {
+  private async processFiles(
+    processedData: Partial<CreatePostDto>,
+  ): Promise<void> {
     if (processedData.image && processedData.file) {
-      const fileResult = this.commonWsService.processContentWithMultipleFiles(
-        processedData.content as string,
-        {
-          image: processedData.image,
-          file: processedData.file,
-        },
-      );
+      const fileResult =
+        await this.commonWsService.processContentWithMultipleFiles(
+          processedData.content as string,
+          {
+            image: processedData.image,
+            file: processedData.file,
+          },
+        );
       Object.assign(processedData, fileResult);
       delete processedData.image;
       delete processedData.file;
     } else if (processedData.file) {
-      const fileResult = this.commonWsService.processContentWithFile(
+      const fileResult = await this.commonWsService.processContentWithFile(
         processedData.content as string,
         { file: processedData.file },
       );
       Object.assign(processedData, fileResult);
       delete processedData.file;
     } else if (processedData.image) {
-      const fileResult = this.commonWsService.processContentWithFile(
+      const fileResult = await this.commonWsService.processContentWithFile(
         processedData.content as string,
         { file: processedData.image },
       );
@@ -468,21 +555,6 @@ export class PostsConsumer implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error('Failed to emit new post event:', error);
-    }
-  }
-
-  private cleanupCaches() {
-    const now = Date.now();
-
-    for (const [userId, limit] of this.userPostCounts.entries()) {
-      if (now > limit.resetTime) {
-        this.userPostCounts.delete(userId);
-      }
-    }
-
-    if (this.processedPostIds.size > 1000) {
-      this.processedPostIds.clear();
-      this.logger.log('Processed posts cache cleared');
     }
   }
 
@@ -536,13 +608,6 @@ export class PostsConsumer implements OnModuleInit {
       errorsCount: 0,
     };
     this.logger.log('PostsConsumer stats reset');
-  }
-
-  emergencyCleanup() {
-    this.processedPostIds.clear();
-    this.userPostCounts.clear();
-    this.resetStats();
-    this.logger.warn('PostsConsumer emergency cleanup performed');
   }
 
   getProcessedCacheSize(): number {

@@ -669,7 +669,7 @@ export class UsersService {
       }
 
       this.logger.log(
-        `✅ Avatar updated successfully for user ${updatedUser.userName}: ${avatarUrl}`,
+        `Avatar updated successfully for user ${updatedUser.userName}: ${avatarUrl}`,
       );
       return updatedUser;
     } catch (error) {

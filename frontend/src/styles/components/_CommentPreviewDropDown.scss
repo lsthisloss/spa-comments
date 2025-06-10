@@ -1,95 +1,132 @@
-// Общие стили для комментариев в выпадающем списке
-.comment-preview {
-  &-card {
-    width: auto;
-    max-width: 280px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-    padding: 0;
-    padding: 4px;
+.comment-preview-card {
+  max-width: 100%;
+  padding: 0;
+  background-color: white !important;
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.12), 
+              0 3px 6px -4px rgba(0, 0, 0, 0.15), 
+              0 9px 28px 8px rgba(0, 0, 0, 0.08) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+
+ 
+  &.ant-card {
+    border-radius: 8px !important;
   }
 
-  &-header {
-    margin-bottom: 8px;
+  .ant-card-body {
+    padding: 0 !important;
+  }
+  
+  .comment-preview-loading {
     display: flex;
     align-items: center;
+    justify-content: center;
+    padding: 20px;
   }
 
-  &-icon {
-    font-size: 12px;
-    margin-right: 4px;
+  .comment-preview-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   }
 
-  &-title {
-    font-size: 12px;
-  }
-
-  &-item {
+  .comment-preview-item {
+    padding: 10px 16px;
     cursor: pointer;
-    padding: 8px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     transition: background-color 0.2s;
-
-    &:hover {
-      background-color: #f5f5f5;
-    }
 
     &:last-child {
       border-bottom: none;
     }
-  }
 
-  &-space {
-    width: 100%;
-  }
-
-  &-avatar {
-    flex-shrink: 0;
-  }
-
-  &-content {
-    flex: 1;
-    min-width: 0;
-  }
-
-  &-username {
-    font-size: 12px;
-  }
-
-  &-text {
-    margin: 0;
-    font-size: 12px;
-    word-break: break-word;
-    overflow-wrap: break-word;
-  }
-
-  &-like-button {
-    margin-left: auto;
-    padding: 0 4px;
-    height: auto;
-    min-width: 32px;
-    font-size: 12px;
-
-    .heart-icon {
-      font-size: 12px;
-
-      &.liked {
-        color: #ff4d4f;
-      }
+    &:hover {
+      background-color: rgba(0, 0, 0, 0.03);
     }
   }
 
-  &-loading, &-error, &-empty {
-    padding: 16px 0;
-    text-align: center;
+  .comment-preview-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.02);
   }
 
-  &-footer {
-    text-align: center;
-    margin-top: 8px;
+  .comment-preview-view-all {
+    font-size: 13px;
+    height: auto;
+    padding: 4px 0;
+    color: #1677ff;
+    
+    &:hover {
+      text-decoration: underline;
+      color: #4096ff;
+    }
+  }
+  
+  .comment-preview-space {
+    width: 100%;
   }
 
-  &-view-all, &-add-comment {
+  .comment-preview-content {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .comment-preview-username {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  .comment-preview-text {
+    font-size: 13px;
+    margin-bottom: 0;
+    color: rgba(0, 0, 0, 0.65);
+  }
+
+  .comment-preview-like-button {
+    padding: 0 4px;
+    height: auto;
     font-size: 12px;
-    padding: 4px;
+    
+    .anticon {
+      font-size: 14px;
+      margin-right: 4px;
+    }
+    
+    &:hover .heart-icon {
+      transform: scale(1.2);
+    }
+    
+    .liked {
+      color: #ff4d4f;
+    }
+  }
+  
+  .comment-preview-empty {
+    padding: 24px 0;
+    
+    .ant-empty-image {
+      height: 32px;
+    }
+    
+    .ant-empty-description {
+      font-size: 13px;
+      color: rgba(0, 0, 0, 0.45);
+    }
+  }
+  
+  .preview-admin-badge {
+    transform: scale(0.8);
+    margin-left: -4px;
+  }
+}
+
+.ant-dropdown {
+  &.comment-preview-dropdown {
+    min-width: 320px;
   }
 }

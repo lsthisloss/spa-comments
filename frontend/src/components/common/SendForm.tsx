@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useEffect } from "react";
-import { Form, Input, Avatar, Image } from "antd";
+import { Form, Input, Avatar, Image, message } from "antd";
 import { observer } from "mobx-react-lite";
 import SendFormFooter from "./SendFormFooter";
 import CaptchaModal from "../ui/modals/CaptchaModal";
@@ -8,20 +8,33 @@ import { SendFormProps } from "../../types/interfaces";
 import { reaction } from "mobx";
 import { useSendFormStore, useUserStore } from '../../hooks/useStore';
 
-const SendForm = observer(({ 
-  type, 
-  parentId, 
+/*
+  * Компонент SendForm
+  * Используется для отправки сообщений или комментариев
+  * Поддерживает drag-and-drop загрузку файлов и изображений
+  * Реализует реакцию на изменения пользователя и обновление данных в сторе
+*/
+
+const SendForm = observer(({
+  type,
+  parentId,
   parentSlug,
-  postId, 
+  postId,
   postSlug,
-  placeholder, 
-  onSuccess 
+  placeholder,
+  onSuccess
 }: SendFormProps) => {
   const maxLength = 600;
   const dragCounterRef = useRef(0);
   const sendFormStore = useSendFormStore();
   const userStore = useUserStore();
   const isFormDisabled = sendFormStore.loading;
+
+  /*
+    * Реакция на изменения пользователя
+    * При изменении данных пользователя обновляем данные в SendFormStore
+    * Запускаем сразу при создании reaction
+  */
 
   useEffect(() => {
     const disposer = reaction(
@@ -36,15 +49,15 @@ const SendForm = observer(({
       (userData) => {
         if (userData.id && userData.userName) {
           // Проверяем, нужно ли обновить данные пользователя в SendFormStore
-          const needsUpdate = 
+          const needsUpdate =
             sendFormStore.userId !== userData.id ||
             sendFormStore.userName !== userData.userName ||
             sendFormStore.avatarUrl !== userData.avatarUrl ||
             sendFormStore.avatarShape !== userData.avatarShape;
-          
+
           if (needsUpdate) {
             sendFormStore.initializeUser(
-              userData.id, 
+              userData.id,
               userData.userName,
               userData.avatarUrl ?? undefined,
               (userData.avatarShape as 'circle' | 'square') ?? 'circle',
@@ -60,9 +73,49 @@ const SendForm = observer(({
 
     // Очистка при размонтировании
     return () => disposer();
-  }, [sendFormStore, userStore ]); 
+  }, [sendFormStore, userStore]);
 
-  // Unified drag-and-drop handlers
+  /*
+    * Реакция на сообщения об успехе/ошибке для показа Ant Design уведомлений
+    */
+  useEffect(() => {
+    const successDisposer = reaction(
+      () => sendFormStore.successMessage,
+      (successMessage) => {
+        if (successMessage) {
+          message.success(successMessage);
+          // Очищаем сообщение после показа
+          setTimeout(() => {
+            sendFormStore.setSuccessMessage('');
+          }, 100);
+        }
+      }
+    );
+
+    const errorDisposer = reaction(
+      () => sendFormStore.errorMessage,
+      (errorMessage) => {
+        if (errorMessage) {
+          message.error(errorMessage);
+          // Очищаем сообщение после показа
+          setTimeout(() => {
+            sendFormStore.setErrorMessage('');
+          }, 100);
+        }
+      }
+    );
+
+    return () => {
+      successDisposer();
+      errorDisposer();
+    };
+  }, [sendFormStore]);
+
+  /*
+    * Обработчики событий drag-and-drop
+    * Управляют состоянием перетаскивания и загрузкой файлов
+  */
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -79,7 +132,7 @@ const SendForm = observer(({
     if (dragCounterRef.current === 0) {
       sendFormStore.setDragActive(false);
     }
-  }, [ sendFormStore ]);
+  }, [sendFormStore]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -99,32 +152,27 @@ const SendForm = observer(({
     sendFormStore.handleDragDrop(file);
   }, [sendFormStore]);
 
-  // Clean handler for submitting form
+  /*  
+    * Обработчик отправки формы
+    * Вызывается при клике на кнопку отправки
+    * Передает данные в SendFormStore для обработки
+  */
+
   const handleSubmit = useCallback(() => {
     sendFormStore.send(
-      type, 
-      parentId, 
-      postId, 
+      type,
+      parentId,
+      postId,
       onSuccess,
       parentSlug,
       postSlug
     );
   }, [sendFormStore, type, parentId, postId, onSuccess, parentSlug, postSlug]);
 
-
-  // Обработчик клика на кнопку отправки
-  const handlePostClick = useCallback(() => {
-  // Отправляем форму напрямую, логика проверки роли теперь в сторе
-  sendFormStore.send(
-    type, 
-    parentId, 
-    postId, 
-    onSuccess,
-    parentSlug,
-    postSlug
-  );
-}, [type, parentId, postId, onSuccess, parentSlug, postSlug, sendFormStore]);
-
+  /*
+    * Проверяем, нужно ли отключить форму
+    * Если пользователь не авторизован или идет загрузка, отключаем форму
+  */
   return (
     <>
       {sendFormStore.dragActive && (
@@ -132,8 +180,8 @@ const SendForm = observer(({
           Drop image (JPG, PNG, GIF) or text file (.txt) here
         </div>
       )}
-      
-      <Form 
+
+      <Form
         className={`item-form ${isFormDisabled ? 'form-disabled' : ''}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -160,7 +208,7 @@ const SendForm = observer(({
               {sendFormStore.userName.charAt(0).toUpperCase()}
             </Avatar>
           )}
-          
+
           <div style={{ flex: 1 }}>
             <Input.TextArea
               id="item-input"
@@ -181,11 +229,11 @@ const SendForm = observer(({
             />
           </div>
         </div>
-        
+
         <SendFormFooter
           text={sendFormStore.text}
           maxLength={600}
-          onPostClick={handlePostClick}
+          onPostClick={handleSubmit}
           onInsertTag={(tag) => {
             const tagTemplate = `<${tag}></${tag}>`;
             const prev = sendFormStore.text;
@@ -198,7 +246,7 @@ const SendForm = observer(({
           disabled={isFormDisabled}
           loading={sendFormStore.loading}
         />
-        
+
         {/* Отображение вложений */}
         {(sendFormStore.imagePreview || sendFormStore.selectedFile) && (
           <div style={{
@@ -210,13 +258,13 @@ const SendForm = observer(({
             fontSize: '12px',
             color: '#0c5460'
           }}>
-            Attachments: 
+            Attachments:
             {sendFormStore.imagePreview && ' 📷 Image'}
             {sendFormStore.imagePreview && sendFormStore.selectedFile && ' + '}
             {sendFormStore.selectedFile && ' 📄 File'}
           </div>
         )}
-        
+
         {/* Превью изображения */}
         {sendFormStore.imagePreview && (
           <div className="image-preview" style={{ marginTop: "0", textAlign: "start", marginBottom: "8px" }}>
@@ -280,15 +328,7 @@ const SendForm = observer(({
           </div>
         )}
       </Form>
-      
-      {/* Тосты с сообщениями */}
-      {sendFormStore.errorMessage && (
-        <div className="error-toast show">{sendFormStore.errorMessage}</div>
-      )}
-      {sendFormStore.successMessage && (
-        <div className="success-toast show">{sendFormStore.successMessage}</div>
-      )}
-      
+
       {/* Модальное окно капчи */}
       <CaptchaModal
         visible={sendFormStore.captchaVisible}

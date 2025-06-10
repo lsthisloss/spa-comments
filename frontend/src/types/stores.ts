@@ -103,4 +103,5 @@ export interface ICommentStore {
   sort: 'date' | 'likes';
   setSort(sort: 'date' | 'likes'): void;
   updateItemSize(itemId: string, height: number): void;
+  toggleLike(commentId: string, userId: string): void;
 }

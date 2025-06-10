@@ -65,7 +65,6 @@ export class WsJwtGuard implements CanActivate {
         return false;
       }
 
-      // УСТАНАВЛИВАЕМ РЕАЛЬНЫЕ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
       client.data = {
         user: {
           id: payload.sub,

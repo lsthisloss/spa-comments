@@ -4,8 +4,7 @@
 FROM node:18-alpine AS development
 WORKDIR /app
 
-# Memory optimization for development
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+# Memory optimization for development - убираем ограничения памяти
 ENV NODE_ENV=development
 
 # Copy package files first for better caching
@@ -27,7 +26,7 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Higher memory limit for building
-ENV NODE_OPTIONS="--max-old-space-size=1536"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Copy package files
 COPY package*.json ./
@@ -45,8 +44,11 @@ RUN npm run build
 FROM node:18-alpine AS production
 WORKDIR /app
 
-# Production memory optimization
-ENV NODE_OPTIONS="--max-old-space-size=512"
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Production memory optimization - оставляем как есть для малоресурсных серверов
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 ENV NODE_ENV=production
 
 # Copy package files

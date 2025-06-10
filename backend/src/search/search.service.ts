@@ -43,7 +43,6 @@ export class SearchService {
   constructor(private readonly es: ElasticsearchService) {
     void this.ensureIndicesWithRetry();
     this.logger.log('Initializing SearchService...');
-    void this.debugSearchIndices();
   }
 
   // Метод для инициализации индексов с повторными попытками
@@ -78,6 +77,10 @@ export class SearchService {
         await this.ensureIndices();
         this.indicesEnsured = true;
         this.logger.log('Successfully ensured Elasticsearch indices');
+
+        // Теперь вызываем debug info после создания индексов
+        await this.debugSearchIndices();
+
         return;
       } catch (error: unknown) {
         const errorMessage =
@@ -493,7 +496,25 @@ export class SearchService {
     }
   }
   async debugSearchIndices(): Promise<void> {
+    // Проверяем что индексы созданы и Elasticsearch готов
+    if (!this.indicesEnsured || !this.isHealthy) {
+      this.logger.log('Elasticsearch not ready, skipping debug info');
+      return;
+    }
+
     try {
+      // Проверяем существование индексов перед подсчетом
+      const [usersExists, postsExists, commentsExists] = await Promise.all([
+        this.es.indices.exists({ index: 'users' }),
+        this.es.indices.exists({ index: 'posts' }),
+        this.es.indices.exists({ index: 'comments' }),
+      ]);
+
+      if (!usersExists || !postsExists || !commentsExists) {
+        this.logger.log('Some indices do not exist yet, skipping count');
+        return;
+      }
+
       const [usersCount, postsCount, commentsCount] = await Promise.all([
         this.es.count({ index: 'users' }),
         this.es.count({ index: 'posts' }),
@@ -504,7 +525,10 @@ export class SearchService {
         `📊 Index counts - Users: ${usersCount.count}, Posts: ${postsCount.count}, Comments: ${commentsCount.count}`,
       );
     } catch (error) {
-      this.logger.error('Failed to get index counts:', error);
+      this.logger.warn(
+        'Failed to get index counts (this is expected during initialization):',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
     }
   }
   async indexComment(

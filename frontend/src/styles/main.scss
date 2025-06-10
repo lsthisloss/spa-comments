@@ -4,7 +4,6 @@
 
 @import './SideBar';
 @import './Layout';
-@import './UserProfile';
 
 @import './pages/CommentPage';
 @import './pages/PostPage';
@@ -12,12 +11,14 @@
 @import './pages/AuthPage';
 
 @import './components/Item';
+@import './components/AppLoader';
 @import './components/ItemFooter';
 @import './components/Form';
 @import './components/FormFooter';
 @import './components/AdminBadge';
 @import './components/TestDataPanel';
 @import './components/DebugInfo';
+@import './components/SearchModal';
 @import './components/CommentPreviewDropDown';
 @import './components/VirtualList';
 

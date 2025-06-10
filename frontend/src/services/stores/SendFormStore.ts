@@ -5,10 +5,14 @@ import { SendData } from '../../types/interfaces';
 import { FileUtils } from '../../utils/FileUtils';
 import { ContentSanitizer } from '../../utils/ContentSanitizer';
 import { IdResolver } from '../../utils/IdResolver';
+import SocketStore from './SocketStore';
+import UserStore from './UserStore';
 
-// Импортируем типы сторов
-import type SocketStore from './SocketStore';
-import type UserStore from './UserStore';
+/*
+  SendFormStore - хранилище для управления состоянием формы отправки сообщений.
+  Позволяет отправлять посты и комментарии, управлять файлами и изображениями,
+  а также обрабатывать капчу и сообщения об успехе/ошибке.
+*/
 
 class SendFormStore {
   text = "";
@@ -25,13 +29,18 @@ class SendFormStore {
   avatarUrl: string | null = null;
   avatarShape: 'circle' | 'square' = 'circle';
   captchaVerified = false;
+
+  // Связанные сторы
   private socketStore: SocketStore;
   private userStore: UserStore;
 
+  // Инициализация пользователя
   constructor(socketStore: SocketStore, userStore: UserStore) {
     this.socketStore = socketStore;
     this.userStore = userStore;
+
     makeObservable(this, {
+      //Обсервируемые свойства
       text: observable,
       imagePreview: observable,
       selectedFile: observable,
@@ -44,6 +53,8 @@ class SendFormStore {
       avatarUrl: observable,
       avatarShape: observable,
       captchaVerified: observable,
+
+      //Екшн методы
       setText: action,
       setImagePreview: action,
       setSelectedFile: action,
@@ -51,6 +62,8 @@ class SendFormStore {
       setCaptchaVisible: action,
       setSuccess: action,
       setError: action,
+      setSuccessMessage: action,
+      setErrorMessage: action,
       setLoading: action,
       setDragActive: action,
       resetForm: action,
@@ -61,102 +74,114 @@ class SendFormStore {
       initializeUser: action,
       setCaptchaVerified: action,
     });
-      this.setupUserListener();
+
+    // Инициализируем пользователя из userStore
+    this.setupUserListener();
 
   }
-private setupUserListener() {
-  // Слушаем изменения в userStore
-  if (this.userStore && this.userStore.user) {
-    // Реагируем на изменения пользователя в userStore
-    const updateFromUserStore = () => {
-      if (this.userStore.user) {
-        this.initializeUser(
-          this.userStore.user.id,
-          this.userStore.user.userName,
-          this.userStore.user.avatarUrl ?? undefined,
-          this.userStore.user.avatarShape
-        );
+
+  /*
+    Инициализация пользователя из userStore.
+    Слушает изменения пользователя и обновляет данные в SendFormStore.
+  */
+  private setupUserListener() {
+    // Слушаем изменения в userStore
+    if (this.userStore && this.userStore.user) {
+      // Реагируем на изменения пользователя в userStore
+      const updateFromUserStore = () => {
+        if (this.userStore.user) {
+          this.initializeUser(
+            this.userStore.user.id,
+            this.userStore.user.userName,
+            this.userStore.user.avatarUrl ?? undefined,
+            this.userStore.user.avatarShape
+          );
+        }
+      };
+
+      // Вызываем сразу для инициализации
+      updateFromUserStore();
+
+      // Автоматически обновляем при изменении пользователя
+      if (this.socketStore.users) {
+        this.socketStore.users.on('avatarUploaded', (response: {
+          success: boolean;
+          user?: {
+            id: string;
+            userName: string;
+            avatarUrl?: string;
+            avatarShape?: string;
+          };
+          avatarUrl?: string;
+          avatarShape?: string;
+        }) => {
+          console.log('[SendFormStore] Avatar updated event received:', response);
+
+          if (response.success && response.user && this.userStore.user) {
+            // Обновляем данные формы из события
+            this.initializeUser(
+              response.user.id,
+              response.user.userName,
+              response.user.avatarUrl ?? response.avatarUrl,
+              (response.user.avatarShape ?? response.avatarShape) as 'circle' | 'square'
+            );
+          }
+        });
+
+        // Также слушаем обновления формы аватара
+        this.socketStore.users.on('avatarShapeUpdated', (response: {
+          success: boolean;
+          user?: {
+            id: string;
+            userName: string;
+            avatarUrl?: string;
+            avatarShape?: string;
+          };
+        }) => {
+          console.log('[SendFormStore] Avatar shape updated event received:', response);
+
+          // Если событие содержит пользователя, обновляем данные
+          if (response.success && response.user && this.userStore.user) {
+            this.initializeUser(
+              response.user.id,
+              response.user.userName,
+              response.user.avatarUrl,
+              response.user.avatarShape as 'circle' | 'square'
+            );
+          }
+        });
       }
-    };
-
-    // Вызываем сразу для инициализации
-    updateFromUserStore();
-
-    // Автоматически обновляем при изменении пользователя
-    if (this.socketStore.users) {
-      this.socketStore.users.on('avatarUploaded', (response: {
-        success: boolean;
-        user?: { 
-          id: string;
-          userName: string;
-          avatarUrl?: string; 
-          avatarShape?: string;
-        };
-        avatarUrl?: string;
-        avatarShape?: string;
-      }) => {
-        console.log('[SendFormStore] Avatar updated event received:', response);
-        
-        if (response.success && response.user && this.userStore.user) {
-          // Обновляем данные формы из события
-          this.initializeUser(
-            response.user.id,
-            response.user.userName,
-            response.user.avatarUrl ?? response.avatarUrl,
-            (response.user.avatarShape ?? response.avatarShape) as 'circle' | 'square'
-          );
-        }
-      });
-
-      // Также слушаем обновления формы аватара
-      this.socketStore.users.on('avatarShapeUpdated', (response: {
-        success: boolean;
-        user?: { 
-          id: string;
-          userName: string;
-          avatarUrl?: string; 
-          avatarShape?: string;
-        };
-      }) => {
-        console.log('[SendFormStore] Avatar shape updated event received:', response);
-        
-        if (response.success && response.user && this.userStore.user) {
-          this.initializeUser(
-            response.user.id,
-            response.user.userName,
-            response.user.avatarUrl,
-            response.user.avatarShape as 'circle' | 'square'
-          );
-        }
-      });
     }
   }
-}
 
+  /*
+    Инициализация пользователя с проверкой на необходимость обновления.
+    Обновляет данные пользователя только если они изменились.
+  */
+  initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
+    // Проверяем, нужно ли обновлять данные
+    const needsUpdate =
+      this.userId !== userId ||
+      this.userName !== userName ||
+      this.avatarUrl !== (avatarUrl || null) ||
+      this.avatarShape !== (avatarShape || 'circle');
 
-initializeUser = action((userId: string, userName: string, avatarUrl?: string, avatarShape?: 'circle' | 'square') => {
-  // Проверяем, нужно ли обновлять данные
-  const needsUpdate = 
-    this.userId !== userId ||
-    this.userName !== userName ||
-    this.avatarUrl !== (avatarUrl || null) ||
-    this.avatarShape !== (avatarShape || 'circle');
-  
-  if (!needsUpdate) {
-    console.log('[SendFormStore] No update needed, data is the same');
-    return; // Не обновляем, если данные не изменились
-  }
-  
-  console.log('[SendFormStore] Updating user data:', {
-    from: { userId: this.userId, userName: this.userName, avatarUrl: this.avatarUrl, avatarShape: this.avatarShape },
-    to: { userId, userName, avatarUrl, avatarShape }
+    if (!needsUpdate) {
+      console.log('[SendFormStore] No update needed, data is the same');
+      return; // Не обновляем, если данные не изменились
+    }
+
+    console.log('[SendFormStore] Updating user data:', {
+      from: { userId: this.userId, userName: this.userName, avatarUrl: this.avatarUrl, avatarShape: this.avatarShape },
+      to: { userId, userName, avatarUrl, avatarShape }
+    });
+    // Обновляем данные пользователя
+    this.userId = userId;
+    this.userName = userName;
+    this.avatarUrl = avatarUrl || null;
+    this.avatarShape = avatarShape || 'circle';
   });
-  
-  this.userId = userId;
-  this.userName = userName;
-  this.avatarUrl = avatarUrl || null;
-  this.avatarShape = avatarShape || 'circle';
-});
+
   // Сеттеры
   setCaptchaVerified = (value: boolean) => {
     this.captchaVerified = value;
@@ -194,6 +219,15 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     this.successMessage = "";
   });
 
+  // Методы для прямого управления сообщениями
+  setSuccessMessage = action((message: string) => {
+    this.successMessage = message;
+  });
+
+  setErrorMessage = action((message: string) => {
+    this.errorMessage = message;
+  });
+
   setLoading = action((value: boolean) => {
     this.loading = value;
   });
@@ -219,7 +253,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     this.dragActive = false;
   });
 
-  // Обработчики файлов - теперь используют вынесенные методы
+  // Обработчики файлов используют вынесенные методы
   handleImageUpload = action((file: File) => {
     if (!FileUtils.validateImageFile(file)) {
       return;
@@ -249,7 +283,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
 
   handleDragDrop = action((file: File) => {
     const fileType = FileUtils.getFileType(file);
-    
+
     if (fileType === 'image') {
       if (this.selectedImageFile) {
         message.warning('Replacing existing image');
@@ -267,9 +301,9 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
 
   // Методы отправки данных
   private shouldShowCaptcha(): boolean {
-    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') || 
-                    (this.userStore && this.userStore.user?.role === 'superadmin');
-    
+    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') ||
+      (this.userStore && this.userStore.user?.role === 'superadmin');
+
     return !isAdmin && !this.captchaVerified;
   }
 
@@ -278,7 +312,11 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     resolvedIds: { parentId?: string; postId?: string }
   ): SendData {
     const { sanitized } = ContentSanitizer.sanitizeContent(this.text);
-    
+    if (!sanitized || sanitized.trim() === "") {
+      logger.error("[SendFormStore] Invalid content: empty or not sanitized");
+      throw new Error("Invalid content");
+    }
+
     // Формируем базовые данные
     const baseData: SendData = {
       userId: this.userId,
@@ -303,6 +341,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
         baseData.postId = resolvedIds.postId;
       }
     }
+    logger.log("[SendFormStore] Prepared base data:", baseData);
 
     return baseData;
   }
@@ -313,7 +352,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     onSuccess?: () => void
   ): void {
     const socket = this.socketStore[type === "post" ? "posts" : "comments"];
-    
+
     // Добавляем роль пользователя для серверной проверки
     const dataWithRole = {
       ...baseData,
@@ -323,11 +362,11 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     if (!socket) {
       runInAction(() => {
         this.setLoading(false);
-        this.setError("Connection error. Please try again.");
+        this.setErrorMessage("Connection error. Please try again.");
       });
       return;
     }
-
+    // Отправляем данные через WebSocket  
     socket.emit(
       type === "post" ? "addPost" : "addComment",
       dataWithRole,
@@ -335,76 +374,97 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
         runInAction(() => {
           this.setLoading(false);
           if (ack.success) {
-            this.setSuccess("Your content has been posted successfully");
+            this.setSuccessMessage(ack.message || "Your content has been posted successfully!");
             onSuccess?.();
             this.resetForm();
-          } else if (ack.message) {
-            this.setError(ack.message);
+          } else {
+            this.setErrorMessage(ack.message || "Failed to post content");
           }
         });
       }
     );
+
+    // Также слушаем WebSocket события для дополнительной обратной связи
+    const eventName = type === "post" ? "postAdded" : "commentAdded";
+
+    const handleSuccess = (response: { success?: boolean; message?: string }) => {
+      console.log(`[SendFormStore] Received ${eventName} event:`, response);
+      if (response && response.success !== false) {
+        runInAction(() => {
+          // Показываем уведомление о добавлении в очередь
+          this.setSuccessMessage("Post added to queue and will be processed shortly!");
+        });
+      }
+    };
+
+    // Слушаем событие один раз
+    socket.once(eventName, handleSuccess);
+
+    // Убираем слушатель через таймаут для предотвращения утечек памяти
+    setTimeout(() => {
+      socket.off(eventName, handleSuccess);
+    }, 10000);
   }
 
+  /*
+    Обрабатывает вложения (изображение и файл) и возвращает данные для отправки.
+    Если есть изображение, оно конвертируется в base64.
+    Если есть файл, он также конвертируется в base64.
+    Возвращает объект SendData с вложениями.
+  */
   private async handleAttachments(baseData: SendData): Promise<SendData> {
-  if (this.selectedImageFile && this.selectedFile) {
-    // И изображение, и файл
-    const imageBase64 = this.imagePreview!.split(",")[1];
-    const fileBase64 = await FileUtils.readFileAsBase64(this.selectedFile);
-    
-    return {
-      ...baseData,
-      image: {
-        name: this.selectedImageFile.name,
-        type: this.selectedImageFile.type,
-        base64: imageBase64
-      },
-      file: {
-        name: this.selectedFile.name,
-        type: this.selectedFile.type,
-        base64: fileBase64
-      }
-    };
+    if (this.selectedImageFile && this.selectedFile) {
+      // И изображение, и файл
+      const imageBase64 = this.imagePreview!.split(",")[1];
+      const fileBase64 = await FileUtils.readFileAsBase64(this.selectedFile);
+
+      return {
+        ...baseData,
+        image: {
+          name: this.selectedImageFile.name,
+          type: this.selectedImageFile.type,
+          base64: imageBase64
+        },
+        file: {
+          name: this.selectedFile.name,
+          type: this.selectedFile.type,
+          base64: fileBase64
+        }
+      };
+    }
+    else if (this.selectedImageFile && this.imagePreview) {
+      // Только изображение
+      const base64 = this.imagePreview.split(",")[1];
+
+      return {
+        ...baseData,
+        image: {
+          name: this.selectedImageFile.name,
+          type: this.selectedImageFile.type,
+          base64: base64
+        }
+      };
+    }
+    else if (this.selectedFile) {
+      // Только файл
+      const base64 = await FileUtils.readFileAsBase64(this.selectedFile);
+
+      return {
+        ...baseData,
+        file: {
+          name: this.selectedFile.name,
+          type: this.selectedFile.type,
+          base64: base64
+        }
+      };
+    }
+
+    // Только текст
+    return baseData;
   }
-  else if (this.selectedImageFile && this.imagePreview) {
-    // Только изображение
-    const base64 = this.imagePreview.split(",")[1];
-    
-    return {
-      ...baseData,
-      image: {
-        name: this.selectedImageFile.name,
-        type: this.selectedImageFile.type,
-        base64: base64
-      }
-    };
-  }
-  else if (this.selectedFile) {
-    // Только файл
-    const base64 = await FileUtils.readFileAsBase64(this.selectedFile);
-    
-    return {
-      ...baseData,
-      file: {
-        name: this.selectedFile.name,
-        type: this.selectedFile.type,
-        base64: base64
-      }
-    };
-  }
-  
-  // Только текст
-  return baseData;
-}
 
   /**
    * Отправляет данные на сервер.
-   * @param type Тип отправляемых данных: "post" или "comment".
-   * @param parentIdOrPostId ID родительского комментария или поста.
-   * @param postIdForNestedComment ID поста для вложенного комментария.
-   * @param onSuccess Функция, вызываемая при успешной отправке.
-   * @param parentSlug Слаг родительского комментария или поста.
-   * @param postSlug Слаг поста для вложенного комментария.
    */
   async send(
     type: "post" | "comment",
@@ -464,22 +524,22 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
     });
 
     // 7. Сбрасываем флаг капчи, если это не админ
-    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') || 
-                 (this.userStore && this.userStore.user?.role === 'superadmin');
-                 
-  // Устанавливаем флаг в true для админов, для остальных сбрасываем
-  this.setCaptchaVerified(isAdmin);
+    const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') ||
+      (this.userStore && this.userStore.user?.role === 'superadmin');
+
+    // Устанавливаем флаг в true для админов, для остальных сбрасываем
+    this.setCaptchaVerified(isAdmin);
 
     try {
       // 8. Получаем ID из слагов
       const resolved = IdResolver.resolveIds(
-        type, 
-        parentIdOrPostId, 
-        postIdForNestedComment, 
-        parentSlug, 
+        type,
+        parentIdOrPostId,
+        postIdForNestedComment,
+        parentSlug,
         postSlug
       );
-      
+
       if (resolved.error) {
         runInAction(() => {
           this.setError(resolved.error || "An error occurred");
@@ -490,7 +550,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
 
       // 9. Подготавливаем данные для отправки
       const baseData = this.prepareBaseData(type, resolved);
-      
+
       // 10. Логируем отправляемые данные
       logger.log(`[SendFormStore] Sending ${type} with data:`, {
         parentId: baseData.parentId,
@@ -499,7 +559,7 @@ initializeUser = action((userId: string, userName: string, avatarUrl?: string, a
 
       // 11. Добавляем вложения
       const dataWithAttachments = await this.handleAttachments(baseData);
-      
+
       // 12. Отправляем данные
       this.emitData(type, dataWithAttachments, onSuccess);
     } catch (error) {

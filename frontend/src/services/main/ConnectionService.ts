@@ -1,6 +1,10 @@
-import { logger } from "../utils/Logger";
-import type SocketStore from "./stores/SocketStore";
+import { logger } from "../../utils/Logger";
+import type SocketStore from "../stores/SocketStore";
 
+/*
+  ConnectionService - сервис для мониторинга состояния соединений с сокетами
+  и автоматического восстановления при отключениях.
+*/
 interface ConnectionStats {
   users: boolean;
   posts: boolean;
@@ -9,22 +13,25 @@ interface ConnectionStats {
   lastCheck: number;
 }
 
+/*
+  Сервис для мониторинга состояния соединений с сокетами.
+  - Проверяет состояние соединений каждые 30 секунд
+  - Автоматически восстанавливает соединения при отключении
+  - Логирует состояние соединений
+*/
 class ConnectionService {
   private intervalId: NodeJS.Timeout | null = null;
   private socketStore: SocketStore | null = null;
   private lastStats: ConnectionStats | null = null;
-  private readonly CHECK_INTERVAL = 30000; // 30 seconds
-  private readonly RECONNECT_DELAY = 5000; // 5 seconds
+  private readonly CHECK_INTERVAL = 30000;
+  private readonly RECONNECT_DELAY = 5000;
 
   init(socketStore: SocketStore) {
     if (this.socketStore) {
-      logger.debug('[ConnectionService] Already initialized, skipping');
       return;
     }
     
     this.socketStore = socketStore;
-    logger.log('[ConnectionService] Starting connection monitoring');
-    
     // Initial check (silent)
     this.performSilentCheck();
     
@@ -45,7 +52,6 @@ class ConnectionService {
       this.lastStats.search !== current.search
     );
   }
-
 private checkConnections(): ConnectionStats {
   if (!this.socketStore) {
     return { users: false, posts: false, comments: false, search: false, lastCheck: Date.now() };
@@ -57,13 +63,13 @@ private checkConnections(): ConnectionStats {
   // Базовая проверка сокетов
   const stats = {
     users: this.socketStore.users?.connected === true,
-    posts: isAuthenticated ? this.socketStore.posts?.connected === true : true, // Для неавторизованных всегда true
-    comments: isAuthenticated ? this.socketStore.comments?.connected === true : true,
-    search: isAuthenticated ? this.socketStore.search?.connected === true : true,
+    posts: this.socketStore.posts?.connected === true,
+    comments: this.socketStore.comments?.connected === true,
+    search: this.socketStore.search?.connected === true,
     lastCheck: Date.now()
   };
 
-  // Логируем результаты
+  // Логируем результаты только для отладки
   if (isAuthenticated) {
     logger.log(`[ConnectionService] Connection status (auth): ${JSON.stringify(stats)}`);
   } else {
@@ -85,58 +91,81 @@ private handleDisconnections(stats: ConnectionStats) {
   if (!stats.users) disconnectedSockets.push('users');
   
   // Остальные сокеты проверяем ТОЛЬКО для авторизованных пользователей
+  // И ТОЛЬКО если они должны быть подключены (проверяем что сокеты вообще существуют)
   if (isAuthenticated) {
-    if (!stats.posts) disconnectedSockets.push('posts');
-    if (!stats.comments) disconnectedSockets.push('comments');
-    if (!stats.search) disconnectedSockets.push('search');
+    if (!stats.posts && this.socketStore.posts) disconnectedSockets.push('posts');
+    if (!stats.comments && this.socketStore.comments) disconnectedSockets.push('comments');
+    if (!stats.search && this.socketStore.search) disconnectedSockets.push('search');
   }
 
+  // Выводим предупреждение ТОЛЬКО если действительно есть проблемы
   if (disconnectedSockets.length > 0) {
-    // Не выводим предупреждение для неавторизованных пользователей о сокетах, которые им не нужны
-    if (isAuthenticated || disconnectedSockets.includes('users')) {
+    if (isAuthenticated && disconnectedSockets.length > 1) {
+      // Для авторизованных - показываем только если отключено больше одного сокета
       logger.warn(`[ConnectionService] Detected disconnected sockets: ${disconnectedSockets.join(', ')}`);
+      
+      // Планируем попытку восстановления только для критичных случаев
+      setTimeout(() => {
+        this.attemptReconnection(disconnectedSockets);
+      }, this.RECONNECT_DELAY);
+    } else if (!isAuthenticated && disconnectedSockets.includes('users')) {
+      // Для неавторизованных - только если отключен users сокет
+      logger.warn(`[ConnectionService] Users socket disconnected`);
+      
+      setTimeout(() => {
+        this.attemptReconnection(['users']);
+      }, this.RECONNECT_DELAY);
     }
-    
-    // Планируем попытку восстановления
-    setTimeout(() => {
-      this.attemptReconnection(disconnectedSockets);
-    }, this.RECONNECT_DELAY);
   }
 }
 
-  private attemptReconnection(disconnectedSockets: string[]) {
-    if (!this.socketStore) return;
+private attemptReconnection(disconnectedSockets: string[]) {
+  if (!this.socketStore) return;
 
-    logger.log(`[ConnectionService] Attempting to reconnect: ${disconnectedSockets.join(', ')}`);
+  // Проверяем, что проблема все еще актуальна
+  const currentStats = this.checkConnections();
+  const stillDisconnected = disconnectedSockets.filter(socketName => {
+    switch (socketName) {
+      case 'users': return !currentStats.users;
+      case 'posts': return !currentStats.posts;
+      case 'comments': return !currentStats.comments;
+      case 'search': return !currentStats.search;
+      default: return false;
+    }
+  });
 
-    // Only reconnect specific sockets that are disconnected
-    disconnectedSockets.forEach(socketName => {
-      try {
-        switch (socketName) {
-          case 'users':
-            this.socketStore!.reconnectUsersSocket();
-            break;
-          case 'posts':
-            if (this.socketStore!.posts && !this.socketStore!.posts.connected) {
-              this.socketStore!.posts.connect();
-            }
-            break;
-          case 'comments':
-            if (this.socketStore!.comments && !this.socketStore!.comments.connected) {
-              this.socketStore!.comments.connect();
-            }
-            break;
-          case 'search':
-            if (this.socketStore!.search && !this.socketStore!.search.connected) {
-              this.socketStore!.search.connect();
-            }
-            break;
-        }
-      } catch (error) {
-        logger.error(`[ConnectionService] Failed to reconnect ${socketName}:`, error);
-      }
-    });
+  if (stillDisconnected.length === 0) {
+    logger.log(`[ConnectionService] Sockets reconnected automatically, skipping manual reconnection`);
+    return;
   }
+
+  logger.log(`[ConnectionService] Attempting to reconnect: ${stillDisconnected.join(', ')}`);
+
+  const isAuthenticated = this.socketStore.isUserAuthenticated();
+  const authStore = this.socketStore.authStore;
+
+  stillDisconnected.forEach(socketName => {
+    try {
+      switch (socketName) {
+        case 'users':
+          this.socketStore!.reconnectUsersSocket();
+          break;
+        case 'posts':
+        case 'comments':  
+        case 'search':
+          // Для аутентифицированных сокетов - переинициализируем все сразу
+          if (isAuthenticated && authStore.token) {
+            logger.log(`[ConnectionService] Reinitializing all authenticated sockets`);
+            this.socketStore!.initializeAuthenticatedSockets(authStore.token);
+            return; // Выходим, чтобы не инициализировать каждый сокет отдельно
+          }
+          break;
+      }
+    } catch (error) {
+      logger.error(`[ConnectionService] Failed to reconnect ${socketName}:`, error);
+    }
+  });
+}
 
 private performSilentCheck() {
   if (!this.socketStore) return;

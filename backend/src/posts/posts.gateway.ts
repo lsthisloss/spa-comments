@@ -32,7 +32,7 @@ export class PostsGateway
 
   private readonly logger = new Logger(PostsGateway.name);
   private requestCooldowns = new Map<string, number>();
-  private readonly COOLDOWN_MS = 1000; // 1 секунда между запросами
+  private readonly COOLDOWN_MS = 1000;
   private userPostCounts = new Map<
     string,
     { count: number; resetTime: number }
@@ -64,7 +64,6 @@ export class PostsGateway
   handleConnection(client: Socket) {
     console.log(`Posts WS connected: ${client.id}`);
 
-    // ДЕТАЛЬНАЯ ОТЛАДКА
     console.log(`[WS] Query params:`, client.handshake.query);
     console.log(`[WS] Client data:`, client.data);
 
@@ -152,7 +151,7 @@ export class PostsGateway
         return { success: false, message: 'User not authenticated' };
       }
 
-      // ✅ ИСПРАВЛЕНИЕ: Маркируем пользователя ПЕРЕД проверками
+      // Маркируем пользователя ПЕРЕД проверками
       if (isTestDataGeneration) {
         this.testService.markAsTestUser(userId);
         console.log(`[ADD POST] ✅ MARKED TEST USER: ${userId}`);
@@ -425,7 +424,6 @@ export class PostsGateway
   // Очистка старых записей cooldown
   @SubscribeMessage('ping')
   handlePing() {
-    // Очищаем старые записи каждые 10 секунд
     const now = Date.now();
     for (const [key, timestamp] of this.requestCooldowns.entries()) {
       if (now - timestamp > 10000) {

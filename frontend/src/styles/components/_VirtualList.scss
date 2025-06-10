@@ -2,14 +2,15 @@
   &-container {
     width: 100%;
     position: relative;
-    
+     min-height: 0 !important; // Переопределяем любые внешние min-height
+
     // Основной контейнер для элементов
     &-items {
       width: 100%;
       position: relative;
     }
     
-    // Отдельный элемент в списке
+    // Optimize individual item rendering
     &-item {
       position: absolute;
       top: 0;
@@ -17,9 +18,14 @@
       width: 100%;
       height: auto;
       will-change: transform;
+      transform: translateZ(0);
       z-index: 2;
+      
+      // Smooth transform transition when not during scroll restoration
+      &:not(.restoring) {
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
     }
-    
     // Состояние пустого списка или загрузки
     &-empty-state {
       padding: 20px;
@@ -35,14 +41,6 @@
       margin-top: 10px;
       z-index: 1;
     }
-    
-    // Невидимый элемент для определения конца прокрутки
-    &-sentinel {
-      position: absolute;
-      bottom: 20px;
-      width: 100%;
-      height: 1px;
-      opacity: 0;
-    }
+
   }
 }

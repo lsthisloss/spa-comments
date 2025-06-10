@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { message } from 'antd';
 import { useUserStore } from '../../../hooks/useStore';
-import { generateTestData, crashTestQueue } from "../../../utils/test/test-data-generator";
+import { generateTestData, stopCrashTest } from "../../../utils/test/test-data-generator";
+import { highLoadTestManager, HighLoadTestConfig, HighLoadTestStats } from '../../../utils/test/high-load-test';
 
 interface TestDataPanelProps {
   isVisible: boolean;
@@ -18,43 +19,51 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
   const [usersCount, setUsersCount] = useState(5);
   const [postsPerUser, setPostsPerUser] = useState(20);
   const [generateWithMedia, setGenerateWithMedia] = useState(true);
-  const [crashTestExpanded, setCrashTestExpanded] = useState(false);
-  const [crashUsersCount, setCrashUsersCount] = useState(3);
-  const [crashPostsPerUser, setCrashPostsPerUser] = useState(50);
+  const [isHighLoadMode, setIsHighLoadMode] = useState(false);
+  
+  // High Load параметры
+  const [concurrentUsers, setConcurrentUsers] = useState(10);
+  const [highLoadStats, setHighLoadStats] = useState<HighLoadTestStats | null>(null);
+  
+  // Состояние выполнения
+  const [isTestRunning, setIsTestRunning] = useState(false);
 
   const userStore = useUserStore();
   const canExecuteTests = userStore.canExecuteDebugTests;
 
-  // Позиция рядом с родительской панелью
-  const [position, setPosition] = useState(() => ({
-    top: parentPosition.top,
-    left: parentPosition.left + 360 // Смещение вправо
-  }));
+  // Позиционирование панели
+  const [position, setPosition] = useState<{ top: number; left: number }>(() => {
+    try {
+      const saved = localStorage.getItem('testDataPanelPosition');
+      return saved 
+        ? JSON.parse(saved) 
+        : { top: Math.max(100, parentPosition.top), left: Math.max(100, parentPosition.left + 360) };
+    } catch {
+      return { top: Math.max(100, parentPosition.top), left: Math.max(100, parentPosition.left + 360) };
+    }
+  });
 
-  // Обновляем позицию при изменении родительской позиции
+  // Сохранение позиции в localStorage
   useEffect(() => {
-    const newLeft = parentPosition.left + 360;
-    const maxX = window.innerWidth - 340;
-    const boundedLeft = Math.min(newLeft, maxX);
-    
-    setPosition({
-      top: parentPosition.top,
-      left: boundedLeft
-    });
-  }, [parentPosition]);
+    try {
+      localStorage.setItem('testDataPanelPosition', JSON.stringify(position));
+    } catch (e) {
+      console.error('Failed to save position to localStorage', e);
+    }
+  }, [position]);
 
-  // Refs для перетаскивания
+  // Ссылки для перетаскивания
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const currentPositionRef = useRef(position);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Обновляем ref при изменении позиции
+  // Обновляем ref при изменении позиции через state
   useEffect(() => {
     currentPositionRef.current = position;
   }, [position]);
 
-  // Обработчики для перетаскивания (аналогично DebugInfo)
+  // Настройка перетаскивания
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return;
@@ -64,7 +73,7 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
         const newTop = e.clientY - dragStartRef.current.y;
 
         const maxX = window.innerWidth - (panelRef.current?.offsetWidth || 340);
-        const maxY = window.innerHeight - (panelRef.current?.offsetHeight || 600);
+        const maxY = window.innerHeight - (panelRef.current?.offsetHeight || 400);
 
         const boundedLeft = Math.max(10, Math.min(newLeft, maxX));
         const boundedTop = Math.max(10, Math.min(newTop, maxY));
@@ -114,70 +123,98 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
     }
   };
 
-  // Обработчики форм 
-  const handleGenerateTestData = () => {
-    if (usersCount < 1 || usersCount > 100) {
-      message.error('Количество пользователей должно быть от 1 до 100');
+  // Единый обработчик для запуска/остановки теста
+  const handleTestAction = () => {
+    if (isTestRunning) {
+      // Остановка теста
+      message.info({
+        content: `⚠️ Остановка теста...`,
+        duration: 2,
+      });
+      
+      if (isHighLoadMode) {
+        highLoadTestManager.stopTest();
+      } else {
+        stopCrashTest();
+      }
+      
+      setIsTestRunning(false);
+      return;
+    }
+
+    // Проверка валидности данных
+    if (usersCount < 1 || usersCount > (isHighLoadMode ? 100000 : 100)) {
+      message.error(`Количество пользователей должно быть от 1 до ${isHighLoadMode ? '100000' : '100'}`);
       return;
     }
 
     if (postsPerUser < 1 || postsPerUser > 1000) {
-      message.error('Количество постов на пользователя должно быть от 1 до 1000');
+      message.error(`Количество постов на пользователя должно быть от 1 до 1000`);
       return;
     }
 
     const totalMessages = usersCount * postsPerUser;
 
-    if (totalMessages > 100000) {
+    if (!isHighLoadMode && totalMessages > 100000) {
       message.warning({
-        content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100,000 и не имеет смысла для тестирования.`,
+        content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100000 и не имеет смысла для обычного тестирования.`,
         duration: 8,
       });
       return;
     }
 
-    if (totalMessages > 10000) {
+    setIsTestRunning(true);
+    setHighLoadStats(null);
+
+    if (isHighLoadMode) {
+      // Запуск High Load теста
       message.warning({
-        content: `Будет создано ${totalMessages.toLocaleString()} сообщений. Это может занять некоторое время.`,
-        duration: 4,
+        content: `🚀 HIGH LOAD: Запускается тест с ${usersCount} пользователями × ${postsPerUser} постов = ${totalMessages.toLocaleString()} сообщений!`,
+        duration: 5,
       });
+
+      // Настраиваем конфигурацию теста
+      const testConfig: Partial<HighLoadTestConfig> = {
+        totalUsers: usersCount,
+        postsPerUser,
+        withMedia: generateWithMedia,
+        concurrentUsers,
+        testMode: 'normal'
+      };
+
+      // Запускаем тест и обрабатываем результаты
+      highLoadTestManager.startTest(testConfig)
+        .then((stats) => {
+          setHighLoadStats(stats);
+          message.success(`High Load тест завершен: ${stats.users.created} пользователей, ${stats.posts.created + stats.posts.queued} постов`);
+        })
+        .catch((error) => {
+          message.error(`Ошибка при выполнении High Load теста: ${error.message}`);
+        })
+        .finally(() => {
+          setIsTestRunning(false);
+        });
+    } else {
+      // Запуск обычного теста
+      const mediaInfo = generateWithMedia ? 'с изображениями и файлами' : 'только текст';
+      
+      message.info({
+        content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений, ${mediaInfo})...`,
+        duration: 3,
+      });
+
+      generateTestData(usersCount, postsPerUser, true, generateWithMedia)
+        .finally(() => {
+          setIsTestRunning(false);
+        });
     }
-
-    const mediaInfo = generateWithMedia ? 'с изображениями и файлами' : 'только текст';
-    
-    message.info({
-      content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений, ${mediaInfo})...`,
-      duration: 3,
-    });
-
-    // передаем параметр generateWithMedia
-    generateTestData(usersCount, postsPerUser, true, generateWithMedia);
   };
 
-  const handleCrashTest = () => {
-    if (crashUsersCount < 1 || crashUsersCount > 20) {
-      message.error('Количество пользователей для краш-теста должно быть от 1 до 20');
-      return;
-    }
-
-    if (crashPostsPerUser < 10 || crashPostsPerUser > 200) {
-      message.error('Количество постов для краш-теста должно быть от 10 до 200');
-      return;
-    }
-
-    const totalMessages = crashUsersCount * crashPostsPerUser;
-
-    message.warning({
-      content: `💥 CRASH TEST: Будет создано ${totalMessages} постов одновременно для перегрузки очереди!`,
-      duration: 5,
-    });
-
-    crashTestQueue(crashUsersCount, crashPostsPerUser);
-  };
-
+  // Обработчики изменения полей
   const handleUsersCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value) || 0;
-    setUsersCount(Math.max(1, Math.min(100, value)));
+    const maxUsers = isHighLoadMode ? 100000 : 100;
+    setUsersCount(Math.max(1, Math.min(maxUsers, value)));
   };
 
   const handlePostsPerUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,17 +222,27 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
     setPostsPerUser(Math.max(1, Math.min(1000, value)));
   };
 
-  const handleCrashUsersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleConcurrentUsersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value) || 0;
-    setCrashUsersCount(Math.max(1, Math.min(20, value)));
+    setConcurrentUsers(Math.max(1, Math.min(50, value)));
   };
 
-  const handleCrashPostsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    setCrashPostsPerUser(Math.max(10, Math.min(200, value)));
-  };
-
+  // Если панель не видима, не рендерим ее
   if (!isVisible) return null;
+
+  // Расчет общего количества сообщений
+  const totalMessages = usersCount * postsPerUser;
+
+  // Получаем границы проверки в зависимости от режима
+  const maxUsers = isHighLoadMode ? 100000 : 100;
+
+  // Проверка валидности данных для кнопки
+  const isDataValid = 
+    usersCount >= 1 && 
+    usersCount <= maxUsers && 
+    postsPerUser >= 1 && 
+    postsPerUser <= 1000 &&
+    (!isHighLoadMode || (concurrentUsers >= 1 && concurrentUsers <= 50));
 
   return (
     <div
@@ -205,19 +252,17 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
         position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
-        zIndex: 10001, // Выше основной панели
-        touchAction: 'none'
+        zIndex: 10001
       }}
     >
       {/* Header */}
       <div
         className="test-data-panel__header"
-        style={{ cursor: 'grab' }}
         onMouseDown={handleMouseDown}
       >
         <div className="test-data-panel__title-container">
-          <span className="test-data-panel__emoji">🧪</span>
-          <span className="test-data-panel__title">TEST DATA</span>
+          <span className="test-data-panel__emoji">{isHighLoadMode ? '🚀' : '🧪'}</span>
+          <span className="test-data-panel__title">TEST DATA GENERATOR</span>
         </div>
 
         <div className="test-data-panel__controls">
@@ -235,138 +280,163 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
       <div className="test-data-panel__content">
         {canExecuteTests ? (
           <>
-            <div className="form-group">
-              <label htmlFor="testUsersCount">Users (1-100):</label>
-              <input
-                id="testUsersCount"
-                type="number"
-                value={usersCount}
-                onChange={handleUsersCountChange}
-                min={1}
-                max={100}
-                className={usersCount < 1 || usersCount > 100 ? 'error' : ''}
-              />
-              {(usersCount < 1 || usersCount > 100) && (
-                <div className="error-message">
-                  ⚠️ Должно быть от 1 до 100
-                </div>
-              )}
+            {/* Переключатель режимов */}
+            <div className="test-data-panel__mode-selector">
+              <button 
+                className={`mode-button ${!isHighLoadMode ? 'active' : ''}`}
+                onClick={() => setIsHighLoadMode(false)}
+                disabled={isTestRunning}
+              >
+                🧪 Regular Mode
+              </button>
+              <button 
+                className={`mode-button ${isHighLoadMode ? 'active' : ''}`}
+                onClick={() => setIsHighLoadMode(true)}
+                disabled={isTestRunning}
+              >
+                🚀 High Load Mode
+              </button>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="testPostsPerUser">Posts per User (1-1000):</label>
-              <input
-                id="testPostsPerUser"
-                type="number"
-                value={postsPerUser}
-                onChange={handlePostsPerUserChange}
-                min={1}
-                max={1000}
-                className={postsPerUser < 1 || postsPerUser > 1000 ? 'error' : ''}
-              />
-              {(postsPerUser < 1 || postsPerUser > 1000) && (
-                <div className="error-message">
-                  ⚠️ Должно быть от 1 до 1000
-                </div>
-              )}
-            </div>
-
-            <div className="checkbox-group">
-              <label className={`checkbox-label ${generateWithMedia ? 'active media-active' : ''}`}>
+            {/* Настройки генерации данных */}
+            <div className="test-data-panel__settings">
+              {/* Настройка пользователей */}
+              <div className="form-group">
+                <label htmlFor="testUsersCount">
+                  Users ({isHighLoadMode ? '1-100000' : '1-100'}):
+                </label>
                 <input
-                  type="checkbox"
-                  checked={generateWithMedia}
-                  onChange={(e) => setGenerateWithMedia(e.target.checked)}
+                  id="testUsersCount"
+                  type="number"
+                  value={usersCount}
+                  onChange={handleUsersCountChange}
+                  min={1}
+                  max={maxUsers}
+                  className={usersCount < 1 || usersCount > maxUsers ? 'error' : ''}
+                  disabled={isTestRunning}
                 />
-                <div className="checkbox-content">
-                  <div className="checkbox-title">
-                    🖼️ Include images and files in posts
+                {(usersCount < 1 || usersCount > maxUsers) && (
+                  <div className="error-message">
+                    ⚠️ Должно быть от 1 до {maxUsers}
                   </div>
-                  <div className="checkbox-description">
-                    Adds visual content to test posts
-                  </div>
-                </div>
-              </label>
-            </div>
-
-
-            <div className="info-panel">
-              📊 Estimated: ~{generateWithMedia ? '30%' : '0%'} posts with images, ~{generateWithMedia ? '15%' : '0%'} with TXT files
-            </div>
-
-            <div className="total-counter">
-              📈 Total messages: <strong>{(usersCount * postsPerUser).toLocaleString()}</strong>
-            </div>
-
-            <button
-              onClick={handleGenerateTestData}
-              className={`generate-button ${
-                usersCount >= 1 && usersCount <= 100 && postsPerUser >= 1 && postsPerUser <= 1000
-                  ? 'enabled'
-                  : 'disabled'
-              }`}
-              disabled={usersCount < 1 || usersCount > 100 || postsPerUser < 1 || postsPerUser > 1000}
-            >
-              ✨ Generate Test Data
-            </button>
-
-            <div className="test-data-panel__crash-test">
-              <div className="crash-header">
-                <button
-                  className="crash-toggle"
-                  onClick={() => setCrashTestExpanded(v => !v)}
-                >
-                  💥 CRASH TEST QUEUE {crashTestExpanded ? '▲' : '▼'}
-                </button>
+                )}
               </div>
 
-              {crashTestExpanded && (
-                <>
-                  <div className="crash-form">
-                    <div className="form-group">
-                      <label htmlFor="testCrashUsersCount">Users (1-20):</label>
-                      <input
-                        id="testCrashUsersCount"
-                        type="number"
-                        value={crashUsersCount}
-                        onChange={handleCrashUsersChange}
-                        min={1}
-                        max={20}
-                        className={crashUsersCount < 1 || crashUsersCount > 20 ? 'error' : ''}
-                      />
+              {/* Настройка постов */}
+              <div className="form-group">
+                <label htmlFor="testPostsPerUser">
+                  Posts per User (1-1000):
+                </label>
+                <input
+                  id="testPostsPerUser"
+                  type="number"
+                  value={postsPerUser}
+                  onChange={handlePostsPerUserChange}
+                  min={1}
+                  max={1000}
+                  className={postsPerUser < 1 || postsPerUser > 1000 ? 'error' : ''}
+                  disabled={isTestRunning}
+                />
+                {(postsPerUser < 1 || postsPerUser > 1000) && (
+                  <div className="error-message">
+                    ⚠️ Должно быть от 1 до 1000
+                  </div>
+                )}
+              </div>
+
+              {/* Настройка одновременных пользователей для High Load */}
+              {isHighLoadMode && (
+                <div className="form-group">
+                  <label htmlFor="concurrentUsers">
+                    Concurrent Users (1-50):
+                  </label>
+                  <input
+                    id="concurrentUsers"
+                    type="number"
+                    value={concurrentUsers}
+                    onChange={handleConcurrentUsersChange}
+                    min={1}
+                    max={50}
+                    className={concurrentUsers < 1 || concurrentUsers > 50 ? 'error' : ''}
+                    disabled={isTestRunning}
+                  />
+                  {(concurrentUsers < 1 || concurrentUsers > 50) && (
+                    <div className="error-message">
+                      ⚠️ Должно быть от 1 до 50
                     </div>
+                  )}
+                </div>
+              )}
 
-                    <div className="form-group">
-                      <label htmlFor="testCrashPostsPerUser">Posts per User (10-200):</label>
-                      <input
-                        id="testCrashPostsPerUser"
-                        type="number"
-                        value={crashPostsPerUser}
-                        onChange={handleCrashPostsChange}
-                        min={10}
-                        max={200}
-                        className={crashPostsPerUser < 10 || crashPostsPerUser > 200 ? 'error' : ''}
-                      />
+              {/* Чекбокс для медиа */}
+              <div className="checkbox-group">
+                <label className={`checkbox-label ${generateWithMedia ? 'active media-active' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={generateWithMedia}
+                    onChange={(e) => setGenerateWithMedia(e.target.checked)}
+                    disabled={isTestRunning}
+                  />
+                  <div className="checkbox-content">
+                    <div className="checkbox-title">
+                      🖼️ Include images and files in posts
+                    </div>
+                    <div className="checkbox-description">
+                      Adds visual content to test posts (~30% with images)
                     </div>
                   </div>
+                </label>
+              </div>
 
-                  <div className="crash-counter">
-                    💥 Total crash load: <span className="crash-total">{(crashUsersCount * crashPostsPerUser).toLocaleString()}</span> posts
+              {/* Счетчик сообщений */}
+              <div className="total-counter">
+                {isHighLoadMode ? '🚀' : '📈'} Total messages: 
+                <span>
+                  <strong> {totalMessages.toLocaleString()}</strong>
+                </span>
+              </div>
+
+              {/* Информация о High Load режиме */}
+              {isHighLoadMode && (
+                <div className="info-panel">
+                  High Load режим: одновременно создаётся до {concurrentUsers} пользователей, 
+                  каждый генерирует до {postsPerUser} постов.
+                </div>
+              )}
+
+              {/* Кнопка запуска/остановки */}
+              {isTestRunning ? (
+                <button
+                  onClick={handleTestAction}
+                  className="generate-button test-button--stop"
+                  style={{
+                    animation: 'pulse 1s infinite'
+                  }}
+                >
+                  ⚠️ STOP TEST
+                </button>
+              ) : (
+                <button
+                  onClick={handleTestAction}
+                  className={`generate-button ${isDataValid ? 'enabled' : 'disabled'}`}
+                  disabled={!isDataValid}
+                >
+                  {isHighLoadMode ? '🚀 START HIGH LOAD TEST' : '✨ GENERATE TEST DATA'}
+                </button>
+              )}
+
+              {/* Отображение статистики High Load теста */}
+              {isHighLoadMode && highLoadStats && (
+                <div className="high-load-stats">
+                  <h4>Результаты теста:</h4>
+                  <div className="stats-grid">
+                    <div>Время: {highLoadStats.durationMs ? (highLoadStats.durationMs / 1000).toFixed(2) + "s" : "N/A"}</div>
+                    <div>Пользователи: {highLoadStats.users.created}/{highLoadStats.users.total}</div>
+                    <div>Посты: {highLoadStats.posts.created + highLoadStats.posts.queued}/{highLoadStats.posts.total}</div>
+                    <div>В очереди: {highLoadStats.posts.queued}</div>
+                    <div>Ошибки: {highLoadStats.posts.failed}</div>
                   </div>
-
-                  <div className="rate-limit-info">
-                    Rate limit: 10/min per user → {Math.max(0, crashPostsPerUser - 10)} posts will be queued per user
-                  </div>
-
-                  <button
-                    onClick={handleCrashTest}
-                    className="crash-button"
-                    disabled={crashUsersCount < 1 || crashUsersCount > 20 || crashPostsPerUser < 10 || crashPostsPerUser > 200}
-                  >
-                    💥 START CRASH TEST
-                  </button>
-
-                </>
+                </div>
               )}
             </div>
           </>
@@ -377,14 +447,12 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
               <span className="title">ACCESS RESTRICTED</span>
             </div>
             <div className="restricted-message">
-              Test data generation and crash testing are limited to administrators only
-            </div>
-            <div className="restricted-contact">
-              Contact your system administrator for access
+              Test data generation is limited to system administrators only
             </div>
           </div>
         )}
       </div>
+
     </div>
   );
 });

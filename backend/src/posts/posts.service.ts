@@ -91,7 +91,7 @@ export class PostsService {
         return null;
       }
 
-      // Обновляем только не-пустые поля
+      // Обновляем
       const updateData: Partial<Post> = {};
 
       if (files.fileUrl) updateData.fileUrl = files.fileUrl;
@@ -596,9 +596,7 @@ export class PostsService {
       return null;
     }
   }
-  /**
-   * Обновить счетчик комментариев в посте
-   */
+
   async updateCommentCount(postId: string): Promise<number> {
     try {
       // Only count top-level comments (explicitly check for null parentId)

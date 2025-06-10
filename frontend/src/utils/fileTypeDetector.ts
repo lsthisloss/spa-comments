@@ -33,7 +33,7 @@ export function analyzeFile(fileType?: string, fileName?: string): FileInfo {
   if (isImage) category = 'image';
   else if (isText || isPdf) category = 'document';
   else if (isArchive) category = 'archive';
-  else category = 'text'; // Default for text files
+  else category = 'text';
   
   return {
     isImage,

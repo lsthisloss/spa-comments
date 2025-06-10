@@ -1,6 +1,5 @@
 import React, { useState, useEffect, memo, useCallback, useRef, useMemo } from 'react';
 import { Dropdown, Typography, Avatar, Space, Card, Button, Spin, Empty } from 'antd';
-import { LikeOutlined, LikeFilled, MessageOutlined } from '@ant-design/icons';
 import { Comment } from '../../types/interfaces';
 import { getAvatarColor } from '../ui/particles/avatarColor';
 import { observer } from 'mobx-react-lite';
@@ -8,42 +7,53 @@ import { logger } from '../../utils/Logger';
 import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 import AdminBadge from '../ui/particles/AdminBadge';
 import { useCommentStore, usePostStore, useUserStore, } from '../../hooks/useStore';
-// Simplified comment preview component
-const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
+
+/*  
+  Компонент для отображения превью комментария в выпадающем списке.
+  Используется для быстрого просмотра комментариев к постам или ответам на комментарии.
+  Позволяет кликнуть по превью и перейти к полному комментарию.
+*/
+const CommentPreview = memo(({ comment, onClick }: {
   comment: Comment;
   onClick: (id: string) => void;
-  onLike: (commentId: string) => void;
-  isLiked: boolean;
 }) => {
-   const userStore = useUserStore();
- 
+
+  // Используем MobX для доступа к хранилищу пользователей
+  const userStore = useUserStore();
+
+  /*
+    Определяем аватар пользователя:
+    - Если есть avatarUrl, используем его
+    - Иначе берем первую букву имени пользователя или 'Anonymous'
+    - Определяем форму аватара (круглая или квадратная)
+  */
   const avatarLetter = (comment.user?.userName?.[0] || comment.userName?.[0] || '?').toUpperCase();
   const avatarUrl = comment.user?.avatarUrl;
   const avatarShape = comment.user?.avatarShape || 'circle';
+
+  // Определяем роль пользователя для отображения бейджа администратора
   const userRole = useMemo(() => {
-      // Сначала из comment.user
-      if (comment.user?.role) return comment.user.role;
-      
-      // Потом из кэша
-      if (comment.user?.id) {
-        const cachedUser = userStore.getCachedUser(comment.user.id);
-        if (cachedUser?.role) return cachedUser.role;
-      }
-      
-      return 'user';
-    }, [comment.user?.role, comment.user?.id, userStore]);
-  // Truncate content for preview
-  const content = comment.content.length > 60 
-    ? `${comment.content.substring(0, 60)}...` 
+    // Сначала из comment.user
+    if (comment.user?.role) return comment.user.role;
+
+    // Потом из кэша
+    if (comment.user?.id) {
+      const cachedUser = userStore.getCachedUser(comment.user.id);
+      if (cachedUser?.role) return cachedUser.role;
+    }
+
+    return 'user';
+  }, [comment.user?.role, comment.user?.id, userStore]);
+
+  // Truncate 
+  const content = comment.content.length > 60
+    ? `${comment.content.substring(0, 60)}...`
     : comment.content;
-  // Event handlers with memoization
+
+  // Event хендлер для клика по превью комментария
   const handleClick = useCallback(() => onClick(comment.id), [comment.id, onClick]);
-  
-  const handleLikeClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onLike(comment.id);
-  }, [comment.id, onLike]);
-  
+
+  // Рендеринг компонента
   return (
     <div className="comment-preview-item" onClick={handleClick}>
       <Space size={8} align="start" className="comment-preview-space">
@@ -56,9 +66,9 @@ const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
             shape={avatarShape === 'square' ? 'square' : 'circle'}
           />
         ) : (
-          <Avatar 
-            size="small" 
-            style={{ 
+          <Avatar
+            size="small"
+            style={{
               backgroundColor: getAvatarColor(avatarLetter),
               borderRadius: avatarShape === 'square' ? '4px' : '50%'
             }}
@@ -67,36 +77,23 @@ const CommentPreview = memo(({ comment, onClick, onLike, isLiked }: {
             {avatarLetter}
           </Avatar>
         )}
-        
+
         {/* Content */}
-               <div className="comment-preview-content">
+        <div className="comment-preview-content">
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
             <Typography.Text strong className="comment-preview-username">
               {comment.user?.userName || comment.userName || 'Anonymous'}
             </Typography.Text>
             <AdminBadge role={userRole} className="preview-admin-badge" />
           </div>
-          <Typography.Paragraph 
-            ellipsis={{ rows: 2 }} 
+          <Typography.Paragraph
+            ellipsis={{ rows: 2 }}
             className="comment-preview-text"
           >
             <div dangerouslySetInnerHTML={{ __html: content }} />
           </Typography.Paragraph>
         </div>
-        
-        {/* Like button */}
-        <Button 
-          type="text"
-          size="small"
-          icon={isLiked 
-            ? <LikeFilled className="heart-icon liked" /> 
-            : <LikeOutlined className="heart-icon" />
-          }
-          onClick={handleLikeClick}
-          className="comment-preview-like-button"
-        >
-          <span>{comment.likes || comment.likedUserIds?.length || 0}</span>
-        </Button>
+
       </Space>
     </div>
   );
@@ -107,126 +104,128 @@ interface CommentPreviewDropdownProps {
   postSlug: string;
 }
 
+/*
+  Компонент для отображения выпадающего списка с превью комментариев к посту или ответам на комментарий.
+  Позволяет пользователю быстро просмотреть топ комментарии и перейти к полному списку.
+*/
 const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewDropdownProps) => {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isMountedRef = useRef(true);
-  const userStore = useUserStore();
   const postStore = usePostStore();
   const commentStore = useCommentStore();
-  const userId = userStore.user?.id;
   const { navigateToEntity } = useNavigationHelper();
-  
-  // Component lifecycle management
+
+  // Лайфхук для отслеживания монтирования компонента
+  // Используем useRef для хранения состояния монтирования
   useEffect(() => {
     isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
-  
-  // Reset state when slug changes
+
+  // Сброс состояния при смене postSlug
   useEffect(() => {
     setHasLoaded(false);
     setLoading(false);
   }, [postSlug]);
-  
-  // Reactive data retrieval
+
+  // Получаем пост или комментарий по слагу
   const post = postStore.getPostBySlug(postSlug);
   const comment = !post ? commentStore.getCommentBySlug(postSlug, false) : null;
-  
-  // Determine entity type and get comments
+
+  // Детерминируем тип сущности (пост или комментарий)
   const entityType = post ? 'post' : (comment ? 'comment' : null);
   const entity = post || comment;
-  const comments = entityType === 'post' && post 
-    ? commentStore.getComments(post.id)
-    : (entityType === 'comment' && comment ? commentStore.getReplies(comment.id) : []);
-  
-  // Top comments (sorted by likes)
-  const topComments = comments.length > 0 
-    ? [...comments].sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 3)
-    : [];
-  
-  // Check if user liked a comment
-  const isCommentLiked = useCallback((comment: Comment): boolean => {
-    return userId ? (comment.likedUserIds?.includes(userId) ?? false) : false;
-  }, [userId]);
-  
-  // Toggle like on a comment
-  const handleLike = useCallback((commentId: string) => {
-    if (!userId || !isMountedRef.current) return;
-    commentStore.toggleLike(commentId, userId);
-  }, [userId, commentStore]);
-  
-  // Load comments when dropdown opens
+
+  // Обьявляем функцию для навигации к сущности
+  const comments = useMemo(() => {
+    if (!entity || !hasLoaded) return []; // Возвращаем пустой массив если не загружали
+
+    return entityType === 'post' && post
+      ? commentStore.getComments(post.id)
+      : (entityType === 'comment' && comment ? commentStore.getReplies(comment.id) : []);
+  }, [entityType, entity, post, comment, commentStore, hasLoaded]);
+
+  // Top comments (sorted by likes) - ТОЛЬКО если загружены
+  const topComments = useMemo(() => {
+    if (!hasLoaded || comments.length === 0) return [];
+
+    return [...comments]
+      .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+      .slice(0, 3);
+  }, [comments, hasLoaded]);
+
+
+  // Load comments ТОЛЬКО при открытии dropdown
   const loadCommentsOnOpen = useCallback(async () => {
     if (!isMountedRef.current || hasLoaded || loading || !entity) return;
-    
+
     setLoading(true);
-    
+
     try {
-      await commentStore.loadCommentsBySlug(
-        postSlug, 
-        10, 
-        1, 
-        undefined, 
-        entityType === 'comment'
-      );
-      
-      if (isMountedRef.current) {
-        setHasLoaded(true);
+      if (entityType === 'post' && post) {
+        // Проверяем, загружены ли уже комментарии
+        const alreadyLoaded = commentStore.hasLoadedCommentsFor(post.id);
+        if (!alreadyLoaded) {
+          await commentStore.loadComments(post.id, 10, 1, 'likes', false);
+        }
+      } else if (entityType === 'comment' && comment) {
+        const alreadyLoaded = commentStore.hasLoadedRepliesFor(comment.id);
+        if (!alreadyLoaded) {
+          await commentStore.loadComments(comment.id, 10, 1, 'likes', true);
+        }
       }
+
+      setHasLoaded(true);
     } catch (error) {
-      logger.error(`[CommentPreviewDropdown] Error loading data:`, error);
+      logger.error('[CommentPreviewDropdown] Failed to load comments:', error);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
       }
     }
-  }, [postSlug, hasLoaded, loading, entityType, entity, commentStore]);
-  
-  // Handle dropdown visibility change
+  }, [hasLoaded, loading, entityType, entity, post, comment, commentStore]);
+
+  // Хендлер для изменения видимости dropdown
   const handleVisibleChange = useCallback((newVisible: boolean) => {
     if (!isMountedRef.current) return;
-    
+
     setVisible(newVisible);
-    
+
+    // ЗАГРУЖАЕМ комментарии ТОЛЬКО при открытии
     if (newVisible && !hasLoaded && !loading && entity) {
       loadCommentsOnOpen();
     }
   }, [hasLoaded, loading, loadCommentsOnOpen, entity]);
-  
-  // Handle click on comment to navigate
+
+  // Хендлер для клика по комментарию
   const handleCommentClick = useCallback((commentId: string) => {
     if (!isMountedRef.current) return;
-    
+
     const comment = commentStore.getItemById(commentId);
     if (!comment?.slug) return;
-    
+
     setVisible(false);
     navigateToEntity('comment', comment.slug);
   }, [navigateToEntity, commentStore]);
-  
+
   // Handle "View all" click
   const handleViewAll = useCallback(() => {
     if (!isMountedRef.current) return;
-    
+
     setVisible(false);
     navigateToEntity(entityType as 'post' | 'comment', postSlug);
   }, [navigateToEntity, entityType, postSlug]);
-  
-  // Don't render if no entity found
+
+  // Не показываем dropdown, если нет сущности
   if (!entity) return null;
-  
-  // Dropdown content
+
+  // Контент для выпадающего списка
   const dropdownContent = (
     <Card size="small" variant="borderless" className="comment-preview-card">
-      <div className="comment-preview-header">
-        <MessageOutlined className="comment-preview-icon" />
-        <Typography.Text type="secondary" className="comment-preview-title">
-          {entityType === 'post' ? 'Top comments' : 'Top replies'}
-        </Typography.Text>
-      </div>
-      
       {loading ? (
         <div className="comment-preview-loading">
           <Spin size="small" />
@@ -236,18 +235,18 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
         </div>
       ) : topComments.length > 0 ? (
         <>
-          {topComments.map(comment => (
-            <CommentPreview 
-              key={comment.id} 
-              comment={comment} 
-              onClick={handleCommentClick}
-              onLike={handleLike}
-              isLiked={isCommentLiked(comment)}
-            />
-          ))}
+          <div className="comment-preview-list">
+            {topComments.map((comment) => (
+              <CommentPreview
+                key={comment.id}
+                comment={comment}
+                onClick={handleCommentClick}
+              />
+            ))}
+          </div>
           <div className="comment-preview-footer">
-            <Button 
-              type="link" 
+            <Button
+              type="link"
               size="small"
               onClick={handleViewAll}
               className="comment-preview-view-all"
@@ -257,11 +256,14 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
           </div>
         </>
       ) : (
-        <Empty 
-          image={Empty.PRESENTED_IMAGE_SIMPLE} 
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={
             <Typography.Text className="comment-preview-text">
-              {entityType === 'post' ? 'No comments yet' : 'No replies yet'}
+              {hasLoaded ?
+                `${entityType === 'post' ? 'No comments yet' : 'No replies yet'}` :
+                'Comments not loaded'
+              }
             </Typography.Text>
           }
           className="comment-preview-empty"
@@ -270,20 +272,23 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
     </Card>
   );
 
+  // Jcновной рендеринг выпадающего списка с превью комментариев
   return (
-    <Dropdown 
+    <Dropdown
       open={visible}
       onOpenChange={handleVisibleChange}
-      trigger={['click']} 
+      trigger={['click']}
       popupRender={() => dropdownContent}
       placement="bottomRight"
       arrow
       destroyOnHidden={true}
+      overlayClassName="comment-preview-dropdown"
       overlayStyle={{ width: 'auto' }}
     >
       {children}
     </Dropdown>
   );
 });
+
 
 export default CommentPreviewDropdown;

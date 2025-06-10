@@ -7,6 +7,8 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { SessionService } from './session.service';
 
+import { RequestPatternGuard } from '../common/guards/request-pattern.guard';
+
 @Module({
   imports: [
     forwardRef(() => UsersModule),
@@ -16,7 +18,19 @@ import { SessionService } from './session.service';
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, SessionService],
-  exports: [AuthService, JwtModule, JwtAuthGuard, SessionService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    SessionService,
+    RequestPatternGuard,
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    JwtAuthGuard,
+    SessionService,
+    RequestPatternGuard,
+  ],
 })
 export class AuthModule {}

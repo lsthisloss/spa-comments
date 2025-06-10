@@ -12,6 +12,7 @@ function app_run_dev() {
         mv .env.example .env
     fi
 
+
     docker-compose -f docker-compose.dev.yml down
     
     echo -e "\n${YELLOW}Building development images...${NORMAL}\n"
@@ -24,6 +25,7 @@ function app_run_dev() {
 
     echo -e "\n${YELLOW}Starting development containers...${NORMAL}\n"
     docker-compose -f docker-compose.dev.yml up
+
 }
 
 function app_run_local() {
@@ -48,18 +50,176 @@ function app_run_local() {
     fi
     docker-compose -f docker-compose.dev.yml up
 }
+function app_clean_orphans() {
+    echo -e "\n${YELLOW}Cleaning orphan containers...${NORMAL}\n"
+    
+    echo -e "${CYAN}Stopping all services...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+    
+    echo -e "${CYAN}Removing orphan containers...${NORMAL}"
+    docker container prune -f
+    
+    echo -e "${CYAN}Removing unused networks...${NORMAL}"
+    docker network prune -f
+    
+    echo -e "${GREEN}✅ Orphan containers cleaned!${NORMAL}"
+    docker ps -a
+}
+
+
+function app_create_superadmin() {
+    echo -e "\n${YELLOW}Creating superadmin user...${NORMAL}\n"
+    
+    # Определяем файл композера и .env в зависимости от окружения
+    local COMPOSE_FILE="docker-compose.dev.yml"
+    local ENV_FILE=".env"
+    
+    if [ "$1" = "prod" ]; then
+        COMPOSE_FILE="docker-compose.prod.yml"
+        ENV_FILE=".env.prod"
+        echo -e "${CYAN}Using production environment${NORMAL}"
+        
+        # Используем .env.prod для production
+        if [ -f "$ENV_FILE" ]; then
+            echo -e "${CYAN}Loading production environment variables${NORMAL}"
+            export $(cat $ENV_FILE | grep -v '^#' | xargs)
+        fi
+    else
+        echo -e "${CYAN}Using development environment${NORMAL}"
+        
+        # Используем стандартный .env для dev
+        if [ -f "$ENV_FILE" ]; then
+            echo -e "${CYAN}Loading development environment variables${NORMAL}"
+            export $(cat $ENV_FILE | grep -v '^#' | xargs)
+        fi
+    fi
+    
+    # Проверяем, что backend контейнер запущен
+    local BACKEND_CONTAINER=$(docker-compose -f $COMPOSE_FILE ps -q backend)
+    
+    if [ -z "$BACKEND_CONTAINER" ] || ! docker ps --format "table {{.Names}}" | grep -q "backend"; then
+        echo -e "${YELLOW}Backend container not running. Starting required services...${NORMAL}"
+        
+        # Запускаем только необходимые сервисы
+        docker-compose -f $COMPOSE_FILE up -d postgres rabbitmq elasticsearch backend
+        
+        # Ждем готовности сервисов
+        echo -e "${CYAN}Waiting for services to be ready...${NORMAL}"
+        sleep 15
+        
+        # Проверяем статус
+        docker-compose -f $COMPOSE_FILE ps
+    else
+        echo -e "${GREEN}Backend container is already running${NORMAL}"
+    fi
+    
+    # Выполняем команду в уже запущенном контейнере
+    echo -e "${CYAN}🔧 Running superadmin script in existing container...${NORMAL}"
+    
+    if [ "$1" = "prod" ]; then
+        docker-compose -f $COMPOSE_FILE exec backend npm run create-superadmin
+    else
+        docker-compose -f $COMPOSE_FILE exec backend npm run create-superadmin
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ SuperAdmin created successfully!${NORMAL}"
+        return 0
+    fi
+    
+    # Fallback: если exec не сработал, пробуем run
+    echo -e "\n${YELLOW}Exec failed, trying with run (will create new container)...${NORMAL}"
+    
+    if [ "$1" = "prod" ]; then
+        docker-compose -f $COMPOSE_FILE --env-file=$ENV_FILE run --rm backend npm run create-superadmin
+    else
+        docker-compose -f $COMPOSE_FILE run --rm backend npm run create-superadmin
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ SuperAdmin created successfully!${NORMAL}"
+        return 0
+    fi
+    
+    # Вариант с кастомными данными
+    echo -e "\n${YELLOW}Script failed. Enter custom SuperAdmin details:${NORMAL}"
+    
+    if [ "$1" = "prod" ]; then
+        read -p "Email (default: admin@sk8.dev): " ADMIN_EMAIL
+        ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sk8.dev}
+        
+        read -p "Username (default: sk8): " ADMIN_USERNAME  
+        ADMIN_USERNAME=${ADMIN_USERNAME:-sk8}
+    else
+        read -p "Email (default: dev@example.com): " ADMIN_EMAIL
+        ADMIN_EMAIL=${ADMIN_EMAIL:-dev@example.com}
+        
+        read -p "Username (default: DevAdmin): " ADMIN_USERNAME  
+        ADMIN_USERNAME=${ADMIN_USERNAME:-DevAdmin}
+    fi
+    
+    read -s -p "Password (leave empty for auto-generated): " ADMIN_PASSWORD
+    echo
+    
+    # Пробуем с переменными окружения через exec
+    echo -e "${CYAN}Trying with custom environment variables in running container...${NORMAL}"
+    
+    local ENV_VARS=""
+    if [ ! -z "$ADMIN_EMAIL" ]; then
+        ENV_VARS="SUPERADMIN_EMAIL=\"$ADMIN_EMAIL\""
+    fi
+    if [ ! -z "$ADMIN_USERNAME" ]; then
+        ENV_VARS="$ENV_VARS SUPERADMIN_USERNAME=\"$ADMIN_USERNAME\""
+    fi
+    if [ ! -z "$ADMIN_PASSWORD" ]; then
+        ENV_VARS="$ENV_VARS SUPERADMIN_PASSWORD=\"$ADMIN_PASSWORD\""
+    fi
+    
+    if [ "$1" = "prod" ]; then
+        ENV_VARS="$ENV_VARS NODE_ENV=production"
+    else
+        ENV_VARS="$ENV_VARS NODE_ENV=development"
+    fi
+    
+    # Выполняем с переменными окружения в запущенном контейнере
+    docker-compose -f $COMPOSE_FILE exec -e SUPERADMIN_EMAIL="$ADMIN_EMAIL" -e SUPERADMIN_USERNAME="$ADMIN_USERNAME" -e SUPERADMIN_PASSWORD="$ADMIN_PASSWORD" backend npm run create-superadmin
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ SuperAdmin created with custom details!${NORMAL}"
+    else
+        echo -e "${RED}❌ Failed to create SuperAdmin. Check database connection.${NORMAL}"
+        echo -e "${CYAN}Try running: docker-compose -f $COMPOSE_FILE logs backend${NORMAL}"
+        echo -e "${CYAN}Or check database: docker-compose -f $COMPOSE_FILE logs postgres${NORMAL}"
+    fi
+}
 
 function app_run_production() {
-    echo -e "\n${YELLOW}Stopping app containers ...${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml down
-
-    echo -e "\n${YELLOW}Building images ...${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml build --no-cache
-
-    echo -e "\n${YELLOW}Starting app containers (production mode) ...${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml up --remove-orphans
-
-    echo -e "\n${GREEN}Production containers are up and running!${NORMAL}\n"
+    echo -e "\n${YELLOW}Starting production environment...${NORMAL}\n"
+    
+    # Используем production .env файл
+    if [ -f ".env.prod" ]; then
+        echo -e "${CYAN}Using production environment variables${NORMAL}"
+        export $(cat .env.prod | grep -v '^#' | xargs)
+    fi
+    
+    echo -e "${CYAN}Stopping any running containers...${NORMAL}"
+    docker-compose -f docker-compose.prod.yml down --remove-orphans
+    
+    echo -e "${CYAN}Building production images...${NORMAL}"
+    docker-compose -f docker-compose.prod.yml --env-file=.env.prod build --no-cache
+    
+    echo -e "${CYAN}Starting production containers...${NORMAL}"
+    docker-compose -f docker-compose.prod.yml --env-file=.env.prod up -d
+    
+    echo -e "${GREEN}✅ Production environment started!${NORMAL}"
+    echo -e "${CYAN}Backend: http://localhost:3001${NORMAL}"
+    echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
+    echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
+    
+    # Показываем статус
+    echo -e "\n${CYAN}Services status:${NORMAL}"
+    docker-compose -f docker-compose.prod.yml ps
 }
 
 function app_clean_all() {
@@ -379,65 +539,6 @@ function app_setup_swap() {
     free -h
 }
 
-function app_create_superadmin() {
-    echo -e "\n${YELLOW}Creating superadmin user...${NORMAL}\n"
-    
-    cd backend
-    
-    if [ ! -f "src/scripts/create-superadmin.ts" ]; then
-        echo -e "${RED}create-superadmin.ts script not found!${NORMAL}"
-        cd ..
-        exit 1
-    fi
-    
-    echo -e "${CYAN}Running superadmin creation script...${NORMAL}"
-    npm run create-superadmin:local
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Superadmin created successfully!${NORMAL}"
-    else
-        echo -e "${RED}❌ Failed to create superadmin${NORMAL}"
-    fi
-    
-    cd ..
-}
-
-function app_create_superadmin() {
-    echo -e "\n${YELLOW}Creating superadmin user...${NORMAL}\n"
-    
-    # Проверяем, что сервисы запущены
-    if ! docker-compose -f docker-compose.prod.yml ps postgres | grep -q "Up"; then
-        echo -e "${CYAN}Starting database first...${NORMAL}"
-        docker-compose -f docker-compose.prod.yml up -d postgres
-        echo -e "${CYAN}Waiting for database to be ready...${NORMAL}"
-        sleep 15
-    fi
-    
-    # Вариант 1: Запуск через Docker Compose
-    echo -e "${CYAN}🔧 Running superadmin script...${NORMAL}"
-    if docker-compose -f docker-compose.prod.yml run --rm backend npm run create-superadmin; then
-        echo -e "${GREEN}✅ SuperAdmin created successfully!${NORMAL}"
-        return 0
-    fi
-    
-    # Вариант 2: С кастомными данными
-    echo -e "\n${YELLOW}Enter custom SuperAdmin details:${NORMAL}"
-    
-    read -p "Email (default: admin@sk8.pw): " ADMIN_EMAIL
-    ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sk8.pw}
-    
-    read -p "Username (default: Admin): " ADMIN_USERNAME  
-    ADMIN_USERNAME=${ADMIN_USERNAME:-Admin}
-    
-    read -s -p "Password (leave empty for auto-generated): " ADMIN_PASSWORD
-    echo
-    
-    docker-compose -f docker-compose.prod.yml run --rm \
-        -e ADMIN_EMAIL="$ADMIN_EMAIL" \
-        -e ADMIN_USERNAME="$ADMIN_USERNAME" \
-        ${ADMIN_PASSWORD:+-e ADMIN_PASSWORD="$ADMIN_PASSWORD"} \
-        backend npm run create-superadmin
-}
 
 function app_fix_memory_issues() {
     echo -e "\n${YELLOW}Fixing memory issues...${NORMAL}\n"
@@ -478,46 +579,36 @@ function app_clean_uploads() {
         FILES_COUNT=$(find backend/uploads -type f 2>/dev/null | wc -l)
         echo -e "${CYAN}Total files: ${FILES_COUNT}${NORMAL}"
         
-        if [ $FILES_COUNT -gt 0 ]; then
+        if [ "$FILES_COUNT" -gt 0 ]; then
             echo -e "${YELLOW}⚠️  This will delete ALL uploaded files (avatars, images, documents)${NORMAL}"
             echo -e "${RED}⚠️  This action cannot be undone!${NORMAL}"
             echo -n -e "${CYAN}Are you sure? (y/N): ${NORMAL}"
             read -r CONFIRM
             
             if [[ $CONFIRM =~ ^[Yy]$ ]]; then
-                echo -e "${CYAN}Removing uploads directory...${NORMAL}"
+                echo -e "${CYAN}Removing all files in uploads directory...${NORMAL}"
                 
-                # Пробуем удалить без sudo
-                if rm -rf backend/uploads/* 2>/dev/null; then
+                # Удаляем все файлы и пустые папки через find (без лимита на количество файлов)
+                if find backend/uploads -type f -delete 2>/dev/null; then
+                    # Удаляем пустые папки, кроме самой uploads
+                    find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
                     echo -e "${GREEN}✅ Uploads cleaned successfully!${NORMAL}"
                 else
                     echo -e "${YELLOW}Need elevated permissions...${NORMAL}"
-                    # Пробуем с sudo
-                    if sudo rm -rf backend/uploads/* 2>/dev/null; then
+                    if sudo find backend/uploads -type f -delete 2>/dev/null; then
+                        sudo find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
                         echo -e "${GREEN}✅ Uploads cleaned successfully with sudo!${NORMAL}"
                     else
-                        echo -e "${RED}❌ Failed to clean uploads. Trying to fix permissions...${NORMAL}"
-                        
-                        # Даем права на папку и пробуем снова
-                        sudo chown -R $(whoami):$(whoami) backend/uploads/ 2>/dev/null || true
-                        sudo chmod -R 755 backend/uploads/ 2>/dev/null || true
-                        
-                        if rm -rf backend/uploads/* 2>/dev/null; then
-                            echo -e "${GREEN}✅ Uploads cleaned after fixing permissions!${NORMAL}"
-                        else
-                            echo -e "${RED}❌ Still failed. Manual cleanup required.${NORMAL}"
-                            echo -e "${CYAN}Try: sudo rm -rf backend/uploads/*${NORMAL}"
-                        fi
+                        echo -e "${RED}❌ Still failed. Manual cleanup required.${NORMAL}"
+                        echo -e "${CYAN}Try: sudo find backend/uploads -type f -delete${NORMAL}"
+                        return 1
                     fi
                 fi
                 
                 # Пересоздаем структуру папок
                 echo -e "${CYAN}Recreating uploads structure...${NORMAL}"
-                mkdir -p backend/uploads/avatars 2>/dev/null || sudo mkdir -p backend/uploads/avatars
-                mkdir -p backend/uploads/images 2>/dev/null || sudo mkdir -p backend/uploads/images
-                mkdir -p backend/uploads/files 2>/dev/null || sudo mkdir -p backend/uploads/files
+                mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files 2>/dev/null || sudo mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files
                 
-                # Даем правильные права
                 chmod 755 backend/uploads 2>/dev/null || sudo chmod 755 backend/uploads
                 chmod 755 backend/uploads/* 2>/dev/null || sudo chmod 755 backend/uploads/*
                 
@@ -526,7 +617,6 @@ function app_clean_uploads() {
                 # Показываем финальный размер
                 NEW_SIZE=$(du -sh backend/uploads 2>/dev/null | cut -f1)
                 echo -e "${CYAN}New uploads size: ${NEW_SIZE}${NORMAL}"
-                
             else
                 echo -e "${YELLOW}Operation cancelled.${NORMAL}"
             fi
@@ -539,6 +629,48 @@ function app_clean_uploads() {
         chmod 755 backend/uploads backend/uploads/*
         echo -e "${GREEN}✅ Uploads directory created!${NORMAL}"
     fi
+}
+
+
+# Добавляем dev функции
+function app_dev_start() {
+    echo -e "\n${YELLOW}Starting DEV environment...${NORMAL}\n"
+    
+    # Очищаем orphans
+    docker-compose -f docker-compose.dev.yml down --remove-orphans
+
+    
+
+    # Запускаем все сервисы
+    echo -e "${CYAN}Starting all development services...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml up -d
+    
+    echo -e "${GREEN}✅ Development environment started!${NORMAL}"
+    echo -e "${CYAN}Frontend: http://localhost:3000${NORMAL}"
+    echo -e "${CYAN}Backend: http://localhost:3001${NORMAL}"
+    echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
+    echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
+    
+    # Показываем статус
+    echo -e "\n${CYAN}Services status:${NORMAL}"
+    docker-compose -f docker-compose.dev.yml ps
+    
+}
+
+function app_dev_logs() {
+    echo -e "\n${YELLOW}Showing development logs...${NORMAL}\n"
+    docker-compose -f docker-compose.dev.yml logs -f --tail=100
+}
+
+function app_dev_stop() {
+    echo -e "\n${YELLOW}Stopping DEV environment...${NORMAL}\n"
+    docker-compose -f docker-compose.dev.yml down --remove-orphans
+    echo -e "${GREEN}✅ Development environment stopped!${NORMAL}"
+}
+
+function app_create_superadmin_prod() {
+    echo -e "\n${YELLOW}Creating superadmin user (PRODUCTION mode)...${NORMAL}\n"
+    app_create_superadmin "prod"
 }
 
 while getopts c:t: flag; do
@@ -564,9 +696,14 @@ if [ -z $choice ]; then
     echo "         7 - Build Frontend (Development)"
     echo "         8 - Build Frontend (Production)"
     echo "         9 - Setup Swap Space (for low memory servers)"
-    echo "         10 - Create Superadmin User"
+    echo "         10 - Create Superadmin User (DEV)"
     echo "         11 - Fix Memory Issues"
     echo "         12 - Clean Uploads Directory"
+    echo "         13 - Start DEV Environment"
+    echo "         14 - Show DEV Logs"
+    echo "         15 - Stop DEV Environment"
+    echo "         16 - Create Superadmin User (PROD)"
+    echo "         17 - Clean Orphan Containers"
     echo "  ----------------------------------------------------------------------  "
     echo -e "${NORMAL}"
     echo -e "${CYAN}Input action number > ${NORMAL} "
@@ -585,6 +722,11 @@ if [ -z $choice ]; then
     10) app_create_superadmin ;;
     11) app_fix_memory_issues ;;
     12) app_clean_uploads ;;
+    13) app_dev_start ;;
+    14) app_dev_logs ;;
+    15) app_dev_stop ;;
+    16) app_create_superadmin_prod ;;
+    17) app_clean_orphans ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
 fi

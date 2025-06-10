@@ -11,7 +11,17 @@
     "create-superadmin:local": "cd backend && npm run create-superadmin:local",
     "create-superadmin:docker": "cd backend && npm run create-superadmin:docker"
   },
-  "keywords": ["typescript", "nestjs", "react", "mobx", "socket.io", "postgresql"],
+  "keywords": [
+    "typescript",
+    "nestjs",
+    "react",
+    "mobx",
+    "socket.io",
+    "postgresql"
+  ],
   "author": "sk8",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13.10"
+  }
 }

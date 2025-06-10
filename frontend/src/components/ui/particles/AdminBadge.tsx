@@ -7,6 +7,11 @@ interface AdminBadgeProps {
   className?: string;
 }
 
+/*
+  Компонент для отображения бейджа администратора.
+  Показывает иконку и текст в зависимости от роли пользователя.
+  Используется для обозначения уровня доступа администратора.
+*/
 export const AdminBadge: React.FC<AdminBadgeProps> = ({ role, className = '' }) => {
   if (role === 'user') {
     return null;

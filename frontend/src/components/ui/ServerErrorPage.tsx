@@ -1,9 +1,14 @@
 import { Result, Button, Typography, Alert } from 'antd';
 import { observer } from 'mobx-react-lite';
-import { appInitializer } from '../services/AppInitializer';
+import { appInitializer } from '../../services/main/AppInitializer';
 
 const { Paragraph, Text } = Typography;
 
+/*
+  Компонент ServerErrorPage отображает страницу ошибки сервера.
+  Предоставляет кнопки для повторной попытки и обновления страницы.
+  Использует mobx для управления состоянием и отображения информации о попытках.
+*/
 const ServerErrorPage = observer(() => {
   const handleRetry = () => {
     appInitializer.manualRetry();

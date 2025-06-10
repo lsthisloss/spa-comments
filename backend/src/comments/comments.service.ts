@@ -269,7 +269,7 @@ export class CommentsService {
       console.error(`❌ Failed to index comment ${savedComment.id}:`, error);
     }
 
-    // ВАША ЛОГИКА: Увеличиваем счетчик комментариев в посте
+    // Увеличиваем счетчик комментариев в посте
     if (!savedComment.parentId) {
       // Только для комментариев верхнего уровня обновляем счетчик в посте
       const commentCount = await this.commentRepository.count({
@@ -336,7 +336,7 @@ export class CommentsService {
     // Удаляем комментарий
     await this.commentRepository.delete(commentId);
 
-    // ВАША ЛОГИКА: Правильно обновляем счетчики после удаления
+    // Правильно обновляем счетчики после удаления
     if (!comment.parentId) {
       // Если это комментарий к посту
       const commentCount = await this.commentRepository.count({

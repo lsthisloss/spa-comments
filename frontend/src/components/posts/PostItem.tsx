@@ -2,13 +2,17 @@ import { observer } from "mobx-react-lite";
 import { useRef, useCallback, memo } from "react";
 import FeedItem from '../common/FeedItem';
 import { Post } from '../../types/interfaces';
-import { useNavigate } from 'react-router-dom';
 import { logger } from "../../utils/Logger";
-import { usePostStore, useUserStore, useNavigationStore } from '../../hooks/useStore';
+import { usePostStore, useUserStore } from '../../hooks/useStore';
 
+/*
+  Компонент для отображения отдельного поста в ленте.
+  Используется в ленте постов и профиле пользователя.
+  При клике на пост вызывает onClick с его slug.
+*/
 interface PostItemProps {
   post: Post;
-  onClick?: (slug: string) => void;
+  onClick?: (postSlug: string) => void;
   onShowMore?: () => void;
   hideCommentButton?: boolean;
 }
@@ -21,10 +25,8 @@ const PostItem = memo(observer(function PostItem({
 }: PostItemProps) {
   const postStore = usePostStore();
   const userStore = useUserStore();
-  const navigationStore = useNavigationStore();
   
   const containerRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   
   const handleLikeClick = useCallback(() => {
     if (userStore.user?.id && postStore) {
@@ -32,24 +34,15 @@ const PostItem = memo(observer(function PostItem({
     }
   }, [post.id, userStore.user, postStore]);
 
+  // Обработчик клика по посту по слагу
   const handleClick = useCallback(() => {
     logger.log(`PostItem: handling click for post ${post.slug}`);
     
     if (onClick) {
       logger.log(`PostItem: calling provided onClick`);
       onClick(post.slug);
-      return;
     }
-    
-    logger.log(`PostItem: direct navigation to post ${post.slug}`);
-    const currentScrollPosition = window.scrollY;
-    navigationStore.pushNavigationPoint(
-      window.location.pathname + window.location.search,
-      { pageType: 'feed', feedType: 'main' },
-      currentScrollPosition
-    );
-    navigate(`/post/${post.slug}`);
-  }, [onClick, navigate, post.slug, navigationStore]);
+  }, [onClick, post.slug]);
 
   return (
     <div ref={containerRef} className="post-item">
@@ -64,7 +57,6 @@ const PostItem = memo(observer(function PostItem({
     </div>
   );
 }), (prevProps, nextProps) => {
-  // сравниваем все ключевые поля включая commentCount
   return (
     prevProps.post.id === nextProps.post.id &&
     prevProps.post.commentCount === nextProps.post.commentCount &&

@@ -6,27 +6,50 @@ import SocketStore from "./SocketStore";
 import PostStore from "./PostStore";
 import { IUserStore } from "../../types/stores";
 
+/*
+  UserStore - хранилище для управления пользователями в приложении.
+  Позволяет авторизовывать, регистрировать, обновлять и кэшировать пользователей.
+  Также управляет подписками на других пользователей и их настройками.
+*/
 class UserStore implements IUserStore {
-  user: User | null = null;
-  usersCache = observable.map<string, User>();
-  loadingUsers = observable.set<string>();
-  followingUserIds = observable.set<string>();
-  loginLoading = false;
-  
+  user: User | null = null; // Текущий пользователь, если авторизован
+  usersCache = observable.map<string, User>(); // Кэш пользователей по ID и slug
+  loadingUsers = observable.set<string>(); // Набор ID пользователей, которые в данный момент загружаются
+  followingUserIds = observable.set<string>(); // Набор ID пользователей, на которых подписан текущий пользователь
+  loginLoading = false; // Флаг загрузки при авторизации или регистрации
+
+  // Зависимости от других сторах
   private authStore: AuthStore;
   private socketStore: SocketStore;
-  private postStore: PostStore; // PostStore как зависимость
+  private postStore: PostStore;
 
+  /*
+    Конструктор UserStore
+    Принимает зависимости AuthStore, SocketStore и PostStore
+    Инициализирует наблюдаемые свойства и загружает пользователя из localStorage
+  */
   constructor(authStore: AuthStore, socketStore: SocketStore, postStore: PostStore) {
     this.authStore = authStore;
     this.socketStore = socketStore;
-    this.postStore = postStore; // Сохраняем ссылку
+    this.postStore = postStore;
 
+    // Делаем свойства наблюдаемыми и методы действия
+    // Это позволяет MobX отслеживать изменения и обновлять UI
     makeObservable(this, {
+
+      /*
+        Обсервируемые свойства, которые MobX будет отслеживать
+        Благодаря экшенам и computed свойствам, MobX будет автоматически обновлять UI при изменении этих свойств
+      */
       user: observable,
       usersCache: observable,
       loadingUsers: observable,
       loginLoading: observable,
+
+      /*
+        Набор действий, которые изменяют состояние UserStore
+        Эти методы должны вызываться для изменения состояния, чтобы MobX мог отслеживать изменения
+      */
       setUser: action,
       logout: action,
       login: action,
@@ -37,7 +60,12 @@ class UserStore implements IUserStore {
       updateUser: action,
       deleteUser: action,
       register: action,
-      // Computed свойства для ролей
+
+      /*
+        Computed свойства, которые MobX будет пересчитывать при изменении зависимостей
+        Эти свойства позволяют легко получать производные значения на основе наблюдаемых свойств
+        Например, isAuthenticated будет возвращать true, если пользователь авторизован
+      */
       isAuthenticated: computed,
       isAdmin: computed,
       isSuperAdmin: computed,
@@ -45,9 +73,12 @@ class UserStore implements IUserStore {
       canExecuteDebugTests: computed,
     });
 
+    // Инициализируем пользователя из localStorage, чтобы восстановить состояние при повторной загрузке
     this.loadUserFromStorage();
   }
 
+
+  //Проверяет, является ли текущий пользователь администратором
   validateUserRole(role: string | undefined): UserRole {
     if (role === 'admin' || role === 'superadmin') {
       return role;
@@ -156,7 +187,7 @@ class UserStore implements IUserStore {
       }
     }
   }
-
+  // Логаут пользователя и очищает состояние
   logout() {
     this.setUser(null);
     this.authStore.logout();
@@ -191,7 +222,11 @@ class UserStore implements IUserStore {
   }
 
 
-  // Получить пользователя по ID или slug с кэшированием
+  /*
+    Получает пользователя по ID или slug
+    Если пользователь уже загружен, возвращает из кэша
+    Если пользователь загружается, возвращает промис, который разрешится после загрузки
+  */
   async getUserById(userIdOrSlug: string): Promise<User | null> {
     // Проверяем кэш по всем возможным ключам
     let cachedUser = this.usersCache.get(userIdOrSlug);
@@ -245,8 +280,8 @@ class UserStore implements IUserStore {
           if (res?.success && res.user && res.user.id && res.user.userName) {
             // Создаем валидного пользователя
             const validatedUser: User = {
-              id: res.user.id, // Теперь точно string
-              userName: res.user.userName, // Теперь точно string
+              id: res.user.id,
+              userName: res.user.userName,
               email: res.user.email || '',
               role: this.validateUserRole(res.user.role), // Валидируем роль
               avatarUrl: res.user.avatarUrl || null,
@@ -280,30 +315,24 @@ class UserStore implements IUserStore {
   /**
    * Очищает текущего пользователя
    */
-clearUser = action(() => {
-  logger.log('[UserStore] Clearing current user data');
-  runInAction(() => {
-    this.user = null;
+  clearUser = action(() => {
+    logger.log('[UserStore] Clearing current user data');
+    runInAction(() => {
+      this.user = null;
+    });
+
+    try {
+      localStorage.removeItem('user');
+    } catch (e) {
+      logger.error('[UserStore] Failed to remove user from localStorage', e);
+    }
+
+    this.followingUserIds.clear();
+    logger.log('[UserStore] User data cleared successfully');
   });
-  
-  // Clear from localStorage
-  try {
-    localStorage.removeItem('user');
-  } catch (e) {
-    logger.error('[UserStore] Failed to remove user from localStorage', e);
-  }
-  
-  // Clear following data
-  this.followingUserIds.clear();
-  
-  
-  logger.log('[UserStore] User data cleared successfully');
-});
 
 
-  /**
-   * Получает пользователя из кэша по ID или slug
-   */
+  //Получает пользователя из кэша по ID или slug
   getCachedUser(identifier: string): User | null {
     return this.usersCache.get(identifier) || null;
   }
@@ -313,7 +342,10 @@ clearUser = action(() => {
     return this.loadingUsers.has(userIdOrSlug);
   }
 
-
+  /*
+    Подписывает текущего пользователя на другого пользователя
+    Возвращает промис, который разрешается при успешном выполнении
+  */
   async followUser(userId: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (!this.socketStore.users) {
@@ -346,6 +378,10 @@ clearUser = action(() => {
     });
   }
 
+  /*
+    Отменяет подписку на пользователя
+    Возвращает промис, который разрешается при успешном выполнении
+  */
   async unfollowUser(userId: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (!this.socketStore.users) {
@@ -378,7 +414,6 @@ clearUser = action(() => {
     });
   }
 
-
   // Проверить, подписан ли текущий пользователь на другого
   isFollowing(userId: string): boolean {
     if (!this.user) return false;
@@ -392,7 +427,10 @@ clearUser = action(() => {
   }
 
 
-
+  /*
+    Промоутит пользователя в роль Admin
+    Возвращает обновленного пользователя или null в случае ошибки
+  */
   async promoteToAdmin(userIdOrSlug: string): Promise<User | null> {
     return new Promise<User | null>((resolve, reject) => {
       if (!this.user?.id || !this.socketStore.users) {
@@ -460,6 +498,10 @@ clearUser = action(() => {
     });
   }
 
+  /*
+    Демотирует пользователя из роли Admin в обычного пользователя
+    Возвращает обновленного пользователя или null в случае ошибки
+  */
   async demoteFromAdmin(userIdOrSlug: string): Promise<User | null> {
     return new Promise<User | null>((resolve, reject) => {
       if (!this.user?.id || !this.socketStore.users) {
@@ -527,6 +569,10 @@ clearUser = action(() => {
     });
   }
 
+  /*
+    Авторизация пользователя
+    Возвращает объект с полями success, message и user (если авторизация успешна)
+  */
   async login(email: string, password: string): Promise<{
     success: boolean;
     message?: string;
@@ -581,7 +627,7 @@ clearUser = action(() => {
           this.setUser(validatedUser);
 
           // Устанавливаем токен в AuthStore с дополнительными данными
-         this.authStore.setAuth(response.token, validatedUser.id, validatedUser.userName);
+          this.authStore.setAuth(response.token, validatedUser.id, validatedUser.userName);
 
           // Инициализируем аутентифицированные сокеты
           try {
@@ -619,6 +665,10 @@ clearUser = action(() => {
     });
   }
 
+  /*
+    Регистрация нового пользователя
+    Возвращает объект с полями success, message и user (если регистрация успешна)
+  */
   async register(email: string, userName: string, password: string): Promise<{
     success: boolean;
     message?: string;
@@ -695,7 +745,10 @@ clearUser = action(() => {
     });
   }
 
-
+  /*
+    Обновление данных пользователя
+    Возвращает обновленного пользователя или ошибку
+  */
   async updateUser(updateData: { userName?: string; email?: string; password?: string }): Promise<User> {
     return new Promise<User>((resolve, reject) => {
       if (!this.user?.id || !this.socketStore.users) {
@@ -795,7 +848,7 @@ clearUser = action(() => {
     });
   }
 
-
+  // Обновление аватара пользователя в постах
   private updateUserAvatarInPosts(userId: string, avatarUrl?: string, avatarShape?: string) {
     setTimeout(() => {
       // Обновляем аватары в постах всех лент асинхронно
@@ -850,160 +903,153 @@ clearUser = action(() => {
     }, 0);
   }
 
+  // Обновление аватара пользователя
+  async updateAvatar(avatarData: {
+    type: 'upload' | 'initial',
+    value: string,
+    file?: File,
+    shape: 'circle' | 'square'
+  }): Promise<User | null> {
+    if (!this.user?.id || !this.socketStore.users) {
+      throw new Error("User not authenticated or socket not available");
+    }
 
-async updateAvatar(avatarData: {
-  type: 'upload' | 'initial',
-  value: string,
-  file?: File,
-  shape: 'circle' | 'square'
-}): Promise<User | null> {
-  if (!this.user?.id || !this.socketStore.users) {
-    throw new Error("User not authenticated or socket not available");
-  }
-
-  // Для initial или если нужно только обновить форму аватара
-  if (avatarData.type === 'initial' || (avatarData.type === 'upload' && !avatarData.file)) {
-    return new Promise<User | null>((resolve, reject) => {
-      if (!this.socketStore.users) {
-        throw new Error("Users socket not available");
-      }
-      this.socketStore.users.emit(
-        "updateAvatarShape",
-        { avatarShape: avatarData.shape },
-        (res: { success: boolean; user?: User; message?: string }) => {
-          if (res.success && res.user) {
-            const updatedUser: User = {
-              ...this.user!,
-              avatarUrl: avatarData.type === 'initial' ? undefined : this.user!.avatarUrl,
-              avatarShape: res.user ? res.user.avatarShape : this.user!.avatarShape
-            };
-
-            runInAction(() => {
-              this.setUser(updatedUser);
-              this.usersCache.set(updatedUser.id, updatedUser);
-            });
-
-            this.updateUserAvatarInPosts(
-              this.user!.id,
-              updatedUser.avatarUrl || undefined,
-              updatedUser.avatarShape
-            );
-
-            resolve(res.user);
-          } else {
-            reject(new Error(res.message || "Failed to update avatar shape"));
-          }
+    // Для initial или если нужно только обновить форму аватара
+    if (avatarData.type === 'initial' || (avatarData.type === 'upload' && !avatarData.file)) {
+      return new Promise<User | null>((resolve, reject) => {
+        if (!this.socketStore.users) {
+          throw new Error("Users socket not available");
         }
-      );
-    });
-  }
+        this.socketStore.users.emit(
+          "updateAvatarShape",
+          { avatarShape: avatarData.shape },
+          (res: { success: boolean; user?: User; message?: string }) => {
+            if (res.success && res.user) {
+              const updatedUser: User = {
+                ...this.user!,
+                avatarUrl: avatarData.type === 'initial' ? undefined : this.user!.avatarUrl,
+                avatarShape: res.user ? res.user.avatarShape : this.user!.avatarShape
+              };
 
-  // Для загрузки нового файла аватара
-  if (avatarData.type === 'upload' && avatarData.file) {
-    return new Promise<User | null>((resolve, reject) => {
-      if (avatarData.file) {
-        // обработчик события avatarUploaded ДО отправки
-        const handleAvatarUploaded = (response: {
-          success: boolean;
-          user?: User;
-          avatarUrl?: string;
-          avatarShape?: string;
-          message?: string;
-        }) => {
-          console.log('[UserStore] Avatar upload event received:', response);
-          
-          if (response.success && response.user) {
-            const updatedUser: User = {
-              ...this.user!,
-              avatarUrl: response.user.avatarUrl ?? response.avatarUrl ?? this.user!.avatarUrl,
-              avatarShape: response.user.avatarShape ?? response.avatarShape as 'circle' | 'square' ?? this.user!.avatarShape
-            };
+              runInAction(() => {
+                this.setUser(updatedUser);
+                this.usersCache.set(updatedUser.id, updatedUser);
+              });
 
-            runInAction(() => {
-              this.setUser(updatedUser);
-              this.usersCache.set(updatedUser.id, updatedUser);
-            });
+              this.updateUserAvatarInPosts(
+                this.user!.id,
+                updatedUser.avatarUrl || undefined,
+                updatedUser.avatarShape
+              );
 
-            this.updateUserAvatarInPosts(
-              this.user!.id,
-              updatedUser.avatarUrl || undefined,
-              updatedUser.avatarShape
-            );
-
-            // Убираем обработчик после использования
-            if (this.socketStore.users) {
-              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+              resolve(res.user);
+            } else {
+              reject(new Error(res.message || "Failed to update avatar shape"));
             }
-
-            resolve(response.user);
-          } else {
-            // Убираем обработчик при ошибке
-            if (this.socketStore.users) {
-              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
-            }
-            reject(new Error(response.message || "Failed to upload avatar"));
           }
-        };
+        );
+      });
+    }
 
-        // Устанавливаем обработчик
-        if (this.socketStore.users) {
-          this.socketStore.users.on('avatarUploaded', handleAvatarUploaded);
-        }
+    // Для загрузки нового файла аватара
+    if (avatarData.type === 'upload' && avatarData.file) {
+      return new Promise<User | null>((resolve, reject) => {
+        if (avatarData.file) {
+          // обработчик события avatarUploaded ДО отправки
+          const handleAvatarUploaded = (response: {
+            success: boolean;
+            user?: User;
+            avatarUrl?: string;
+            avatarShape?: string;
+            message?: string;
+          }) => {
+            console.log('[UserStore] Avatar upload event received:', response);
 
-        this.fileToBase64(avatarData.file)
-          .then(base64 => {
-            if (!this.socketStore.users) {
-              throw new Error("Users socket not available");
-            }
-            this.socketStore.users.emit(
-              "uploadAvatar",
-              {
-                file: {
-                  name: avatarData.file!.name,
-                  type: avatarData.file!.type,
-                  base64
-                },
-                avatarShape: avatarData.shape
-              },
-              (res: { success: boolean; user?: User; message?: string }) => {
-                console.log('[UserStore] Upload avatar callback:', res);
-                
-                // Callback может не содержать полных данных, основное обновление через событие
-                if (!res.success) {
-                  // Убираем обработчик при ошибке в callback
-                  if (this.socketStore.users) {
-                    this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
-                  }
-                  reject(new Error(res.message || "Failed to upload avatar"));
-                }
+            if (response.success && response.user) {
+              const updatedUser: User = {
+                ...this.user!,
+                avatarUrl: response.user.avatarUrl ?? response.avatarUrl ?? this.user!.avatarUrl,
+                avatarShape: response.user.avatarShape ?? response.avatarShape as 'circle' | 'square' ?? this.user!.avatarShape
+              };
+
+              runInAction(() => {
+                this.setUser(updatedUser);
+                this.usersCache.set(updatedUser.id, updatedUser);
+              });
+
+              this.updateUserAvatarInPosts(
+                this.user!.id,
+                updatedUser.avatarUrl || undefined,
+                updatedUser.avatarShape
+              );
+
+              // Убираем обработчик после использования
+              if (this.socketStore.users) {
+                this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
               }
-            );
-          })
-          .catch(error => {
-            // Убираем обработчик при ошибке конвертации
-            if (this.socketStore.users) {
-              this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+
+              resolve(response.user);
+            } else {
+              // Убираем обработчик при ошибке
+              if (this.socketStore.users) {
+                this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+              }
+              reject(new Error(response.message || "Failed to upload avatar"));
             }
-            reject(new Error(`Failed to process image: ${error.message}`));
-          });
-      }
-    });
+          };
+
+          // Устанавливаем обработчик
+          if (this.socketStore.users) {
+            this.socketStore.users.on('avatarUploaded', handleAvatarUploaded);
+          }
+
+          this.fileToBase64(avatarData.file)
+            .then(base64 => {
+              if (!this.socketStore.users) {
+                throw new Error("Users socket not available");
+              }
+              this.socketStore.users.emit(
+                "uploadAvatar",
+                {
+                  file: {
+                    name: avatarData.file!.name,
+                    type: avatarData.file!.type,
+                    base64
+                  },
+                  avatarShape: avatarData.shape
+                },
+                (res: { success: boolean; user?: User; message?: string }) => {
+                  console.log('[UserStore] Upload avatar callback:', res);
+
+                  // Callback может не содержать полных данных, основное обновление через событие
+                  if (!res.success) {
+                    // Убираем обработчик при ошибке в callback
+                    if (this.socketStore.users) {
+                      this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+                    }
+                    reject(new Error(res.message || "Failed to upload avatar"));
+                  }
+                }
+              );
+            })
+            .catch(error => {
+              // Убираем обработчик при ошибке конвертации
+              if (this.socketStore.users) {
+                this.socketStore.users.off('avatarUploaded', handleAvatarUploaded);
+              }
+              reject(new Error(`Failed to process image: ${error.message}`));
+            });
+        }
+      });
+    }
+
+    return Promise.reject(new Error("Invalid avatar data"));
   }
 
-  return Promise.reject(new Error("Invalid avatar data"));
-}
-
-
-  /**
-     * Проверяет, подписан ли текущий пользователь на указанного пользователя
-     */
   isFollowedByCurrentUser(userId: string): boolean {
     return this.followingUserIds.has(userId);
   }
 
-  /**
-   * Обновляет список подписок текущего пользователя
-   */
   updateFollowing(userIds: string[]) {
     runInAction(() => {
       this.followingUserIds.replace(userIds);
@@ -1024,7 +1070,6 @@ async updateAvatar(avatarData: {
       reader.onerror = error => reject(error);
     });
   }
-
 
   get isAdmin(): boolean {
     return this.user?.role === 'admin' || this.user?.role === 'superadmin';

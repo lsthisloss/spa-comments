@@ -1,13 +1,10 @@
 import { logger } from "../utils/Logger";
-import { stores } from '../services/stores';
+import { stores } from '../services/stores/stores';
 
 /**
  * Класс для работы с ID и slug постов/комментариев
  */
 export class IdResolver {
-  /**
-   * Преобразует slug в ID
-   */
   static resolveIds(
     type: "post" | "comment", 
     parentIdOrPostId?: string, 

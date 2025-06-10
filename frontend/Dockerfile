@@ -4,8 +4,8 @@
 FROM node:18-alpine AS development
 WORKDIR /app
 
-# Memory optimization
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+# Memory optimization - убираем ограничения для dev
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=development
 
 # Copy package files
@@ -27,7 +27,7 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Higher memory for build
-ENV NODE_OPTIONS="--max-old-space-size=1536"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Copy package files
 COPY package*.json ./
@@ -41,7 +41,7 @@ COPY . .
 # Build for production
 RUN npm run build
 
-# Production stage (nginx)
+# Production stage (nginx) - оставляем как есть
 FROM nginx:alpine AS production
 
 # Copy built app

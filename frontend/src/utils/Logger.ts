@@ -7,6 +7,13 @@ export enum LogLevel {
   VERBOSE = 4
 }
 
+/*
+  Логгер с поддержкой уровней логирования, дублирования и очистки логов
+  - Уровни логирования: ERROR, WARN, INFO, DEBUG, VERBOSE
+  - В продакшене только WARN и ERROR
+  - Дублирование сообщений ограничено 1 раз в 2 секунды
+  - Очистка старых логов каждые 100 записей
+*/
 class Logger {
   // Текущий уровень логирования (можно менять в runtime)
   private logLevel: LogLevel = process.env.NODE_ENV === 'production' 

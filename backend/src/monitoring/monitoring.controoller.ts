@@ -1,7 +1,7 @@
 import { Controller, Get, Post } from '@nestjs/common';
 import { QueueMonitorService } from './queue-monitor.service';
 
-@Controller('api/monitoring') // Изменил с 'monitoring' на 'api/monitoring'
+@Controller('api/monitoring')
 export class MonitoringController {
   constructor(private readonly queueMonitorService: QueueMonitorService) {}
 

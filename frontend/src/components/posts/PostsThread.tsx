@@ -1,334 +1,306 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
-import { useVirtualItems } from "../../hooks/useVirtualItems";
 import { usePostsFeed } from "../../hooks/useFeedItems";
 import { NewPostNotification } from "../ui/particles/NewPostNotification";
 import MemoizedPostItem from "../ui/optimization/MemoizedPostItem";
-import VirtualList, { VirtualListItem } from '../common/VirtualList';
+import VirtualList from '../common/VirtualList';
 import { Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
-import { usePostStore, useUserStore, useNavigationStore } from "../../hooks/useStore";
+import { usePostStore, useUserStore } from "../../hooks/useStore";
 import { FeedType } from "../../types/enums";
 import { useNavigationHelper } from "../../hooks/useNavigationHelper";
-import { useLocation } from "react-router-dom";
+import { reaction } from "mobx";
+
+/*
+  Компонент для отображения ленты постов.
+  Поддерживает разные типы лент: пользовательская, общая, подписки.
+  Реализует виртуальный скроллинг и загрузку новых постов.
+  Используем MobX для управления состоянием постов и пользователя.
+  Компонент автоматически обновляется при изменении данных в store.
+*/
 interface PostsFeedProps {
   activeTab: string;
   userId?: string;
+  forceTopScroll?: boolean;
 }
 
-// Then, inside the PostsThread component function, add:
-const PostsThread = observer(({ activeTab, userId: propsUserId }: PostsFeedProps) => {
-  const location = useLocation();
-  const [, setSocketError] = useState<string | null>(null);
+const PostsThread = observer(({ activeTab, userId: propsUserId, forceTopScroll }: PostsFeedProps) => {
+  // MobX stores
+  // Используем MobX для управления состоянием постов и пользователя
   const postStore = usePostStore();
   const userStore = useUserStore();
-  const navigationStore = useNavigationStore();
   const navigationHelper = useNavigationHelper();
-  const [preserveData, setPreserveData] = useState(location.state?.preserveFeeds === true);
+  // Получаем MobX store для навигации
   const actualUserId = propsUserId || userStore.user?.id;
-
-  const hasRestoredScrollRef = useRef(false);
+  // Если userId не передан, используем текущего пользователя из MobX store
   const stableUserId = useMemo(() => actualUserId, [actualUserId]);
+
+  /*
+    Референс для отслеживания состояния загрузки данных.
+    Используем useRef, чтобы избежать лишних перерисовок компонента.
+    Это позволяет нам сохранять состояние загрузки между рендерами без влияния на производительность.
+  */
   const isLoadingRef = useRef(false);
-  
-  // Определяем тип ленты и получаем состояние
-  const { feedType, feed } = useMemo(() => {
-    if (activeTab === "user") {
-      if (!actualUserId) {
-        logger.log(`[PostsThread] Warning: user tab requested but no userId provided`);
-        return {
-          feedType: "user" as FeedType,
-          feed: postStore.getFeed("feed")
-        };
-      }
 
-      return {
-        feedType: "user" as FeedType,
-        feed: postStore.getUserFeedState()
-      };
-    }
+  // Локальное состояние для React-рендеринга
+  const [localPosts, setLocalPosts] = useState<Post[]>([]);
 
-    const type: FeedType = activeTab === "all" ? "feed" : "following";
-    logger.log(`[PostsThread] Main feed requested, type: ${type}, activeTab: ${activeTab}`);
-    return {
-      feedType: type,
-      feed: postStore.getFeed(type)
-    };
-  }, [activeTab, actualUserId, postStore]);
-  
+  // Feed type selection
+  const feedType: FeedType = useMemo(() => {
+    if (activeTab === "user") return "user";
+    return activeTab === "all" ? "feed" : "following";
+  }, [activeTab]);
+
+  // Реактивная связь с MobX store
   useEffect(() => {
-    if (preserveData && feed.list.length > 0) {
-      logger.log(`[PostsThread] Clearing preserveData flag after successful restoration`);
-      setPreserveData(false);
-      // Also clear the browser state to prevent issues on refresh
-      window.history.replaceState(null, '', location.pathname + location.search);
+    // Начальное значение
+    if (activeTab === "user" && actualUserId) {
+      setLocalPosts(postStore.currentUserFeedList);
+    } else if (activeTab === "all") {
+      setLocalPosts(postStore.currentFeedList);
+    } else {
+      setLocalPosts(postStore.currentFollowingList);
     }
-  }, [preserveData, feed.list.length, location.pathname, location.search]);
 
-  // Переключение пользователя (только для user feed)
+    // Отслеживаем изменения в store через reaction
+    const disposer = reaction(
+      () => {
+        // Отслеживаем нужную коллекцию в зависимости от таба
+        if (activeTab === "user" && actualUserId) {
+          const directList = postStore.feeds.user.list.length;
+          return {
+            posts: postStore.currentUserFeedList,
+            length: directList
+          };
+        } else if (activeTab === "all") {
+          const directList = postStore.feeds.feed.list.length;
+          return {
+            posts: postStore.currentFeedList,
+            length: directList
+          };
+        } else {
+          const directList = postStore.feeds.following.list.length;
+          return {
+            posts: postStore.currentFollowingList,
+            length: directList
+          };
+        }
+      },
+      (result) => {
+        const posts = result.posts;
+        logger.log(`[PostsThread] MobX reaction detected change in ${feedType} posts: ${posts.length} items`);
+        setLocalPosts(posts);
+      }
+    );
+
+    return () => {
+      disposer(); // Очищаем reaction при размонтировании
+    };
+  }, [activeTab, actualUserId, postStore, feedType]);
+
+  // Feed state - получаем один раз и кешируем
+  const feedState = useMemo(() => {
+    if (activeTab === "user" && actualUserId) {
+      return postStore.feeds.user;
+    }
+    return activeTab === "all"
+      ? postStore.feeds.feed
+      : postStore.feeds.following;
+  }, [activeTab, actualUserId, postStore]);
+
+  // Feed key generation
+  const feedKey = useMemo(() => {
+    if (activeTab === "user" && stableUserId) {
+      return `user-${stableUserId}`;
+    }
+    return activeTab === "all" ? 'feed-default' : 'following-default';
+  }, [activeTab, stableUserId]);
+
+  const { estimateItemHeight, getItemKey } = usePostsFeed();
+
+  // Initial data loading
+  useEffect(() => {
+    const actualFeedLength = postStore.getFeed("feed").list.length;
+
+    if ((actualFeedLength === 0 || postStore.needsFeedCheck) && !feedState.loading) {
+      logger.log('[PostsThread] No data for feed, loading fresh');
+      postStore.setNeedsFeedCheck(false);
+      postStore.fetchPosts('feed', 1);
+    }
+  }, [postStore, feedState.loading]);
+
+  // Force top scroll
+  useEffect(() => {
+    if (forceTopScroll && localPosts.length > 0) {
+      logger.log(`[PostsThread] forceTopScroll requested, scrolling to top`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [forceTopScroll, localPosts.length]);
+
+  // Data loading logic
+useEffect(() => {
+  if (isLoadingRef.current || feedState.loading) return;
+
+  const hasData = localPosts.length > 0;
+  const needsRefresh = feedState.reset;
+  
+  // Проверка на пустую базу данных
+  const isEmpty = feedState.allLoaded && feedState.total === 0 && localPosts.length === 0;
+  
+  if (isEmpty) {
+    logger.log(`[PostsThread] ${feedType} feed is empty (total: 0), skipping load`);
+    return;
+  }
+
+  if (hasData && !needsRefresh) {
+    logger.log(`[PostsThread] Using cached data for ${feedType} (${localPosts.length} posts)`);
+    return;
+  }
+
+  if (!hasData) {
+    logger.log(`[PostsThread] No data for ${feedType}, loading fresh`);
+  } else if (needsRefresh) {
+    logger.log(`[PostsThread] Force refresh requested for ${feedType}, loading fresh`);
+    postStore.clearResetFlag(feedType, feedType === "user" ? stableUserId : undefined);
+  }
+
+  // Проверяем, не выполняется ли уже загрузка
+  isLoadingRef.current = true;
+
+    let fetchPromise: Promise<void>;
+
+    if (feedType === "user" && stableUserId) {
+      fetchPromise = postStore.fetchUserPosts(stableUserId, 1);
+    } else if (feedType === "following") {
+      fetchPromise = postStore.fetchFollowingPosts(1);
+    } else {
+      fetchPromise = postStore.fetchFeedPosts(1);
+    }
+
+    fetchPromise.finally(() => {
+      isLoadingRef.current = false;
+    });
+  }, [feedType, stableUserId, feedState.loading, feedState.reset, localPosts.length, postStore, feedState.allLoaded, feedState.total]);
+
+  // User feed switching
   useEffect(() => {
     if (feedType === "user" && stableUserId) {
       postStore.switchToUser(stableUserId);
     }
   }, [feedType, stableUserId, postStore]);
 
-  // Загрузка данных - с защитой от дублирования
-  useEffect(() => {
-    // Check if we should skip fetch (when returning from profile)
-    if (location.state?.skipFetch === true) {
-      logger.log(`[PostsThread] Skipping fetch due to skipFetch flag in location state`);
-      window.history.replaceState(null, '', location.pathname + location.search);
-      return;
-    }
-
-    // Check if we're preserving feeds (tab switch)
-    if (location.state?.preserveFeeds === true) {
-      logger.log(`[PostsThread] Preserving feeds - using cached data for ${feedType}`);
-      return;
-    }
-
-    // Protection against duplicates
-    if (isLoadingRef.current) {
-      logger.log(`[PostsThread] Load already in progress, skipping`);
-      return;
-    }
-
-    // Check loading state
-    if (feed.loading) {
-      logger.log(`[PostsThread] Skipping load - another load in progress`);
-      return;
-    }
-
-    // Check if we already have data and don't need to reset
-    if (feed.list.length > 0 && !feed.reset) {
-      logger.log(`[PostsThread] Already loaded ${feed.list.length} posts for ${feedType}, skipping`);
-      return;
-    }
-
-    // Для user feed проверяем userId
-    if (feedType === "user") {
-      if (!stableUserId) {
-        logger.log(`[PostsThread] User feed requested but no userId available`);
-        return;
-      }
-
-      // Проверяем что userId совпадает
-      if (postStore.getUserFeedState().userId !== stableUserId) {
-        logger.log(`[PostsThread] Waiting for user feed to switch to ${stableUserId}`);
-        return;
-      }
-    }
-
-    // Сбрасываем флаг reset
-    if (feed.reset) {
-      postStore.clearResetFlag(feedType, feedType === "user" ? stableUserId : undefined);
-    }
-
-    // Устанавливаем флаг загрузки
-    isLoadingRef.current = true;
-
-    // Use specific cached methods instead of generic fetchPosts
-    let fetchPromise: Promise<void>;
-
-    if (feedType === "user" && stableUserId) {
-      logger.log(`[PostsThread] Loading posts for user ${stableUserId}`);
-      fetchPromise = postStore.fetchUserPosts(stableUserId, 1);
-    } else if (feedType === "following") {
-      logger.log(`[PostsThread] Loading posts for following ${stableUserId}`);
-      fetchPromise = postStore.fetchFollowingPosts(1);
-    } else {
-      logger.log(`[PostsThread] Loading posts for feed`);
-      fetchPromise = postStore.fetchFeedPosts(1);
-    }
-
-    fetchPromise
-      .catch(setSocketError)
-      .finally(() => {
-        isLoadingRef.current = false;
-      });
-
-  }, [feedType, stableUserId, feed.loading, feed.reset, feed.list.length, postStore, location.state?.skipFetch, location.pathname, location.search, location.state?.preserveFeeds]);  // Восстановление скролла
-  useEffect(() => {
-    if (hasRestoredScrollRef.current) return;
-
-    if (feedType === "feed") {
-      const savedScrollPosition = navigationStore.feedScrollPosition;
-      const hasSavedPosts = postStore.feedSavedPosts.length > 0;
-
-      if (savedScrollPosition > 0 && hasSavedPosts) {
-        logger.log(`[PostsThread] Restoring main feed from saved state, position: ${savedScrollPosition}`);
-        postStore.onBackToFeed((position) => {
-          window.scrollTo({ top: position, behavior: 'auto' });
-          hasRestoredScrollRef.current = true;
-        });
-        return;
-      }
-
-      if (savedScrollPosition > 0 && feed.list.length > 0) {
-        logger.log(`[PostsThread] Tab switch detected, restoring scroll position`);
-        setTimeout(() => {
-          window.scrollTo({ top: savedScrollPosition, behavior: 'auto' });
-          hasRestoredScrollRef.current = true;
-        }, 100);
-        return;
-      }
-
-      if (savedScrollPosition > 0 && !hasSavedPosts && feed.list.length === 0) {
-        logger.log(`[PostsThread] Direct URL detected, will load fresh feed`);
-        navigationStore.feedScrollPosition = 0;
-      }
-    }
-    else if (feedType === "following" && navigationStore.followingScrollPosition > 0) {
-      logger.log(`[PostsThread] Restoring following feed position: ${navigationStore.followingScrollPosition}`);
-      setTimeout(() => {
-        window.scrollTo({ top: navigationStore.followingScrollPosition, behavior: 'auto' });
-        hasRestoredScrollRef.current = true;
-      }, 100);
-    }
-  }, [feedType, feed.list.length, navigationStore, postStore]);
-
-  // Сохранение позиции скролла при размонтировании
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      navigationStore.saveTabScrollPosition(feedType === 'feed' ? 'all' : 'my');
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-
-      const currentScrollPosition = window.scrollY;
-      if (currentScrollPosition > 0) {
-        navigationStore.saveTabScrollPosition(
-          feedType === 'feed' ? 'all' : 'my',
-          currentScrollPosition
-        );
-      }
-    };
-  }, [feedType, navigationStore]);
-
-  const { estimateItemHeight, getItemKey } = usePostsFeed();
-  const { virtualItems, totalHeight, measureElement } = useVirtualItems(
-    feed.list,
-    getItemKey,
-    estimateItemHeight
-  );
-
-  // Обработчики событий
-  const handleScrollDown = useCallback(() => {
-    logger.log('[PostsThread] Enabling manual update mode');
-    postStore.setManualUpdateMode(feedType, true);
-  }, [feedType, postStore]);
-
+  // Обработчик загрузки новых постов
   const handleLoadMore = useCallback(() => {
-    if (feed.loading || feed.allLoaded) return;
+    if (feedState.allLoaded && feedState.total === 0) {
+      logger.log(`[PostsThread] Cannot load more: feed is empty (total: 0)`);
+      return;
+    }
 
-    logger.log(`[PostsThread] Loading more ${feedType} posts`);
+    // Проверяем, не выполняется ли уже загрузка
+    if (feedState.loading || (feedState.allLoaded && !feedState.allowLoadMore)) return;
 
+    if (feedState.allowLoadMore) {
+      feedState.allowLoadMore = false;
+    }
+
+    // Логируем событие загрузки
     if (feedType === "user") {
       postStore.loadMore(feedType, actualUserId);
     } else {
       postStore.loadMore(feedType);
     }
-  }, [feedType, feed.loading, feed.allLoaded, actualUserId, postStore]);
+  }, [feedState, feedType, postStore, actualUserId]);
 
+  // Обработчик загрузки новых постов из буфера
+  // Вызывается при клике на уведомление о новых постах
   const handleLoadNewPosts = useCallback(() => {
-    if (feed.buffer.length === 0) return;
+    if (feedState.buffer.length === 0) return;
 
-    logger.log(`[PostsThread] Loading ${feed.buffer.length} new posts from buffer`);
-    postStore.handleLoadNewPosts(feedType);
-    postStore.setManualUpdateMode(feedType, false);
-    window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [feed.buffer.length, feedType, postStore]);
+    logger.log(`[PostsThread] Loading ${feedState.buffer.length} new posts from buffer`);
 
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    setTimeout(() => {
+      postStore.handleLoadNewPosts(feedType);
+      postStore.setManualUpdateMode(feedType, false);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }, 200);
+  }, [feedState.buffer.length, feedType, postStore]);
+
+  // Обработчик клика по посту
   const handleItemClick = useCallback((postSlug: string) => {
     logger.log(`[PostsThread] Navigate to post: ${postSlug}`);
 
-    // Сохраняем позицию скролла в хранилище
-    const currentScrollPosition = window.scrollY;
-
-    // Преобразуем тип feed в main для соответствия ожидаемому типу в контексте
-    const contextFeedType = feedType === "feed" ? "main" : feedType;
-
-    navigationStore.pushNavigationPoint(
-      window.location.pathname + window.location.search,
-      { feedType: contextFeedType, userId: actualUserId },
-      currentScrollPosition
-    );
-
-    // Используем хелпер для навигации
     navigationHelper.navigateToPost(postSlug);
-  }, [feedType, actualUserId, navigationStore, navigationHelper]);
+  }, [navigationHelper]);
 
-  const renderPostItem = useCallback((
-    virtualItem: VirtualListItem<Post>,
-    measureRef: (el: HTMLElement | null) => void
-  ) => {
+  // Рендеринг постов
+  const renderPostItem = useCallback((item: Post, index: number) => {
+    const isNewPost = (Date.now() - new Date(item.createdAt).getTime()) < 30000;
+
     return (
       <div
-        id={`post-${virtualItem.item.id}`}
-        ref={measureRef}
-        data-virtual-index={virtualItem.index}
+        id={`post-${item.id}`}
+        data-virtual-index={index}
+        data-post-id={item.id}
       >
         <MemoizedPostItem
-          post={virtualItem.item}
+          post={item}
           onClick={handleItemClick}
-          onHeightChange={() => {
-            const element = document.getElementById(`post-${virtualItem.item.id}`);
-            if (element) {
-              measureElement(element, virtualItem.index);
-            }
-          }}
+          isNewItem={isNewPost}
         />
       </div>
     );
-  }, [handleItemClick, measureElement]);
+  }, [handleItemClick]);
 
-  const shouldShowNotification = feed.manualUpdateMode && feed.newPostsCount > 0 && feedType !== "user";
+  const shouldShowNotification = feedState.manualUpdateMode && feedState.newPostsCount > 0 && feedType !== "user";
 
-  const headerComponent = shouldShowNotification ? (
-    <NewPostNotification
-      latestPost={feed.latestPost}
-      onFocusPost={() => { }}
-      newPostsCount={feed.newPostsCount}
-      onLoadNewPosts={handleLoadNewPosts}
-      truncateContent={(text: string) => text.length > 50 ? `${text.substring(0, 50)}...` : text}
-    />
-  ) : null;
+  useEffect(() => {
+    logger.log(`[PostsThread] Final debug state:`, {
+      feedType,
+      postsCount: localPosts.length,
+      storeListLength: feedState.list.length,
+      isLoading: feedState.loading,
+      allLoaded: feedState.allLoaded,
+      userId: actualUserId
+    });
+  }, [feedType, localPosts.length, feedState, actualUserId]);
 
   return (
-    <div>
-      {headerComponent}
+    <div className="posts-thread">
+      {shouldShowNotification && (
+        <NewPostNotification
+          latestPost={feedState.latestPost}
+          onFocusPost={() => { }}
+          newPostsCount={feedState.newPostsCount}
+          onLoadNewPosts={handleLoadNewPosts}
+          truncateContent={(text: string) => text.length > 50 ? `${text.substring(0, 50)}...` : text}
+        />
+      )}
+
       <VirtualList
-        feedContextId={`${feedType}-${actualUserId || 'default'}`}
-        items={feed.list}
-        preserveData={preserveData}
+        key={feedKey}
+        feedContextId={feedKey}
+        items={localPosts}
         renderItem={renderPostItem}
         getItemKey={getItemKey}
-        totalHeight={totalHeight}
-        virtualItems={virtualItems}
-        measureElement={measureElement}
+        estimateItemHeight={estimateItemHeight}
         onEndReached={handleLoadMore}
-        loading={feed.loading}
-        allLoaded={feed.allLoaded}
-        loadingMessage="Loading posts..."
-        emptyMessage={feedType === "user" ? "No posts by this user" : "No posts available"}
+        loading={feedState.loading}
+        allLoaded={feedState.allLoaded}
         className="posts-virtual-list"
-        manualMode={feed.manualUpdateMode}
-        onScrollDown={handleScrollDown}
-        enableManualModeTracking={feedType !== "user"}
+        manualMode={feedState.manualUpdateMode}
         debugOptions={{
-          feedType,
-          actualUserId,
-          pageNumber: feed.page,
-          totalPosts: feed.total,
-          bufferSize: feed.buffer.length,
-          manualMode: feed.manualUpdateMode,
-          newPostsCount: feed.newPostsCount,
-          feedListLength: feed.list.length,
-          resetFlag: feed.reset,
-          isLoadingLocal: isLoadingRef.current,
+          feedType: 'posts',
+          bufferSize: feedState.buffer.length,
+          newPostsCount: feedState.newPostsCount,
+          currentPage: Math.ceil(localPosts.length / 20),
+          totalPosts: localPosts.length,
+          userId: actualUserId,
+          feedKey,
+          storeListLength: feedState.list.length,
+          contextType: 'posts',
+          activeTab,
         }}
       />
     </div>

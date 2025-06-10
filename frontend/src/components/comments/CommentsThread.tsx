@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Empty, Spin, Button, Dropdown, Badge } from 'antd';
-import { FilterOutlined } from '@ant-design/icons';
+import { Empty, Badge } from 'antd';
 import { useCommentsFeed } from '../../hooks/useFeedItems';
-import { useVirtualItems } from '../../hooks/useVirtualItems';
 import VirtualList from '../common/VirtualList';
 import CommentItem from './CommentsItem';
 import { Comment } from '../../types/interfaces';
 import { logger } from '../../utils/Logger';
 import { useCommentStore, usePostStore } from '../../hooks/useStore';
 
+/*
+  Компонент для отображения потока комментариев к посту или ответов на комментарий.
+  Используется в ленте комментариев и на страницах постов.
+  Позволяет загружать и отображать комментарии, а также их ответы.
+  Использует виртуальный список, mобx для управления состоянием и ангулярные компоненты для UI.
+*/
 interface CommentsThreadProps {
   postId?: string;
   postSlug?: string;
@@ -17,7 +21,6 @@ interface CommentsThreadProps {
   parentSlug?: string;
   loading?: boolean;
   onLoadMore?: () => void;
-  onSortChange?: (sort: 'date' | 'likes') => void;
   autoLoad?: boolean;
   enableNestedReplies?: boolean;
 }
@@ -28,98 +31,86 @@ const CommentsThread = observer(({
   parentId,
   parentSlug,
   loading = false,
-  onSortChange,
   onLoadMore,
   autoLoad = true,
   enableNestedReplies = false,
 }: CommentsThreadProps) => {
+  // Используем MobX для доступа к хранилищам комментариев и постов
   const commentStore = useCommentStore();
   const postStore = usePostStore();
-  // Helper to resolve entity IDs from slugs
+  const [triedAutoLoad, setTriedAutoLoad] = useState(false);
+
+  /*
+    Функция для разрешения ID поста или комментария.
+    Если ID не указаны, пытаемся найти их по слагам.
+    Возвращает объект с целевым ID и флагом, является ли это постом.
+  */
   const resolveEntityIds = useMemo(() => {
-    // First try direct IDs
     let effectivePostId = postId;
     let effectiveParentId = parentId;
 
-    // Then try to resolve from slugs
+    // Если ID не указаны, пытаемся найти их по слагам
     if (!effectivePostId && postSlug) {
       const post = postStore.getPostBySlug(postSlug);
       effectivePostId = post?.id;
     }
 
+    // Если ID комментария не указан, пытаемся найти его по слагу
     if (!effectiveParentId && parentSlug) {
       const comment = commentStore.getCommentBySlug(parentSlug, false);
       effectiveParentId = comment?.id;
     }
-
-    // Determine if we're showing post comments or comment replies
+    // Если оба ID не указаны, пытаемся найти по слагам в постах
     const targetId = effectivePostId || effectiveParentId;
+    // isPost определяет, является ли целевой ID постом или комментарием
     const isPost = !!effectivePostId;
 
     return { targetId, isPost, effectivePostId, effectiveParentId };
   }, [postId, postSlug, parentId, parentSlug, postStore, commentStore]);
 
+  // Извлекаем целевой ID и флаг поста из разрешенных ID
   const { targetId, isPost } = resolveEntityIds;
 
-  // Handle missing target
   if (!targetId) {
     return <Empty description="No post or comment ID specified" />;
   }
 
-  // Get comments or replies based on entity type
-  const allComments = isPost ? commentStore.getComments(targetId) : commentStore.getReplies(targetId);
-  
-  const totalComments = isPost ? commentStore.getTotalComments(targetId) : commentStore.getTotalReplies(targetId);
-const [sortingInProgress] = useState(false);
-
-
-const [localSort, setLocalSort] = useState<'date' | 'likes'>('date');
-const sortedComments = useMemo(() => {
-  if (!allComments || allComments.length === 0) return [];
-  
-  // Создаем копию массива для сортировки
-  return [...allComments].sort((a, b) => {
-    if (localSort === 'likes') {
-      // Сортировка по лайкам (по убыванию)
-      return (b.likes || 0) - (a.likes || 0);
-    } else {
-      // Сортировка по дате (по убыванию - новые сверху)
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-  });
-}, [allComments, localSort]);
-
-
-const handleSortChange = useCallback((key: string) => {
-  // СНАЧАЛА проверяем, нужно ли сортировать
-  if ((key === 'date' || key === 'likes') && key !== localSort) {
-    logger.log(`CommentsThread: Setting local sort to ${key}`);
-    
-    // Обновляем локальную сортировку
-    setLocalSort(key as 'date' | 'likes');
-    
-    // Вызываем callback для синхронизации с родителем если нужно
-    if (onSortChange) {
-      onSortChange(key as 'date' | 'likes');
-    }
-  } else if (key === localSort) {
-    logger.log(`[CommentsThread] Sort ${key} already active, ignoring click`);
-  }
-}, [localSort, onSortChange]);
-
-  // Setup virtualization
-  const { estimateItemHeight, getItemKey } = useCommentsFeed();
-  const {
-    virtualItems,
-    totalHeight,
-    measureElement,
-    handleImageLoad,
-  } = useVirtualItems(sortedComments, getItemKey, estimateItemHeight);
-
-
-
+  /*
+    Обработчик для получения новых комментариев или ответов.
+    Подписываемся на события новых комментариев в хранилище.
+    Если целевой ID не указан, ничего не делаем.
+    Если проверка прошла, логируем получение нового комментария.
+    Используем useEffect для подписки на события.
+  */
   useEffect(() => {
-    if (autoLoad === false || !targetId) return;
+    if (!targetId) return;
+
+    const handleNewComment = (newComment: Comment) => {
+      logger.log(`[CommentsThread] New comment received for ${targetId}:`, newComment.id);
+    };
+
+    commentStore.onNewComment(targetId, handleNewComment);
+    return () => commentStore.offNewComment(targetId);
+  }, [targetId, commentStore]);
+
+  // Получаем список комментариев или ответов в зависимости от типа
+  const comments = isPost ? commentStore.getComments(targetId) : commentStore.getReplies(targetId);
+  // Получаем общее количество комментариев или ответов
+  const totalComments = isPost ? commentStore.getTotalComments(targetId) : commentStore.getTotalReplies(targetId);
+  // Получаем функции для оценки высоты элемента и ключа элемента
+  const { estimateItemHeight, getItemKey } = useCommentsFeed();
+
+
+  /*
+    Автоматическая загрузка комментариев или ответов при монтировании компонента.
+    Проверяем, нужно ли загружать комментарии автоматически.
+    Если авто-загрузка отключена или целевой ID не указан, ничего не делаем.
+    Если это пост, проверяем, есть ли уже комментарии.
+    Если комментариев нет, загружаем их через onLoadMore или по слагу поста.
+    Если это ответ на комментарий, проверяем наличие ответов и загружаем их аналогично.
+  */
+  useEffect(() => {
+    if (autoLoad === false || !targetId || triedAutoLoad) return;
 
     logger.log(`[CommentsThread] Auto-load check for targetId: ${targetId}, isPost: ${isPost}`);
 
@@ -128,90 +119,53 @@ const handleSortChange = useCallback((key: string) => {
       const hasComments = existingComments && existingComments.length > 0;
 
       if (!hasComments) {
+        setTriedAutoLoad(true);
         logger.log(`[CommentsThread] Auto-loading comments for post: ${targetId}`);
 
         if (onLoadMore) {
           onLoadMore();
+        } else if (postSlug) {
+          commentStore.loadCommentsBySlug(postSlug, 10, 1, 'date')
+            .then(() => logger.log(`[CommentsThread] Comments loaded for post slug: ${postSlug}`))
+            .catch((error) => logger.error(`[CommentsThread] Failed to load comments for post slug ${postSlug}:`, error));
         } else {
-          // Используем postSlug если есть, иначе пытаемся найти пост по ID
-          if (postSlug) {
-            commentStore.loadCommentsBySlug(postSlug, 10, 1, 'date', false)
-              .then(() => {
-                logger.log(`[CommentsThread] Comments loaded for post slug: ${postSlug}`);
-              })
-              .catch((error) => {
-                logger.error(`[CommentsThread] Failed to load comments for post slug ${postSlug}:`, error);
-              });
-          } else {
-            logger.warn(`[CommentsThread] No postSlug provided for auto-loading comments`);
-          }
+          logger.warn(`[CommentsThread] No postSlug provided for auto-loading comments`);
         }
-      } else {
-        logger.log(`[CommentsThread] Post ${targetId} already has ${existingComments.length} comments, skipping auto-load`);
       }
     } else {
-      // Для комментариев (не постов)
       logger.log(`[CommentsThread] Loading replies for comment: ${targetId}`);
 
       const existingReplies = commentStore.getReplies(targetId);
       logger.log(`[CommentsThread] Current replies count: ${existingReplies.length}`);
 
       if (existingReplies.length === 0) {
+        setTriedAutoLoad(true);
         logger.log(`[CommentsThread] Auto-loading replies for comment: ${targetId}`);
 
         if (onLoadMore) {
           onLoadMore();
         } else {
-          commentStore.loadComments(targetId, 1, 10, 'date');
+          commentStore.loadComments(targetId, 10, 1, 'date', true);
         }
-      } else {
-        logger.log(`[CommentsThread] Comment ${targetId} already has ${existingReplies.length} replies, skipping auto-load`);
       }
     }
-  }, [
-    autoLoad,
-    targetId,
-    isPost,
-    postSlug,
-    onLoadMore,
-    commentStore
-  ]);
-  // Comment rendering
-  const renderComment = useCallback((virtualItem: { item: Comment; index: number }, measureRef: (el: HTMLElement | null) => void) => {
-    const comment = virtualItem.item as Comment;
+  }, [autoLoad, targetId, isPost, postSlug, onLoadMore, commentStore, triedAutoLoad]);
 
+  // Функция для рендеринга каждого комментария или ответа
+  // Используем useCallback для оптимизации производительности
+  const renderComment = useCallback((item: Comment, index: number) => {
     return (
       <div
-        ref={measureRef}
-        data-virtual-index={virtualItem.index}
+        data-virtual-index={index}
         style={{ marginBottom: '8px' }}
-        onLoad={() => handleImageLoad(getItemKey(comment), virtualItem.index)}
       >
         <CommentItem
-          item={comment}
+          item={item}
           disableNestedComments={enableNestedReplies ? false : !isPost}
         />
       </div>
     );
-  }, [handleImageLoad, getItemKey, isPost, enableNestedReplies]);
-
-  // UI Components
-  const loadingIndicator = (
-  <div style={{ textAlign: 'center', padding: '20px' }}>
-    {loading ? (
-      <>
-        <Spin size="small" />
-        <p style={{ margin: '8px 0 0 0', color: '#666' }}>
-          Loading {isPost ? 'comments' : 'replies'}...
-        </p>
-      </>
-    ) : sortedComments.length >= totalComments ? (
-      <p style={{ color: '#999', margin: 0 }}>
-        {isPost ? 'All comments loaded' : 'All replies loaded'}
-      </p>
-    ) : null}
-  </div>
-);
+  }, [isPost, enableNestedReplies]);
 
   const headerComponent = (
     <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
@@ -220,53 +174,37 @@ const handleSortChange = useCallback((key: string) => {
           <span>{isPost ? 'Comments' : 'Replies'}</span>
           <Badge count={totalComments} size="small" style={{ marginLeft: '4px' }} />
         </div>
-
-        <Dropdown
-          menu={{
-            items: [
-              { key: 'date', label: <span>🕒 By date</span> },
-              { key: 'likes', label: <span>❤️ By likes</span> }
-            ],
-            onClick: ({ key }) => handleSortChange(key),
-            selectedKeys: [localSort],
-          }}
-          trigger={['click']}
-          placement="bottomRight"
-        >
-          <Button
-            type="text"
-            icon={<FilterOutlined />}
-            size="small"
-            style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#666', fontSize: '12px' }}
-          >
-           Sort
-          </Button>
-        </Dropdown>
       </div>
     </div>
   );
 
-  // Main render
+  //Оснвной рендеринг компонента
   return (
     <div className="comments-thread">
       {headerComponent}
       <VirtualList
-        items={sortedComments}
+        items={comments}
         renderItem={renderComment}
         getItemKey={getItemKey}
-        totalHeight={totalHeight}
-        virtualItems={virtualItems}
-        measureElement={measureElement}
+        estimateItemHeight={estimateItemHeight}
         onEndReached={onLoadMore}
         loading={loading}
-        loadingIndicator={loadingIndicator}
-        allLoaded={sortedComments ? sortedComments.length >= totalComments : false}
-        loadingMessage="Loading comments..."
-        emptyMessage="No comments available"
-          debugOptions={{ 
-          sortingInProgress,
+        allLoaded={comments.length >= totalComments}
+        feedContextId={`comments-${targetId}`}
+        debugOptions={{
+          feedType: 'comments',
           targetId,
-          isPost 
+          isPost,
+          totalComments,
+          currentPage: Math.ceil(comments.length / 20),
+          loadedCount: comments.length,
+          contextType: 'comments',
+          postId,
+          postSlug,
+          parentId,
+          parentSlug,
+          enableNestedReplies,
+          autoLoad,
         }}
       />
     </div>

@@ -43,8 +43,6 @@ async function createDatabaseIfNotExists(): Promise<void> {
   }
 
   const dbName = process.env.DB_NAME || 'spa_comments';
-
-  // Создаем конфигурацию с явным типом ClientConfig
   const clientConfig: ClientConfig = {
     host: process.env.DB_HOST || 'postgres',
     port: parseInt(process.env.DB_PORT ?? '5432', 10),
@@ -57,12 +55,10 @@ async function createDatabaseIfNotExists(): Promise<void> {
 
   console.log(`🔧 Checking if database "${dbName}" exists...`);
 
-  // Правильное создание клиента без приведения типа
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
   const client = new Client(clientConfig);
 
   try {
-    // Обычный вызов connect без приведения типа
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.connect();
     console.log('✅ Connected to PostgreSQL server');
@@ -87,7 +83,6 @@ async function createDatabaseIfNotExists(): Promise<void> {
     console.error('❌ Error creating database:', error.message);
     throw error;
   } finally {
-    // Обычный вызов end() без приведения типа
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.end();
   }
@@ -121,10 +116,10 @@ async function waitForPostgres(): Promise<void> {
           socket.destroy();
           reject(new Error('Connection timeout'));
         });
-
-        console.log('✅ PostgreSQL server is ready!');
-        return;
       });
+
+      console.log('✅ PostgreSQL server is ready!');
+      return; // ВАЖНО: выход из функции при успешном подключении
     } catch (err: unknown) {
       const error = toError(err);
       console.log(
@@ -139,13 +134,13 @@ async function waitForPostgres(): Promise<void> {
     }
   }
 }
-
 async function bootstrap(): Promise<void> {
   try {
     await waitForPostgres();
     await createDatabaseIfNotExists();
 
     console.log('🚀 Starting NestJS application...');
+    console.log('[MAIN] 🔍 About to create app...');
 
     const app = await NestFactory.create(AppModule, {
       logger:
@@ -154,6 +149,21 @@ async function bootstrap(): Promise<void> {
           : ['error', 'warn', 'log', 'debug', 'verbose'],
     });
 
+    console.log('[MAIN] 🔍 App created, about to install WebSocket adapter...');
+
+    // КРИТИЧНО: Устанавливаем WebSocket адаптер СРАЗУ после создания приложения
+    try {
+      console.log('[MAIN] 🔧 Installing WebSocket adapter...');
+      const socketAdapter = new AuthenticatedSocketIoAdapter(app);
+      app.useWebSocketAdapter(socketAdapter);
+      console.log('[MAIN] ✅ WebSocket adapter installed');
+    } catch (adapterError) {
+      console.error(
+        '[MAIN] ❌ Error installing WebSocket adapter:',
+        adapterError,
+      );
+      throw adapterError;
+    }
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
@@ -161,12 +171,17 @@ async function bootstrap(): Promise<void> {
         forbidNonWhitelisted: true,
       }),
     );
-
-    // В development режиме __dirname = /app/dist/, но файлы в /app/uploads/
+    app.use(
+      (req: { method: string; url: string }, res: any, next: () => void) => {
+        console.log(`[HTTP] ${req.method} ${req.url}`);
+        next();
+      },
+    );
+    // Uploads directory setup
     const uploadsPath =
       process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../uploads') // /app/dist/../uploads = /app/uploads
-        : path.join(process.cwd(), 'uploads'); // /app/uploads
+        ? path.join(__dirname, '../uploads')
+        : path.join(process.cwd(), 'uploads');
 
     console.log(`📁 Uploads directory: ${uploadsPath}`);
     console.log(`📁 Current working directory: ${process.cwd()}`);
@@ -177,7 +192,6 @@ async function bootstrap(): Promise<void> {
       console.log(`📁 Created uploads directory: ${uploadsPath}`);
     }
 
-    // Проверяем что файлы действительно там
     try {
       const existingFiles = fs.readdirSync(uploadsPath);
       console.log(`📁 Found ${existingFiles.length} existing files in uploads`);
@@ -188,9 +202,7 @@ async function bootstrap(): Promise<void> {
       console.log(`📁 Could not read uploads directory: ${error}`);
     }
 
-    app.useWebSocketAdapter(new AuthenticatedSocketIoAdapter(app));
-    console.log('[SOCKET AUTH] WebSocket adapter initialized');
-
+    // CORS configuration
     app.enableCors({
       origin:
         process.env.NODE_ENV === 'production'
@@ -211,6 +223,7 @@ async function bootstrap(): Promise<void> {
       ],
     });
 
+    // Graceful shutdown handlers
     const gracefulShutdown = (): void => {
       console.log('Received shutdown signal, closing server gracefully...');
       app
@@ -229,17 +242,21 @@ async function bootstrap(): Promise<void> {
     process.on('SIGTERM', gracefulShutdown);
     process.on('SIGINT', gracefulShutdown);
 
-    const port = process.env.PORT ?? 3001;
-    await app.listen(port, '0.0.0.0');
+    // Start listening
+    //const port = process.env.PORT ?? 3001;
+    await app.listen(3001, '0.0.0.0'); // Изменили с app.listen(3001)
 
-    console.log(`🎉 Application is running on: http://0.0.0.0:${port}`);
-    console.log(`📁 Static files served from: ${uploadsPath} -> /uploads/*`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Health check: http://0.0.0.0:${port}/health`);
-    console.log(`🔍 Monitoring: http://0.0.0.0:${port}/api/monitoring/health`);
+    console.log('🎉 Application is running on: http://0.0.0.0:3001');
+    console.log('📁 Static files served from: /app/uploads -> /uploads/*');
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('Health check: http://0.0.0.0:3001/health');
+    console.log('🔍 Monitoring: http://0.0.0.0:3001/api/monitoring/health');
     console.log(
-      `📊 Queue status: http://0.0.0.0:${port}/api/monitoring/queue-status`,
+      '📊 Queue status: http://0.0.0.0:3001/api/monitoring/queue-status',
     );
+
+    // Добавим проверку Socket.IO
+    console.log('🔌 Socket.IO endpoint: http://0.0.0.0:3001/socket.io/');
   } catch (err: unknown) {
     const error = toError(err);
     console.error('❌ Failed to start application:', error.message);

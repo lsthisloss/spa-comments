@@ -1,6 +1,11 @@
+import { memo } from 'react';
 import { Button, Upload, Progress, Dropdown } from 'antd';
 import { PictureOutlined, CodeOutlined, FileTextOutlined } from '@ant-design/icons';
 
+/*
+  * Интерфейс для пропсов компонента SendFormFooter
+  * Используется для типизации пропсов, передаваемых в компонент
+  */
 interface FormFooterProps {
   text: string;
   maxLength: number;
@@ -11,18 +16,28 @@ interface FormFooterProps {
   disabled?: boolean;
   loading?: boolean;
 }
-//Компонент для отображения нижней части формы отправки комментария или поста
-export default function SendFormFooter({ 
-  text, 
-  maxLength, 
-  onPostClick, 
-  onInsertTag, 
-  onImageUpload, 
+
+/* 
+  * Компонент SendFormFooter
+  * Отображает кнопки для отправки поста, загрузки изображений и файлов, а также вставки HTML тегов
+  * Использует React.memo для оптимизации перерендеров
+*/
+
+const SendFormFooter = memo(function SendFormFooter({
+  text,
+  maxLength,
+  onPostClick,
+  onInsertTag,
+  onImageUpload,
   onFileUpload,
   disabled = false,
   loading = false
 }: FormFooterProps) {
 
+  /*  Обработчик выбора изображения
+    * Вызывает функцию onImageUpload с выбранным файлом
+    * Возвращает false, чтобы предотвратить автоматическую загрузку файла
+  */
   const handleImageSelect = (file: File) => {
     onImageUpload(file);
     return false;
@@ -30,9 +45,16 @@ export default function SendFormFooter({
 
   const handleFileSelect = (file: File) => {
     onFileUpload(file);
-    return false; 
+    return false;
   };
 
+  /*
+    * Проверяем, можно ли отправить пост
+    * Пост не может быть отправлен, если:
+    * - disabled = true
+    * - loading = true
+    * - текст пустой или превышает максимальную длину
+  */
   const isPostDisabled = disabled || loading || text.trim().length === 0 || text.length > maxLength;
   const remainingPercentage = (text.length / maxLength) * 100;
   const remainingCharacters = maxLength - text.length;
@@ -46,30 +68,30 @@ export default function SendFormFooter({
           beforeUpload={handleImageSelect}
           disabled={disabled}
         >
-          <Button 
-            type="text" 
-            icon={<PictureOutlined />} 
+          <Button
+            type="text"
+            icon={<PictureOutlined />}
             className={`icon-button ${disabled ? 'custom-disabled' : ''}`}
-            disabled={false} 
+            disabled={false}
             title="Upload image (JPG, PNG, GIF)"
           />
         </Upload>
-        
+
         <Upload
           accept=".txt"
           showUploadList={false}
           beforeUpload={handleFileSelect}
           disabled={disabled}
         >
-          <Button 
-            type="text" 
-            icon={<FileTextOutlined />} 
+          <Button
+            type="text"
+            icon={<FileTextOutlined />}
             className={`icon-button ${disabled ? 'custom-disabled' : ''}`}
             disabled={false}
             title="Upload text file (.txt, max 100KB)"
           />
         </Upload>
-        
+
         <Dropdown
           menu={{
             items: [
@@ -88,16 +110,16 @@ export default function SendFormFooter({
           placement="bottom"
           disabled={disabled}
         >
-          <Button 
-            type="text" 
-            icon={<CodeOutlined />} 
+          <Button
+            type="text"
+            icon={<CodeOutlined />}
             className={`icon-button ${disabled ? 'custom-disabled' : ''}`}
             disabled={false}
             title="Insert HTML tags"
           />
         </Dropdown>
       </div>
-      
+
       <div className="footer-right">
         <Progress
           type="circle"
@@ -119,4 +141,18 @@ export default function SendFormFooter({
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Кастомная функция сравнения для оптимизации
+  return (
+    prevProps.text === nextProps.text &&
+    prevProps.maxLength === nextProps.maxLength &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.loading === nextProps.loading &&
+    prevProps.onPostClick === nextProps.onPostClick &&
+    prevProps.onInsertTag === nextProps.onInsertTag &&
+    prevProps.onImageUpload === nextProps.onImageUpload &&
+    prevProps.onFileUpload === nextProps.onFileUpload
+  );
+});
+
+export default SendFormFooter;

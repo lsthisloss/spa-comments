@@ -73,7 +73,6 @@
     border-bottom: 1px solid #e0e0e0;
     flex-direction: column;
     transition: all 0.3s ease;
-    margin-left: 1px;
   .new-posts-button {
     display: flex;
     justify-content: center;
@@ -195,10 +194,7 @@
     text-align: center;
     animation: fadeIn 0.3s;
   }
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 0.98; }
-  }
+
   .drag-overlay {
     position: fixed;
     z-index: 1100;
@@ -347,16 +343,6 @@
 }
 
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .debug-panel {
   animation: fadeIn 0.3s ease;
@@ -371,3 +357,109 @@
 .posts-item .ant-card .post-item {
   padding: 0;
 }
+.post-skeleton {
+  /* Оптимизированные GPU-анимации */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.animate-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Быстрая оптимизация для списков */
+.virtual-list-container-item {
+  transform: translateZ(0);
+}
+
+.virtual-list-container-items {
+  transition: none !important;
+}
+
+@keyframes highlight-post {
+  0% { background-color: transparent; }
+  30% { background-color: rgba(24, 144, 255, 0.1); }
+  70% { background-color: rgba(24, 144, 255, 0.1); }
+  100% { background-color: transparent; }
+}
+
+.highlight-post {
+  animation: highlight-post 1.5s ease-in-out;
+}
+
+@keyframes highlight-restore {
+  0% { background-color: transparent; }
+  25% { background-color: rgba(24, 144, 255, 0.15); }
+  75% { background-color: rgba(24, 144, 255, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.highlight-post {
+  animation: highlight-restore 0.1s ease-in-out;
+  position: relative;
+  z-index: 2;
+}
+
+html.restoring-scroll .virtual-list-container-item {
+  transition: none !important;
+}
+
+
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(10px); }
+  10% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+.pulsating-text {
+  animation: pulse 1.5s infinite;
+}
+
+.restore-position-indicator {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.highlight-new-comment {
+  animation: pulse-highlight 2s ease-in-out;
+}
+
+@keyframes pulse-highlight {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(24, 144, 255, 0.1); }
+}
+

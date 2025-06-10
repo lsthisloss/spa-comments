@@ -1,4 +1,4 @@
-.container {
+.app-loader-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -7,30 +7,30 @@
   padding: 20px;
 }
 
-.errorBox {
+.app-loader-error-box {
   text-align: center;
   max-width: 400px;
 }
 
-.errorTitle {
+.app-loader-error-title {
   font-size: 18px;
   margin-bottom: 16px;
   display: block;
 }
 
-.appErrorTitle {
+.app-loader-app-error-title {
   font-size: 16px;
   margin-bottom: 16px;
   display: block;
 }
 
-.errorText {
+.app-loader-error-text {
   font-size: 14px;
   display: block;
   margin-bottom: 20px;
 }
 
-.primaryButton {
+.app-loader-primary-button {
   padding: 10px 20px;
   background-color: #1890ff;
   color: white;
@@ -49,7 +49,7 @@
   }
 }
 
-.secondaryButton {
+.app-loader-secondary-button {
   padding: 8px 16px;
   background-color: #1890ff;
   color: white;
@@ -67,7 +67,7 @@
   }
 }
 
-.loadingContainer {
+.app-loader-loading-container {
   min-height: 100vh;
   display: flex;
   align-items: center;

@@ -82,12 +82,30 @@
   max-width: 100%;
   font-feature-settings: normal;
 }
+.post-item-wrapper {
+  width: 100%;
+  display: block;
+  
+  // Только новые элементы получают fade-in
+  &.fade-in {
+    animation: universal-fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+}
+
+.comment-item-wrapper {
+  width: 100%;
+  display: block;
+  
+  // Только новые элементы получают fade-in
+  &.fade-in {
+    animation: universal-fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+}
 
 .post-item, .comment-item {
   contain: layout style;
   transform: translateZ(0);
 }
-
 .item-text[data-long-content="true"] {
   text-rendering: optimizeSpeed;
   font-feature-settings: "kern" 0;
@@ -119,9 +137,6 @@
 }
 
 
-.virtual-list-item {
-  contain: layout style;
-}
 
 /* Prevent layout shifts */
 .post-item, .comment-item {
@@ -139,12 +154,7 @@
   display: block;
 }
 
-/* Smoother animations */
-@media (prefers-reduced-motion: no-preference) {
-  .enhanced-virtual-list .virtual-list-holder {
-    scroll-behavior: smooth;
-  }
-}
+
 
 .item-user-info {
   display: flex;

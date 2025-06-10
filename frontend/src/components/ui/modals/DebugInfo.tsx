@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
-import { VirtualListItem } from '../../common/VirtualList';
 import { useUserStore } from '../../../hooks/useStore';
 import { TestDataPanel } from './TestDataPanel';
 
 interface DebugInfoProps {
   itemsCount: number;
-  virtualItems: VirtualListItem<unknown>[];
+  virtualItems: number;
   loading: boolean;
   allLoaded: boolean;
   totalHeight: number;
-  measuredItems: number;
   manualMode?: boolean;
   bufferSize?: number;
   newPostsCount?: number;
@@ -25,13 +23,11 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   loading,
   allLoaded,
   totalHeight,
-  measuredItems,
   manualMode = false,
   bufferSize = 0,
   newPostsCount = 0,
   currentPage = 1,
   totalPosts = 0,
-  forceShow = false,
 }) => {
   // Состояние для видимости формы
   const [isVisible, setIsVisible] = useState(() => {
@@ -73,8 +69,12 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
 
   // Проверяем, должен ли отображаться дебаг
   const user = userStore.user;
-  const shouldShow = forceShow || (user?.settings?.debugMode ?? false);
-
+  const shouldShow = user?.settings?.debugMode === true; 
+  useEffect(() => {
+    if (!shouldShow && isVisible) {
+      setIsVisible(false);
+    }
+  }, [shouldShow, isVisible]);
   // Корректировка позиции при изменении размера окна
   useEffect(() => {
     const handleResize = () => {
@@ -217,9 +217,11 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
 
   // Обработчики начала перетаскивания
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Исключаем кнопки и элементы с классом test-data
     if (e.target instanceof HTMLElement &&
       e.target.closest('.debug-info__header') &&
-      !e.target.closest('button')) {
+      !e.target.closest('button') &&
+      !e.target.closest('.debug-info__test-data')) {
 
       isDraggingRef.current = true;
       dragStartRef.current = {
@@ -236,9 +238,11 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    // Исключаем кнопки и элементы с классом test-data
     if (e.target instanceof HTMLElement &&
       e.target.closest('.debug-info__header') &&
-      !e.target.closest('button')) {
+      !e.target.closest('button') &&
+      !e.target.closest('.debug-info__test-data')) {
 
       const touch = e.touches[0];
       isDraggingRef.current = true;
@@ -340,12 +344,9 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
             </div>
             <div className="debug-info__info-row">
               <span className="debug-info__label">Virtual:</span>
-              <span className="debug-info__value">{virtualItems.length}</span>
+              <span className="debug-info__value">{virtualItems}</span>
             </div>
-            <div className="debug-info__info-row">
-              <span className="debug-info__label">Measured:</span>
-              <span className="debug-info__value">{measuredItems}</span>
-            </div>
+           
             <div className="debug-info__info-row">
               <span className="debug-info__label">Loading:</span>
               <span className={`debug-info__value debug-info__value--loading ${loading ? 'yes' : 'no'}`}>
@@ -385,14 +386,6 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
               <span className="debug-info__value">{totalPosts || 0}</span>
             </div>
             <div className="debug-info__info-row">
-              <span className="debug-info__label">Range:</span>
-              <span className="debug-info__value">
-                {virtualItems.length > 0
-                  ? `${virtualItems[0].index}-${virtualItems[virtualItems.length - 1].index}`
-                  : 'none'}
-              </span>
-            </div>
-            <div className="debug-info__info-row">
               <span className="debug-info__label">Height:</span>
               <span className="debug-info__value">{totalHeight}px</span>
             </div>
@@ -402,7 +395,19 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
               <button
                 className="debug-info__button"
                 style={{ width: '100%',}}
-                onClick={() => setShowTestDataPanel(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowTestDataPanel(true);
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onMouseUp={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               >
                 🧪 Open Test Data Panel
               </button>

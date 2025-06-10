@@ -1,18 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Modal, Form, Input, Button, message, Progress } from 'antd';
 import { observer } from "mobx-react";
 import { useUserStore, useSocketStore } from '../hooks/useStore';
 import { LoginFormValues, RegisterFormValues } from '../types/interfaces';
 import { useNavigate } from 'react-router-dom';
 
+/*
+  Компонент страницы авторизации, который позволяет пользователям входить в систему или регистрироваться.
+  Использует MobX для управления состоянием пользователя и сокетов.
+  Включает формы для входа и регистрации, а также проверку надежности пароля.
+*/
 const AuthPage = observer(() => {
-  // Получаем сторы через хуки
   const userStore = useUserStore();
   const socketStore = useSocketStore();
   
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
-  const [isSocketReady, setIsSocketReady] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const navigate = useNavigate();
 
@@ -30,8 +33,13 @@ const AuthPage = observer(() => {
     }
   };
 
+  // Проверяем подключение сокета напрямую
+  const isSocketConnected = () => {
+    return socketStore.users?.connected === true;
+  };
+
   const onLogin = async (values: LoginFormValues) => {
-    if (!socketStore.users || !isSocketReady) {
+    if (!isSocketConnected()) {
       message.error('No connection to server. Please try again later.');
       return;
     }
@@ -52,7 +60,7 @@ const AuthPage = observer(() => {
   };
 
   const onRegister = async (values: RegisterFormValues) => {
-    if (!socketStore.users || !isSocketReady) {
+    if (!isSocketConnected()) {
       message.error('No connection to server. Please try again later.');
       return;
     }
@@ -102,19 +110,7 @@ const AuthPage = observer(() => {
     return 'Strong';
   };
 
-  useEffect(() => {
-    if (socketStore.users) {
-      const onConnect = () => setIsSocketReady(true);
-      const onDisconnect = () => setIsSocketReady(false);
-      socketStore.users.on('connect', onConnect);
-      socketStore.users.on('disconnect', onDisconnect);
-      if (socketStore.users.connected) setIsSocketReady(true);
-      return () => {
-        socketStore.users?.off('connect', onConnect);
-        socketStore.users?.off('disconnect', onDisconnect);
-      };
-    }
-  }, [socketStore]);  
+  const connectionStatus = isSocketConnected() ? '🟢 Connected' : '🔴 Disconnected';
 
   return (
     <div className="auth-page">
@@ -124,7 +120,13 @@ const AuthPage = observer(() => {
           <div className="lock-body"></div>
           <div className="lock-key"></div>
         </div>
-        <h1 style={{ color: '#fff', marginBottom: 32 }}>Who Are You?</h1>
+        <h1 style={{ color: '#fff'}}>Who Are You?</h1>
+        
+        {/* Показываем статус подключения для отладки */}
+        <div style={{ color: '#fff', fontSize: '12px', marginBottom: 16, opacity: 0.7 }}>
+          Server: {connectionStatus}
+        </div>
+        
         <Button
           className="scale-in"
           type="primary"
@@ -132,6 +134,7 @@ const AuthPage = observer(() => {
           size="large"
           style={{ marginBottom: 16 }}
           onClick={() => setShowRegister(true)}
+          disabled={!isSocketConnected()}
         >
           Create account
         </Button>
@@ -140,6 +143,7 @@ const AuthPage = observer(() => {
           block
           size="large"
           onClick={() => setShowLogin(true)}
+          disabled={!isSocketConnected()}
         >
           Login
         </Button>

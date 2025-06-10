@@ -1,57 +1,60 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, Input, Tabs, List, Avatar, Spin, Typography, Tag } from "antd";
-import { UserOutlined, MessageOutlined, InboxOutlined } from "@ant-design/icons";
 import { observer } from "mobx-react-lite";
 import { useNavigate } from "react-router-dom";
 import { useSocketStore } from "../../../hooks/useStore";
 
-const { Text, Paragraph } = Typography;
+/*
+  Компонент для отображения модального окна поиска по пользователям, постам и комментариям.
+  Используется для быстрого поиска контента в приложении.
+  Позволяет искать пользователей, посты и комментарии по ключевым словам.
+  Результаты отображаются в виде вкладок с возможностью перехода к найденным элементам.
+*/
 
-export const SearchModal = observer(function SearchModal({ 
-  visible, 
-  onClose 
-}: { 
-  visible: boolean; 
-  onClose: () => void; 
+export const SearchModal = observer(function SearchModal({
+  visible,
+  onClose
+}: {
+  visible: boolean;
+  onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  
+
   type SearchResults = {
-    users: { 
-      userName: string; 
-      email: string; 
-      avatarUrl?: string; 
-      slug?: string; 
+    users: {
+      userName: string;
+      email: string;
+      avatarUrl?: string;
+      slug?: string;
       avatarShape?: string;
       role?: string;
     }[];
-    posts: { 
+    posts: {
       id: string;
-      content: string; 
-      slug?: string; 
+      content: string;
+      slug?: string;
       likes?: number;
       repliesCount?: number;
       fileName?: string;
       createdAt?: string;
-      author?: { 
-        userName: string; 
-        avatarUrl?: string; 
-        slug?: string; 
+      author?: {
+        userName: string;
+        avatarUrl?: string;
+        slug?: string;
         avatarShape?: string;
       };
     }[];
-    comments: { 
+    comments: {
       id: string;
-      content: string; 
-      slug?: string; 
+      content: string;
+      slug?: string;
       likes?: number;
       postId?: string;
       createdAt?: string;
-      author?: { 
-        userName: string; 
-        avatarUrl?: string; 
-        slug?: string; 
+      author?: {
+        userName: string;
+        avatarUrl?: string;
+        slug?: string;
         avatarShape?: string;
       };
       post?: {
@@ -61,7 +64,7 @@ export const SearchModal = observer(function SearchModal({
       };
     }[];
   };
-  
+
   const [results, setResults] = useState<SearchResults>({ users: [], posts: [], comments: [] });
   const [activeTab, setActiveTab] = useState("users");
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,260 +95,235 @@ export const SearchModal = observer(function SearchModal({
     }, query.length === 3 ? 0 : 150);
   }, [query, visible, socketStore.search]);
 
-  // Универсальный рендер аватарки
-  const renderAvatar = (avatarUrl?: string) =>
-    avatarUrl && avatarUrl.trim() !== "" ? (
-      <Avatar src={avatarUrl} />
-    ) : (
-      <Avatar icon={<UserOutlined />} />
-    );
+  useEffect(() => {
+    if (visible) {
+      document.body.classList.add('search-modal-open');
+    } else {
+      document.body.classList.remove('search-modal-open');
+    }
 
-  // Форматирование даты
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+    return () => {
+      document.body.classList.remove('search-modal-open');
+    };
+  }, [visible]);
+
+  const handleUserClick = (user: SearchResults['users'][0]) => {
+    if (user.slug) {
+      navigate(`/profile/${user.slug}`);
+      onClose();
+    }
   };
 
-  // Сокращение текста
-  const truncateText = (text: string, maxLength: number) => {
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength) + "...";
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
   };
+const handlePostClick = (post: SearchResults['posts'][0]) => {
+  console.log('[SearchModal] Post data:', post);
+  
+  const identifier = post.slug || post.id;
+  
+  if (identifier) {
+    console.log('[SearchModal] Navigating to post:', identifier);
+    
+    // Если есть slug - используем его, если нет - используем ID через другой роут
+    if (post.slug) {
+      navigate(`/post/${post.slug}`);
+    } else if (post.id) {
+       navigate(`/post/${post.id}`);
+    }
+    onClose();
+  } else {
+    console.warn('[SearchModal] No valid identifier for post:', post);
+  }
+};
+
+  const handleCommentClick = (comment: SearchResults['comments'][0]) => {
+    if (comment.post?.slug) {
+      navigate(`/post/${comment.post.slug}#comment-${comment.id}`);
+      onClose();
+    }
+  };
+
+  if (!visible) return null;
 
   return (
-    <Modal
-      open={visible}
-      onCancel={onClose}
-      footer={null}
-      width={700}
-      style={{ top: 40 }}
-      destroyOnHidden
-      className="search-modal"
-      centered
-    >
-      <div style={{ padding: 24, background: "#fff", borderRadius: 8 }}>
-        <Input.Search
-          placeholder="Search users, posts, comments..."
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          allowClear
-          size="large"
-          autoFocus
-        />
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          style={{ marginTop: 16 }}
-          items={[
-            {
-              key: "users",
-              label: <>
-                <UserOutlined /> Users ({results.users.length})
-              </>,
-              children: (
-                <List
-                  loading={loading}
-                  dataSource={results.users}
-                  renderItem={user => (
-                    <List.Item
-                      style={{ cursor: user.slug ? "pointer" : "default" }}
-                      onClick={() => user.slug && navigate(`/profile/${user.slug}`)}
-                    >
-                      <List.Item.Meta
-                        avatar={renderAvatar(user.avatarUrl)}
-                        title={
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>{user.userName}</span>
+    <div className="search-modal-overlay" onClick={handleBackdropClick}>
+      <div className="search-modal">
+        <div className="search-modal__header">
+          <input
+            type="text"
+            placeholder="Search users, posts, comments..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="search-modal__input"
+            autoFocus
+          />
+          <button className="search-modal__close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="search-modal__tabs">
+          <button
+            className={`search-modal__tab ${activeTab === 'users' ? 'active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            👤 Users ({results.users.length})
+          </button>
+          <button
+            className={`search-modal__tab ${activeTab === 'posts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('posts')}
+          >
+            📄 Posts ({results.posts.length})
+          </button>
+          <button
+            className={`search-modal__tab ${activeTab === 'comments' ? 'active' : ''}`}
+            onClick={() => setActiveTab('comments')}
+          >
+            💬 Comments ({results.comments.length})
+          </button>
+        </div>
+
+        <div className="search-modal__content">
+          {loading ? (
+            <div className="search-modal__loading">
+              <div className="spinner"></div>
+              Searching...
+            </div>
+          ) : (
+            <>
+              {activeTab === 'users' && (
+                <div className="search-modal__results">
+                  {results.users.length === 0 ? (
+                    <div className="search-modal__empty">No users found</div>
+                  ) : (
+                    results.users.map((user, index) => (
+                      <div
+                        key={index}
+                        className="search-modal__item user"
+                        onClick={() => handleUserClick(user)}
+                      >
+                        <div className="search-modal__avatar">
+                          {user.avatarUrl ? (
+                            <img src={user.avatarUrl} alt={user.userName} />
+                          ) : (
+                            <div className="avatar-placeholder">
+                              {user.userName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="search-modal__info">
+                          <div className="search-modal__name">
+                            {user.userName}
                             {user.role && (
-                              <Tag 
-                                color={
-                                  user.role === 'admin' ? 'red' : 
-                                  user.role === 'superadmin' ? 'purple' : 
-                                  user.role === 'test' ? 'orange' : 'default'
-                                }
-                              >
+                              <span className={`role-badge ${user.role}`}>
                                 {user.role.toUpperCase()}
-                              </Tag>
+                              </span>
                             )}
                           </div>
-                        }
-                        description={user.email}
-                      />
-                    </List.Item>
+                          <div className="search-modal__email">{user.email}</div>
+                        </div>
+                      </div>
+                    ))
                   )}
-                  locale={{ emptyText: loading ? <Spin /> : "No users found" }}
-                />
-              ),
-            },
-            {
-              key: "posts",
-              label: <>
-                <InboxOutlined /> Posts ({results.posts.length})
-              </>,
-              children: (
-                <List
-                  loading={loading}
-                  dataSource={results.posts}
-                  renderItem={post => (
-                    <List.Item
-                      style={{ cursor: post.slug ? "pointer" : "default" }}
-                      onClick={() => post.slug && navigate(`/post/${post.slug}`)}
-                    >
-                      <List.Item.Meta
-                        avatar={renderAvatar(post.author?.avatarUrl)}
-                        title={
-                          <div>
-                            {/* Автор сверху */}
-                            <div style={{ marginBottom: 4 }}>
-                              {post.author?.userName && post.author?.slug ? (
-                                <Text
-                                  style={{ color: "#1677ff", cursor: "pointer", fontWeight: 500 }}
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    navigate(`/profile/${post.author?.slug}`);
-                                  }}
-                                >
-                                  {post.author.userName}
-                                </Text>
-                              ) : (
-                                <Text type="secondary">{post.author?.userName || "Unknown User"}</Text>
-                              )}
-                              {formatDate(post.createdAt) && (
-                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                  • {formatDate(post.createdAt)}
-                                </Text>
-                              )}
+                </div>
+              )}
+              {activeTab === 'posts' && (
+                <div className="search-modal__results">
+                  {results.posts.length === 0 ? (
+                    <div className="search-modal__empty">No posts found</div>
+                  ) : (
+                    results.posts.map((post, index) => (
+                      <div
+                        key={index}
+                        className="search-modal__item post"
+                        onClick={() => handlePostClick(post)}
+                      >
+                        <div className="search-modal__avatar">
+                          {post.author?.avatarUrl ? (
+                            <img src={post.author.avatarUrl} alt={post.author.userName} />
+                          ) : (
+                            <div className="avatar-placeholder">
+                              {post.author?.userName?.charAt(0).toUpperCase() || '?'}
                             </div>
-                            {/* Контент поста */}
-                            <Paragraph 
-                              style={{ margin: 0, color: "#333" }}
-                              ellipsis={{ rows: 2, expandable: false }}
-                            >
-                              {post.content}
-                            </Paragraph>
+                          )}
+                        </div>
+                        <div className="search-modal__info">
+                          <div className="search-modal__name">
+                            {post.author?.userName || 'Anonymous'}
+                            <span className="search-modal__meta">
+                              {post.likes && `❤️ ${post.likes}`}
+                              {post.repliesCount && ` 💬 ${post.repliesCount}`}
+                            </span>
                           </div>
-                        }
-                        description={
-                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 4 }}>
-                            {post.fileName && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                📎 {post.fileName}
-                              </Text>
-                            )}
-                            {typeof post.likes === 'number' && post.likes > 0 && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                ❤️ {post.likes}
-                              </Text>
-                            )}
-                            {typeof post.repliesCount === 'number' && post.repliesCount > 0 && (
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                💬 {post.repliesCount}
-                              </Text>
-                            )}
+                          <div className="search-modal__content">
+                            {post.content.length > 100
+                              ? `${post.content.substring(0, 100)}...`
+                              : post.content
+                            }
                           </div>
-                        }
-                      />
-                    </List.Item>
+                          {post.fileName && (
+                            <div className="search-modal__attachment">
+                              📎 {post.fileName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
                   )}
-                  locale={{ emptyText: loading ? <Spin /> : "No posts found" }}
-                />
-              ),
-            },
-            {
-              key: "comments",
-              label: <>
-                <MessageOutlined /> Comments ({results.comments.length})
-              </>,
-              children: (
-                <List
-                  loading={loading}
-                  dataSource={results.comments}
-                  renderItem={comment => (
-                    <List.Item
-                      style={{ cursor: comment.slug ? "pointer" : "default" }}
-                      onClick={() => {
-                        // Переходим к посту, где находится комментарий
-                        if (comment.post?.slug) {
-                          navigate(`/post/${comment.post.slug}#comment-${comment.id}`);
-                        } else if (comment.slug) {
-                          navigate(`/comment/${comment.slug}`);
-                        }
-                      }}
-                    >
-                      <List.Item.Meta
-                        avatar={renderAvatar(comment.author?.avatarUrl)}
-                        title={
-                          <div>
-                            {/* Автор комментария сверху */}
-                            <div style={{ marginBottom: 4 }}>
-                              {comment.author?.userName && comment.author?.slug ? (
-                                <Text
-                                  style={{ color: "#1677ff", cursor: "pointer", fontWeight: 500 }}
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    navigate(`/profile/${comment.author?.slug}`);
-                                  }}
-                                >
-                                  {comment.author.userName}
-                                </Text>
-                              ) : (
-                                <Text type="secondary">{comment.author?.userName || "Unknown User"}</Text>
-                              )}
-                              {formatDate(comment.createdAt) && (
-                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                  • {formatDate(comment.createdAt)}
-                                </Text>
-                              )}
+                </div>
+              )}
+
+              {activeTab === 'comments' && (
+                <div className="search-modal__results">
+                  {results.comments.length === 0 ? (
+                    <div className="search-modal__empty">No comments found</div>
+                  ) : (
+                    results.comments.map((comment, index) => (
+                      <div
+                        key={index}
+                        className="search-modal__item comment"
+                        onClick={() => handleCommentClick(comment)}
+                      >
+                        <div className="search-modal__avatar">
+                          {comment.author?.avatarUrl ? (
+                            <img src={comment.author.avatarUrl} alt={comment.author.userName} />
+                          ) : (
+                            <div className="avatar-placeholder">
+                              {comment.author?.userName?.charAt(0).toUpperCase() || '?'}
                             </div>
-                            {/* Содержимое комментария */}
-                            <Paragraph 
-                              style={{ margin: 0, color: "#333" }}
-                              ellipsis={{ rows: 2, expandable: false }}
-                            >
-                              {comment.content}
-                            </Paragraph>
+                          )}
+                        </div>
+                        <div className="search-modal__info">
+                          <div className="search-modal__name">
+                            {comment.author?.userName || 'Anonymous'}
+                            <span className="search-modal__meta">
+                              {comment.likes && `❤️ ${comment.likes}`}
+                            </span>
                           </div>
-                        }
-                        description={
-                          <div style={{ marginTop: 4 }}>
-                            {/* Контекст поста */}
-                            {comment.post?.content && (
-                              <div style={{ 
-                                background: "#f5f5f5", 
-                                padding: "8px 12px", 
-                                borderRadius: 6,
-                                marginTop: 8,
-                                borderLeft: "3px solid #1677ff"
-                              }}>
-                                <Text type="secondary" style={{ fontSize: 12 }}>
-                                  In post: 
-                                </Text>
-                                <Text style={{ fontSize: 12, marginLeft: 4 }}>
-                                  {truncateText(comment.post.content, 80)}
-                                </Text>
-                              </div>
-                            )}
-                            {/* Дополнительная информация */}
-                            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 4 }}>
-                              {typeof comment.likes === 'number' && comment.likes > 0 && (
-                                <Text type="secondary" style={{ fontSize: 12 }}>
-                                  ❤️ {comment.likes}
-                                </Text>
-                              )}
+                          <div className="search-modal__content">
+                            {comment.content.length > 80
+                              ? `${comment.content.substring(0, 80)}...`
+                              : comment.content
+                            }
+                          </div>
+                          {comment.post && (
+                            <div className="search-modal__post-ref">
+                              💬 Reply to: {comment.post.content.substring(0, 50)}...
                             </div>
-                          </div>
-                        }
-                      />
-                    </List.Item>
+                          )}
+                        </div>
+                      </div>
+                    ))
                   )}
-                  locale={{ emptyText: loading ? <Spin /> : "No comments found" }}
-                />
-              ),
-            },
-          ]}
-        />
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 });

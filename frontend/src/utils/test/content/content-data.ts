@@ -10,248 +10,212 @@ export interface ContentTheme {
 
 export const CONTENT_THEMES: ContentTheme[] = [
   {
-    name: 'Японская культура',
-    emoji: '🏮',
+    name: 'Gaming & Esports',
+    emoji: '🎮',
     texts: [
-      `<b>Японская культура чая</b> просто завораживает! 🍵 Вчера попробовал настоящую <code>чайную церемонию</code> - это медитация в движении. 
-
-Каждый жест имеет значение, каждая деталь продумана веками. <i>Матча</i> горьковатый, но после него ощущаешь невероятную ясность ума! 🧘‍♂️ 
-
-В <u>Японии</u> даже простое чаепитие превращается в искусство. Хочу изучить все тонкости этой традиции.`,
-
-      `<b>Сакура в Японии</b> - это нечто магическое! 🌸 Только что увидел фото <i>ханами</i> из Киото... розовые лепестки падают как снег! 
-
-<u>Японцы</u> умеют находить красоту в мимолетном. <code>Моно но аварэ</code> - философия печальной красоты увядания. 🌺 
-
-Мечтаю попасть в <i>Японию</i> во время цветения! Говорят, что пикники под сакурой - это особая традиция.`,
-
-      `<b>Японская каллиграфия</b> просто завораживает! ✍️ Начал изучать <code>сёдо</code> - это медитация через письмо. Каждый штрих кисти имеет душу! 
-
-<i>Иероглифы</i> - это не просто символы, это целые истории! 🖋️ Особенно люблю писать <u>禅</u> (дзэн) - в нем такая гармония линий! 
-
-В <i>Японии</i> красивый почерк считается признаком культурного человека.`,
-
-      `<b>Традиционные японские фестивали</b> просто волшебные! 🏮 <i>Танабата</i>, <i>Омацури</i>, <i>Ханами</i>... каждый имеет глубокий смысл! 
-
-Особенно люблю <code>юката</code> и <code>фейерверки</code> летом! 🎆 <u>Японцы</u> умеют создавать атмосферу праздника из простых вещей. 
-
-В <i>аниме</i> часто показывают эти фестивали - они всегда такие душевные и красивые!`,
-
-      `<b>Японская еда</b> - это отдельная вселенная! 🍜 Только что попробовал настоящий <code>тонкоцу рамен</code> - бульон варился 12 часов! 
-
-<i>Японцы</i> превращают простую лапшу в произведение искусства! 🍥 Каждый ингредиент имеет значение: <u>чашу</u>, <u>яйцо</u>, <u>водоросли</u>... 
-
-Особенно впечатляет <code>омакасе</code> - когда шеф сам выбирает блюда! Доверие между поваром и гостем - основа японской кухни! 🍣`,
-
-      `<b>Философия дзен</b> в повседневной жизни! 🧘‍♂️ <i>Японцы</i> находят гармонию в простых вещах: <code>садоводство</code>, <code>чаепитие</code>, <code>каллиграфия</code>... 
-
-Концепция <u>ваби-саби</u> учит видеть красоту в несовершенстве! 🌿 Треснувшая чашка может быть прекраснее новой, если в ней есть история. 
-
-В <i>аниме</i> тоже часто показывают эту философию.`,
-
-      `<b>Японское искусство</b> минимализма завораживает! 🎨 <i>Сады камней</i>, <code>икебана</code>, <code>оригами</code>... красота в простоте! 
-
-Каждый элемент имеет значение, лишнего нет! 🌸 <u>Японцы</u> мастера создавать гармонию из малого. Это очень <i>дзенский</i> подход! 
-
-В <code>аниме</code> тоже часто используют этот принцип - важные моменты показывают через детали!`
+      `gg ez 🎮`,
+      `Купил RTX 4090 за почку 💸`,
+      `200 часов в Baldur's Gate 3... да я в порядке 😅`,
+      `Just rage quit after dying to the same boss 47 times 🤬`,
+      `Why do I keep buying games on Steam sale when I have 500 unplayed games? 🤔`,
+      `Друг сказал "просто одну катку в Dota" 6 часов назад... я все еще играю 🎯`,
+      `Finally beat Elden Ring! Now time for NG+7 because I hate myself 💀`,
+      `Playing Among Us in 2024 hits different when you're sus of everyone irl too 👀`,
+      `Minecraft is not just a game, it's a lifestyle. Built a replica of my house to escape reality 🏗️`,
+      `Speedrunning life like I speedrun Mario 64 - lots of glitches and crying 🏃‍♂️💨`
     ]
   },
 
   {
-    name: 'Аниме и манга',
-    emoji: '🎌',
-    texts: [
-      `<b>Наруто vs Гоку</b> - вечный спор! 🥊 Кто сильнее физически? Лично я считаю что <i>Гоку</i> побеждает в чистой силе, но <u>Наруто</u> превосходит в тактике и хитрости. 
-
-<code>Расенган против Камехамехи</code> было бы эпично! 💥 Представляете как они тренируются вместе? Гоку учит Наруто контролировать энергию! 
-
-Оба начинали слабыми, но упорство привело их к вершинам. В этом красота <i>shounen</i> аниме! 🌟`,
-
-      `<b>Саске Учиха</b> - самый сложный персонаж! 😤 От друга до врага, от мести к искуплению... Его путь показывает как боль может изменить человека. 
-
-<code>Шаринган и Риннеган</code> делают его невероятно мощным, но настоящая сила - в преодолении ненависти. ⚡ 
-
-<i>Чидори против Расенгана</i> навсегда останется легендарным! Эта битва не о силе, а о разных путях к одной цели!`,
-
-      `<b>Итачи Учиха</b> - самый трагичный персонаж! 😢 Убил весь клан ради мира, позволил брату ненавидеть себя... Истинный герой в тени! 
-
-<code>Цукуёми</code>, <code>Аматэрасу</code>, <code>Сусаноо</code> - техники уровня богов! 👁️ <i>"Прости, Саске... это последний раз"</i> - до сих пор мурашки! 
-
-Настоящий <u>ниндзя</u> тот, кто жертвует всем ради других, оставаясь непонятым.`,
-
-      `<b>Гоку против Джирена</b> - лучшая битва в Dragon Ball Super! 💪 <code>Ультра Инстинкт</code> - это не просто трансформация, это философия боя! 
-
-Когда разум молчит, тело движется само. 🧘‍♂️ Эта техника показывает эволюцию Гоку от дикого бойца до просветленного воина. 
-
-Серебряные волосы и божественная аура! ✨ Жаль только, что он не смог удержать эту форму долго.`,
-
-      `<b>Король Пиратов Роджер</b> изменил мир одной фразой! 🏴‍☠️ <code>"Мое сокровище? Ищите! Я оставил все в том месте!"</code> 
-
-Эти слова запустили <i>Великую Эпоху Пиратства</i>! 🌊 <u>One Piece</u> не просто сокровище - это мечта, свобода, дружба, приключения! 
-
-<i>Луффи</i> идет по стопам Роджера, но создает свою легенду!`
-    ]
-  },
-
-  {
-    name: 'Технологии',
+    name: 'Internet Culture',
     emoji: '💻',
     texts: [
-      `<b>Искусственный интеллект</b> меняет мир! 🤖 <code>ChatGPT</code>, <code>Midjourney</code>, <code>GitHub Copilot</code> - эти инструменты уже сейчас помогают миллионам людей. 
-
-Но важно помнить об <i>этических аспектах</i>. ИИ должен дополнять человека, а не заменять его. 💭 
-
-Будущее за <u>гибридным интеллектом</u> - когда человек и машина работают в команде!`,
-
-      `<b>Квантовые компьютеры</b> - это революция! ⚛️ Пока что это сложная технология, но потенциал огромен. <code>Квантовая суперпозиция</code> позволяет обрабатывать данные принципиально по-новому. 
-
-<i>Google</i> и <i>IBM</i> активно развивают эту область. 🔬 Возможно, через 10 лет мы увидим квантовые смартфоны! 
-
-Главное - не отставать от прогресса и изучать новые технологии! 📚`,
-
-      `<b>Блокчейн технологии</b> выходят за рамки криптовалют! ⛓️ <code>Smart contracts</code>, <code>DeFi</code>, <code>NFT</code> - это только начало. 
-
-Представляете систему голосования на блокчейне? 🗳️ Или медицинские карты, которые нельзя подделать? <i>Децентрализация</i> дает новые возможности! 
-
-<u>Web3</u> может изменить интернет, но нужно решить проблемы с энергопотреблением и масштабируемостью.`,
-
-      `<b>Разработка на JavaScript</b> в 2025! 🚀 <code>React</code>, <code>Node.js</code>, <code>TypeScript</code> - экосистема растет невероятно быстро. 
-
-Особенно люблю <i>Next.js</i> за SSR и <i>Vite</i> за скорость сборки! ⚡ А <code>Prisma</code> делает работу с базами данных приятной. 
-
-Фронтенд стал таким мощным, что можно создавать полноценные приложения! 💪`,
-
-      `<b>Кибербезопасность</b> становится критически важной! 🔒 С ростом цифровизации растут и угрозы. <code>Zero Trust</code> архитектура - новый стандарт безопасности. 
-
-<i>Фишинг</i>, <i>ransomware</i>, <i>social engineering</i> - атаки становятся изощреннее. 🎭 Важно обучать не только IT-специалистов, но и обычных пользователей! 
-
-<u>Двухфакторная аутентификация</u> должна быть везде! 🔐`
+      `LOL 😂`,
+      `This meme hits different at 3am 🌙`,
+      `POV: you're scrolling instead of sleeping 👁️`,
+      `Touch grass? I prefer touching screens 📱`,
+      `WiFi is down = apocalypse mode activated 📡💀`,
+      `When the video buffers right at the best part 🤡`,
+      `NFT stands for "No Fucking Thanks" 🖼️❌`,
+      `Deleted my search history like I'm hiding war crimes 🕵️‍♂️`,
+      `Online shopping at 2am: "Do I really need a banana hammock?" 🍌`,
+      `Zoom calls: professional from waist up, pajamas from waist down 👔🩲`
     ]
   },
 
   {
-    name: 'Путешествия',
+    name: 'Food Adventures',
+    emoji: '🍕',
+    texts: [
+      `Pizza = life 🍕`,
+      `Burnt water again 🔥💧`,
+      `Gordon Ramsay would cry seeing my cooking 👨‍🍳😢`,
+      `Tried making sourdough starter, created sentient blob instead 🧪`,
+      `Adult life: getting excited about buying expensive cheese 🧀✨`,
+      `Cereal for dinner because I'm a sophisticated adult 🥣`,
+      `Found a restaurant that serves breakfast all day - true love exists 🥞❤️`,
+      `Spent $50 on ingredients to make a $3 dish. Math checks out 📊`,
+      `My cooking skills peaked at instant ramen with an egg 🍜🥚`,
+      `Wine tasting: "Mmm yes, this tastes like... grape juice but expensive" 🍷🤔`
+    ]
+  },
+
+  {
+    name: 'Life Struggles',
+    emoji: '😤',
+    texts: [
+      `Monday again? No thanks 📅`,
+      `Adult responsibilities are like subscription services - they never end 💳`,
+      `My back hurts and I'm only 25. What sorcery is this? 🧙‍♂️`,
+      `Bought plants to feel responsible. They're all dead now 🪴💀`,
+      `Why do weekends have only 2 days but weeks have 5 work days? Conspiracy! 🕵️‍♂️`,
+      `Alarm clock is my biggest enemy and morning coffee is my only ally ☕⚔️`,
+      `Laundry pile reached Mount Everest status 🏔️👕`,
+      `Procrastination level: writing a to-do list instead of doing tasks 📝`,
+      `Bank account balance and my self-esteem have a lot in common - both are low 📉`,
+      `Sleep schedule more messed up than my life choices 😴🎢`
+    ]
+  },
+
+  {
+    name: 'Tech Chaos',
+    emoji: '💻',
+    texts: [
+      `Bug fixed! 🐛➡️✅`,
+      `Git commit message: "fixed stuff" 💬`,
+      `Stack Overflow saved my life again 🆘`,
+      `Code works on my machine ¯\\_(ツ)_/¯`,
+      `sudo apt install coffee ☕`,
+      `My code has more issues than Vogue magazine 📖`,
+      `Debugging: being detective for your own crimes 🕵️‍♂️`,
+      `HTML is not a programming language but my heart is broken anyway 💔`,
+      `When you fix one bug and create three new ones - it's called progress 📈`,
+      `Rubber duck debugging: having deeper conversations with toys than humans 🦆`
+    ]
+  },
+
+  {
+    name: 'Random Wisdom',
+    emoji: '🧠',
+    texts: [
+      `Life hack: pretend to be busy 💼`,
+      `Why do we park in driveways and drive on parkways? 🤯`,
+      `Socks disappear in washing machine to parallel universe of single socks 🧦🌌`,
+      `Conspiracy theory: alarm clocks can sense when you're comfortable 😴`,
+      `Scientists say universe is expanding. So is my waistline. Coincidence? 🌌🍔`,
+      `Time flies when you're having fun. Time crawls when you're in meetings ⏰`,
+      `Money can't buy happiness but poverty can't buy anything 💰`,
+      `I'm not lazy, I'm in energy saving mode 🔋`,
+      `Life is like WiFi - stronger when you're closer to the source ✨`,
+      `Reality is often disappointing. That's why I live in denial 🙈`
+    ]
+  },
+
+  {
+    name: 'Modern Problems',
+    emoji: '🤡',
+    texts: [
+      `First world problems 🌍`,
+      `Phone battery dies faster than my motivation 🔋💀`,
+      `Autocorrect thinks it knows me better than I know myself 📱🤖`,
+      `Password must contain: 1 capital letter, 1 number, 1 symbol, and your childhood trauma 🔒`,
+      `Social media algorithm knows my taste better than my mother 👩‍👧‍👦`,
+      `Trying to skip ads but accidentally clicking on them - capitalism wins again 💸`,
+      `Email inbox: 47,392 unread emails. I'm basically digital hoarder 📧`,
+      `GPS: "Turn left" Me: "But there's a wall" GPS: "I SAID TURN LEFT" 🗺️`,
+      `Spotify knows I'm sad before I do 🎵😢`,
+      `Online shopping cart: $200. After applying logic: empty cart 🛒`
+    ]
+  },
+
+  {
+    name: 'Fitness Fantasy',
+    emoji: '💪',
+    texts: [
+      `Gym membership = expensive guilt 💳`,
+      `Ran for 5 minutes, rewarded myself with pizza 🏃‍♂️🍕`,
+      `Yoga class: trying to look zen while internally screaming 🧘‍♀️😱`,
+      `My fitness tracker congratulates me for walking to the fridge 🏃‍♂️❄️`,
+      `Protein shake tastes like disappointment mixed with hope 🥤`,
+      `Before gym selfie vs after gym reality - two different people 📸`,
+      `Personal trainer: "Feel the burn!" Me: "That's just my soul dying" 🔥👻`,
+      `Crossfit: paying money to feel like you're dying in group setting 💀`,
+      `Rest day turned into rest week turned into rest month 😴`,
+      `New Year resolution: get fit. By March: what's a gym? 📅❓`
+    ]
+  },
+
+  {
+    name: 'Travel Dreams',
     emoji: '✈️',
     texts: [
-      `<b>Исландия</b> - это другая планета! 🌋 <i>Северное сияние</i>, <i>гейзеры</i>, <i>водопады</i>... природа здесь первозданная и дикая. 
-
-<code>Голубая лагуна</code> с геотермальной водой - незабываемый опыт! 💙 А еще в Исландии одни из самых экологически чистых городов мира. 
-
-<u>Рейкьявик</u> компактный, но очень уютный. Исландцы дружелюбные и говорят на отличном английском! 🗣️`,
-
-      `<b>Бали, Индонезия</b> - рай для души! 🌺 <i>Убуд</i> с его рисовыми террасами, <i>Семиньяк</i> с пляжами и серфингом... 
-
-<code>Балийская кухня</code> невероятная! 🍛 <u>Наси горенг</u>, <u>ренданг</u>, <u>гадо-гадо</u> - каждое блюдо открытие. А местные <i>варунги</i> готовят лучше ресторанов! 
-
-Балийцы очень духовные люди. Их философия жизни учит находить гармонию во всем. 🙏`,
-
-      `<b>Норвегия</b> - страна фьордов! ⛰️ <i>Гейрангер-фьорд</i> настолько красив, что кажется нереальным. <code>Водопад "Семь сестер"</code> - природная симфония! 
-
-В <u>Бергене</u> разноцветные домики как из сказки. 🏘️ А <i>северное сияние</i> в Тромсё - это магия! Лучше видеть зимой, но нужна теплая одежда! 
-
-Норвежцы очень экологически осознанные. Электромобили здесь норма, а не исключение! ⚡`,
-
-      `<b>Марокко</b> - смесь Африки и Арабского мира! 🐪 <i>Марракеш</i> с его мединой, <i>Фес</i> с кожевенными мастерскими... 
-
-<code>Таджин</code> и <code>кускус</code> здесь готовят божественно! 🍲 А <u>мятный чай</u> пьют постоянно. Марокканское гостеприимство легендарно! 
-
-<i>Пустыня Сахара</i> - это нужно пережить. Ночь под звездами, тишина и бесконечность... 🌌`,
-
-      `<b>Новая Зеландия</b> - страна невероятных пейзажей! 🗻 <i>Милфорд Саунд</i>, <i>фьорды</i>, <i>горячие источники</i>... природа здесь разнообразная как нигде! 
-
-<code>Хоббитон</code> из фильмов Толкина существует реально! 🧙‍♂️ А <u>адреналиновые развлечения</u> в Квинстауне - банджи, парапланеризм, рафтинг! 
-
-Новозеландцы очень дружелюбные и любят активный отдых. Здесь зародился экстремальный туризм! 🪂`
+      `Wanderlust activated 🗺️`,
+      `Plane WiFi: $20 for 2MB. Highway robbery at 30,000 feet ✈️💸`,
+      `Packing: bringing 5 outfits for 2-day trip "just in case" 🧳`,
+      `Airport security: taking shoes off like some weird ritual 👠🔍`,
+      `Google Translate making me sound like confused robot in foreign countries 🤖`,
+      `Instagram vs reality: angle is everything 📸✨`,
+      `Jet lag: body clock stuck in different time zone, brain in limbo ⏰🌍`,
+      `Hostel life: making friends through shared suffering of snoring roommates 🏨`,
+      `Local food adventure: either best meal ever or digestive roulette 🎲🍜`,
+      `Coming home from vacation: reverse culture shock in your own country 🏠😵`
     ]
   },
 
   {
-    name: 'Наука',
-    emoji: '🔬',
+    name: 'Coffee Philosophy',
+    emoji: '☕',
     texts: [
-      `<b>Телескоп Джеймса Уэбба</b> меняет наше понимание космоса! 🌌 Фотографии далеких галактик невероятно детальные. <code>Инфракрасное излучение</code> показывает то, что скрыто от обычных телескопов. 
-
-<i>Экзопланеты</i> в зоне обитаемости находят все чаще! 🪐 Возможно, мы не одни во Вселенной. <u>Поиск жизни</u> - главная задача астрономии XXI века. 
-
-Каждое открытие расширяет границы возможного! ✨`,
-
-      `<b>CRISPR генное редактирование</b> - революция в медицине! 🧬 Технология позволяет точечно изменять ДНК. <code>Лечение наследственных болезней</code> становится реальностью! 
-
-<i>Серповидноклеточная анемия</i> уже лечится с помощью CRISPR. 💊 Но есть и этические вопросы - где границы вмешательства в природу? 
-
-<u>Персонализированная медицина</u> будущего будет основана на генетическом профиле каждого человека! 🔬`,
-
-      `<b>Квантовая физика</b> полна парадоксов! ⚛️ <code>Кот Шрёдингера</code>, <code>квантовая запутанность</code>, <code>принцип неопределенности</code>... 
-
-Эйнштейн называл это "пугающим дальнодействием". 👻 Но именно эти "странности" лежат в основе квантовых компьютеров! 
-
-<i>Многомировая интерпретация</i> предполагает бесконечное количество параллельных вселенных. Фантастика становится наукой! 🌟`,
-
-      `<b>Нейронауки</b> изучают самый сложный объект во Вселенной - мозг! 🧠 <code>100 миллиардов нейронов</code> создают сознание, память, эмоции... 
-
-<i>Пластичность мозга</i> позволяет ему восстанавливаться после травм. 🔄 <u>Нейроинтерфейсы</u> уже помогают парализованным людям управлять компьютером силой мысли! 
-
-Понимание работы мозга - ключ к лечению депрессии, болезни Альцгеймера и других заболеваний. 💡`,
-
-      `<b>Биотехнологии</b> меняют сельское хозяйство! 🌱 <code>Вертикальные фермы</code>, <code>гидропоника</code>, <code>искусственное мясо</code> - будущее еды уже здесь! 
-
-<i>Лабораторное мясо</i> может решить проблему экологии и этики. 🥩 А <u>ГМО культуры</u> помогают накормить растущее население планеты. 
-
-<code>CRISPR</code> позволяет создавать растения, устойчивые к засухе и болезням! 🌾`
-    ]
-  },
-
-  {
-    name: 'Искусство и творчество',
-    emoji: '🎨',
-    texts: [
-      `<b>Цифровое искусство</b> переживает ренессанс! 🖼️ <code>NFT</code>, <code>AI-генерация</code>, <code>VR-галереи</code> - границы творчества расширяются! 
-
-<i>Midjourney</i> и <i>DALL-E</i> создают невероятные изображения по описанию. 🤖 Но заменят ли они художников? Скорее, дадут новые инструменты! 
-
-<u>Интерактивные инсталляции</u> позволяют зрителю стать частью произведения. Искусство становится живым! ✨`,
-
-      `<b>Уличное искусство</b> - голос поколений! 🎭 <i>Бэнкси</i>, <i>Шепард Фейри</i>, <i>JR</i> - художники, меняющие города и сознание. 
-
-<code>Граффити</code> эволюционировало от вандализма до признанного искусства. 🖌️ <u>Мурал-фестивали</u> превращают серые стены в галереи под открытым небом! 
-
-Лучшее уличное искусство рассказывает истории и заставляет думать. 💭`,
-
-      `<b>Современная музыка</b> ломает все границы! 🎵 <code>Электронная</code>, <code>эмбиент</code>, <code>экспериментальная</code> - жанры смешиваются и создают новые звуки. 
-
-<i>AI-композиторы</i> уже пишут музыку! 🤖 Но эмоции и душу может передать только человек. <u>Коллаборация</u> человека и ИИ дает удивительные результаты! 
-
-Стриминг изменил музыкальную индустрию. Теперь любой может стать исполнителем! 🎤`,
-
-      `<b>Фотография</b> в эпоху смартфонов! 📱 Каждый носит профессиональную камеру в кармане. <code>Computational photography</code> делает невозможное возможным! 
-
-<i>Астрофотография</i> на телефоне, <i>портретный режим</i>, <i>ночная съемка</i> - технологии впечатляют! 🌙 Но композиция и момент по-прежнему важнее техники. 
-
-<u>Социальные сети</u> изменили восприятие фотографии. Визуальная культура стала доминирующей! 📸`,
-
-      `<b>Архитектура будущего</b> - это экология и технологии! 🏗️ <code>Зеленые здания</code>, <code>умные дома</code>, <code>вертикальные сады</code> - города становятся живыми! 
-
-<i>Параметрическая архитектура</i> создает невозможные формы. 📐 <u>3D-печать зданий</u> может решить жилищную проблему! 
-
-Лучшие архитекторы думают не только о красоте, но и о влиянии на планету. 🌍`
+      `Coffee = liquid motivation ☕`,
+      `Espresso yourself ☕💬`,
+      `Life before coffee: error 404 motivation not found ❌`,
+      `Decaf is just sad bean water 😢`,
+      `Coffee shop WiFi password: probably "coffee123" 📶`,
+      `Barista: "Name for order?" Me: *existential crisis* 🤔`,
+      `Cold brew in winter because addiction doesn't follow seasons ❄️☕`,
+      `Latte art looking better than my actual art 🎨`,
+      `Third cup of coffee today. Body is 90% caffeine now ⚡`,
+      `Coffee machine broken = declare national emergency 🚨`
     ]
   }
 ];
 
 // Функция для получения случайного текста по теме
-export function getRandomTextByTheme(themeIndex: number, textIndex: number): string {
-  const theme = CONTENT_THEMES[themeIndex % CONTENT_THEMES.length];
-  const text = theme.texts[textIndex % theme.texts.length];
-  return text;
-}
-
-// Функция для получения случайного текста
 export function getRandomText(index: number): string {
   const allTexts: string[] = [];
   CONTENT_THEMES.forEach(theme => {
     allTexts.push(...theme.texts);
   });
+  
+  // Добавляем рандомизацию для избежания повторов
+  const randomOffset = Math.floor(Math.random() * allTexts.length);
+  const adjustedIndex = (index + randomOffset) % allTexts.length;
+  
+  return allTexts[adjustedIndex];
+}
+
+// Добавить новую функцию для детерминированного выбора:
+export function getTextByIndex(index: number): string {
+  const allTexts: string[] = [];
+  CONTENT_THEMES.forEach(theme => {
+    allTexts.push(...theme.texts);
+  });
   return allTexts[index % allTexts.length];
+}
+
+// Добавить функцию для случайного текста с семплированием:
+export function getRandomTextSampled(index: number, seed?: number): string {
+  const allTexts: string[] = [];
+  CONTENT_THEMES.forEach(theme => {
+    allTexts.push(...theme.texts);
+  });
+  
+  // Используем seed для псевдослучайности или реальный рандом
+  const randomIndex = seed ? 
+    (index * seed + 31) % allTexts.length : 
+    Math.floor(Math.random() * allTexts.length);
+  
+  return allTexts[randomIndex];
 }
 
 // Экспорт названий тем

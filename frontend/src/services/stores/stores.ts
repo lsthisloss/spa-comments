@@ -1,6 +1,6 @@
-import { storesContext } from './createStores';
+import { storesContext } from '../main/createStores';
 // Реэкспортируем тип Stores
-export type { Stores } from './createStores';
+export type { Stores } from '../main/createStores';
 
 // Инициализируем сторы при первом импорте
 if (!storesContext.initialized) {
@@ -15,7 +15,6 @@ export const userStore = stores.userStore;
 export const postStore = stores.postStore;
 export const commentStore = stores.commentStore;
 export const sendFormStore = stores.sendFormStore;
-export const navigationStore = stores.navigationStore;
 
 // Для использования в React Context
 export { storesContext };

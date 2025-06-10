@@ -5,10 +5,15 @@ import { UserAddOutlined, UserDeleteOutlined, SearchOutlined, CrownOutlined, Use
 import { User } from '../../types/interfaces';
 import { useUserStore } from '../../hooks/useStore';
 
-
 const { Title, Text } = Typography;
 
+/*
+  Компонент для управления ролями администраторов
+  Только для SuperAdmins
+*/
+
 const AdminPanel: React.FC = observer(() => {
+  // Состояния для управления панелью администратора
   const [targetUserId, setTargetUserId] = useState('');
   const [loading, setLoading] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
@@ -16,6 +21,12 @@ const AdminPanel: React.FC = observer(() => {
   const [usersLoading, setUsersLoading] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const userStore = useUserStore();
+
+  /*
+    Функция для промоции пользователя в админы
+    Принимает ID или имя пользователя, пытается промоутнуть его
+    Если не удается найти пользователя, пробует с маленькой буквы
+  */
 
   const handlePromoteUser = async () => {
     if (!targetUserId.trim()) {
@@ -75,6 +86,11 @@ const AdminPanel: React.FC = observer(() => {
     }
   };
 
+  /*
+    Функция для поиска всех пользователей
+    Загружает список пользователей и отображает статистику по ролям
+  */
+
   const handleSearchUsers = async () => {
     setUsersLoading(true);
     try {
@@ -83,7 +99,7 @@ const AdminPanel: React.FC = observer(() => {
       setShowUsers(true);
       
       // Статистика по ролям
-      const stats = fetchedUsers.reduce((acc, user) => {
+      const stats = fetchedUsers.reduce((acc: Record<string, number>, user: User) => {
         acc[user.role] = (acc[user.role] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
@@ -97,6 +113,12 @@ const AdminPanel: React.FC = observer(() => {
       setUsersLoading(false);
     }
   };
+
+  /*
+    Функция для понижения пользователя с роли администратора
+    Принимает ID пользователя, пытается демоутнуть его
+    Если не удается найти пользователя, пробует с маленькой буквы
+  */
 
   const handleDemoteFromAdmin = async () => {
     if (!targetUserId.trim()) {
