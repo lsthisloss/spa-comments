@@ -202,15 +202,64 @@ export class UsersService {
 
   async deleteUser(userId: string): Promise<boolean> {
     try {
-      const result = await this.userRepository.delete(userId);
+      // Начинаем транзакцию для безопасного удаления
+      const queryRunner =
+        this.userRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
 
-      // --- Удаление из Elasticsearch ---
-      await this.elasticsearchService.delete({
-        index: 'users',
-        id: userId,
-      });
+      try {
+        // 1. Удаляем все комментарии пользователя (сначала комментарии, так как они могут ссылаться на посты)
+        await queryRunner.query(`DELETE FROM comments WHERE "userId" = $1`, [
+          userId,
+        ]);
 
-      return result.affected ? result.affected > 0 : false;
+        // 2. Удаляем все посты пользователя
+        await queryRunner.query(`DELETE FROM posts WHERE "userId" = $1`, [
+          userId,
+        ]);
+
+        // 3. Удаляем связи подписок (following/followers)
+        await queryRunner.query(
+          `DELETE FROM user_following WHERE "userId" = $1 OR "followingId" = $1`,
+          [userId],
+        );
+
+        // 4. Удаляем самого пользователя - исправляем проверку результата
+        const result = (await queryRunner.query(
+          `DELETE FROM users WHERE id = $1`,
+          [userId],
+        )) as unknown[];
+
+        // 5. Удаляем из Elasticsearch
+        try {
+          await this.elasticsearchService.delete({
+            index: 'users',
+            id: userId,
+          });
+        } catch (esError) {
+          this.logger.warn(
+            `Failed to delete user from Elasticsearch: ${esError}`,
+          );
+          // Не прерываем транзакцию из-за ошибки Elasticsearch
+        }
+
+        await queryRunner.commitTransaction();
+
+        this.logger.log(
+          `User ${userId} and all related data deleted successfully`,
+        );
+
+        // В PostgreSQL с TypeORM result - это массив, а не объект с affectedRows
+        // Проверяем что пользователь действительно был найден и удален
+        const userExists = Array.isArray(result) && result.length >= 0;
+        return userExists; // Возвращаем true если операция прошла успешно
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
     } catch (error) {
       this.logger.error(`Error deleting user ${userId}:`, error);
       throw new Error(

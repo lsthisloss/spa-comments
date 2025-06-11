@@ -504,6 +504,25 @@ class PostStore extends BaseStore<Post> implements IPostStore {
         });
         feed.latestPost = processedPosts[0] || feed.latestPost;
         logger.log(`[PostStore] Added ${processedPosts.length} posts directly to ${feedType} feed${isCrashTest ? ' (crash test)' : ' (current user)'}`);
+
+        // Добавляем посты от текущего пользователя также в user ленту
+        if (isCurrentUserPosts && feedType !== 'user') {
+          const userFeed = this.feeds.user;
+          const currentUserId = this.userStore.user?.id;
+
+          processedPosts.forEach(post => {
+            if (post.userId === currentUserId) {
+              const existsInUserFeed = userFeed.list.findIndex(p => p.id === post.id) >= 0;
+              const existsInUserBuffer = userFeed.buffer.some(p => p.id === post.id);
+
+              if (!existsInUserFeed && !existsInUserBuffer) {
+                userFeed.list.splice(0, 0, post);
+                userFeed.latestPost = post;
+                logger.log(`[PostStore] Added current user post ${post.id} to user feed`);
+              }
+            }
+          });
+        }
       }
       else {
         // Manual mode только для чужих постов вне краш-теста

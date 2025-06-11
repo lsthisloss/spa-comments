@@ -65,7 +65,7 @@ const EditProfileModal = observer(({ visible, onClose, user }: EditProfileModalP
       open={visible}
       onCancel={onClose}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}
