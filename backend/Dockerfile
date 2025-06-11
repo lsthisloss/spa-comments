@@ -1,10 +1,9 @@
 # Multi-stage build для разных окружений
 
 # Development stage
-FROM node:18-alpine AS development
+FROM node:20-alpine AS development
 WORKDIR /app
 
-# Memory optimization for development - убираем ограничения памяти
 ENV NODE_ENV=development
 
 # Copy package files first for better caching
@@ -22,7 +21,7 @@ EXPOSE 3001
 CMD ["npm", "run", "dev"]
 
 # Build stage
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
 WORKDIR /app
 
 # Higher memory limit for building
@@ -30,9 +29,10 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Copy package files
 COPY package*.json ./
+COPY tsconfig*.json ./
 
 # Install all dependencies for build
-RUN npm ci --no-audit --progress=false && npm cache clean --force
+RUN npm ci --no-audit --progress=false
 
 # Copy source code
 COPY . .
@@ -41,13 +41,13 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 WORKDIR /app
 
 # Install curl for health checks
 RUN apk add --no-cache curl
 
-# Production memory optimization - оставляем как есть для малоресурсных серверов
+# Production memory optimization
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 ENV NODE_ENV=production
 
@@ -59,6 +59,9 @@ RUN npm ci --only=production --no-audit --progress=false && npm cache clean --fo
 
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
+
+# Create uploads directory structure
+RUN mkdir -p uploads/avatars uploads/images uploads/files
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
