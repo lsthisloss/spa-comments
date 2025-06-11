@@ -32,7 +32,7 @@ COPY package*.json ./
 COPY tsconfig*.json ./
 
 # Install ALL dependencies for build (including devDependencies for TypeScript)
-RUN npm ci --no-audit --progress=false
+RUN npm install --no-audit --progress=false
 
 # Copy source code
 COPY . .
@@ -59,8 +59,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install ONLY production dependencies
-RUN npm ci --only=production --no-audit --progress=false && npm cache clean --force
-
+RUN npm install --only=production --no-audit --progress=false && npm cache clean --force
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
 
