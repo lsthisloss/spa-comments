@@ -530,32 +530,6 @@ curl http://localhost:3001/api/monitoring/health
 
 ---
 
-## 🚀 Performance Optimizations
-
-### State Management
-- **Минимальные ре-рендеры** с точными MobX подписками
-- **Memoized компоненты** + условный рендеринг
-- **Stable keys** предотвращают лишние unmount/mount
-
-### Virtual Scrolling  
-- **Adaptive buffering** по скорости скролла
-- **Memory-efficient rendering** больших списков
-
-### Network & Queue Management
-- **Optimistic updates** для мгновенной обратной связи
-- **Smart caching** с stale-while-revalidate
-- **Queue-based processing** для надёжности
-- **TTL автоочистка** предотвращает переполнение памяти
-- **Приоритизация сообщений** для критичных операций
-
-### Stress Test Results
-- **✅ Frontend:** Выдерживает 100000+ постов благодаря адаптивному батчингу
-- **✅ Backend:** Обрабатывает тысячи запросов через queue system + throttling
-- **✅ Memory:** Интеллектуальная очистка предотвращает утечки памяти
-- **✅ Real-time:** WebSocket соединения остаются стабильными под нагрузкой
-
----
-
 ## ⚡ Reactive Rendering Architecture
 
 <details>
@@ -733,18 +707,6 @@ graph LR
     M --> C
 ```
 
-</details>
-
-### 🎯 Performance Characteristics
-
-| Metric | Without Virtualization | With Virtual Scrolling | Improvement |
-|--------|------------------------|------------------------|-------------|
-| **Initial Render** | ~2000ms (1000 items) | ~50ms (10-15 visible) | **40x faster** |
-| **Memory Usage** | ~500MB (DOM nodes) | ~25MB (virtual items) | **20x less** |
-| **Scroll Performance** | Janky, frame drops | Smooth 60fps | **Silky smooth** |
-| **Re-render Time** | ~1000ms (full list) | ~16ms (visible only) | **60x faster** |
-
-<details>
 <summary>🔄 Reactive State Transitions</summary>
 
 ```mermaid
@@ -843,6 +805,56 @@ stateDiagram-v2
 - **🧪 Testing:** Встроенная система stress testing для production-ready решений
 - **📊 Monitoring:** Proactive system health monitoring с автоматическими алертами
 - **🎯 UX:** Мгновенные обновления UI благодаря optimistic updates + real-time sync
+
+---
+
+## 🚀 Быстрый старт
+
+### 📋 Требования
+- **Docker** и **Docker Compose**
+- **Node.js 18+**
+- **Bash** для запуска скриптов
+
+### 🎯 Запуск Development окружения
+
+1. **Клонируйте репозиторий:**
+   ```bash
+   git clone <repository-url>
+   cd spa-comments
+   ```
+
+2. **Запустите setup скрипт:**
+   ```bash
+   ./run.sh
+   ```
+
+3. **Выберите опцию `1` для development режима**
+
+### 🌐 Доступные сервисы
+
+После успешного запуска приложение будет доступно по следующим адресам:
+
+- **Frontend:** [http://localhost:3000](http://localhost:3000)
+- **Backend API:** [http://localhost:3001](http://localhost:3001)
+- **Проверка статуса очередей:** http://localhost:3001/api/monitoring/queue-status
+- **Здоровье системы:** http://localhost:3001/api/monitoring/health
+### 🔧 Решение проблем
+
+#### Заняты порты
+Если порты заняты, освободите их
+
+### 🎯 Первый запуск
+
+1. **Создайте superadmin аккаунт** через интерфейс меню (пункт 10)
+2. **Настройте тестовые данные** через Settings → Admin Panel
+3. **Протестируйте систему** с помощью встроенных stress test инструментов
+
+### ⚠️ Важные заметки
+
+- **Опция 4** (`Полная очистка`) удаляет **ВСЕ** Docker образы и контейнеры в системе
+- Первая сборка может занять 5-10 минут
+- Frontend в development режиме поддерживает hot reload
+- Backend автоматически пересобирается при изменениях в коде
 
 ---
 
