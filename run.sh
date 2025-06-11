@@ -8,10 +8,18 @@ NORMAL='\033[0m'
 
 function app_run_dev() {
     echo -e "\n${YELLOW}Starting development environment with frontend in Docker...${NORMAL}\n"
+    
+    # Копируем .env.example в .env для фронтенда (если нет .env)
     if [ -f .env.example ] && [ ! -f .env ]; then
-        mv .env.example .env
+        cp .env.example .env
+        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
     fi
 
+    # Копируем .env.example в .env для бэкенда (если нет .env)
+    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
+    fi
 
     docker-compose -f docker-compose.dev.yml down
     
@@ -25,13 +33,21 @@ function app_run_dev() {
 
     echo -e "\n${YELLOW}Starting development containers...${NORMAL}\n"
     docker-compose -f docker-compose.dev.yml up
-
 }
 
 function app_run_local() {
     echo -e "\n${YELLOW}Stopping app containers ...${NORMAL}\n"
+    
+    # Копируем .env.example в .env для фронтенда (если нет .env)
     if [ -f .env.example ] && [ ! -f .env ]; then
-        mv .env.example .env
+        cp .env.example .env
+        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
+    fi
+
+    # Копируем .env.example в .env для бэкенда (если нет .env)
+    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
     fi
 
     docker-compose -f docker-compose.dev.yml down
@@ -50,6 +66,7 @@ function app_run_local() {
     fi
     docker-compose -f docker-compose.dev.yml up
 }
+
 function app_clean_orphans() {
     echo -e "\n${YELLOW}Cleaning orphan containers...${NORMAL}\n"
     
@@ -636,10 +653,20 @@ function app_clean_uploads() {
 function app_dev_start() {
     echo -e "\n${YELLOW}Starting DEV environment...${NORMAL}\n"
     
+    # Копируем .env.example в .env для фронтенда (если нет .env)
+    if [ -f .env.example ] && [ ! -f .env ]; then
+        cp .env.example .env
+        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
+    fi
+
+    # Копируем .env.example в .env для бэкенда (если нет .env)
+    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
+    fi
+    
     # Очищаем orphans
     docker-compose -f docker-compose.dev.yml down --remove-orphans
-
-    
 
     # Запускаем все сервисы
     echo -e "${CYAN}Starting all development services...${NORMAL}"
@@ -654,7 +681,6 @@ function app_dev_start() {
     # Показываем статус
     echo -e "\n${CYAN}Services status:${NORMAL}"
     docker-compose -f docker-compose.dev.yml ps
-    
 }
 
 function app_dev_logs() {
