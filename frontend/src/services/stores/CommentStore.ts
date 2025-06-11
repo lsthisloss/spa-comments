@@ -423,6 +423,7 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
 
           logger.log(`[CommentStore] Get ${comments.length} for parentId ${parentId}, total: ${totalCount}`);
 
+          // Все изменения в runInAction
           runInAction(() => {
             logger.log(`[CommentStore] Using ${isComment ? 'repliesMap' : 'commentsMap'} for parentId: ${parentId}`);
 
@@ -439,13 +440,14 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
               this.loadedRepliesFor.add(parentId);
               const updatedReplies = this.repliesMap.get(parentId) || [];
               logger.log(`[CommentStore] Updated repliesMap for ${parentId}, count: ${updatedReplies.length}`);
+
+              // Принудительное обновление в том же action
+              this.repliesMap.set(parentId, observable([...updatedReplies]));
             } else {
               this.loadedCommentsFor.add(parentId);
             }
           });
-          if (isComment) {
-            this.repliesMap.set(parentId, observable([...this.repliesMap.get(parentId)!]));
-          }
+
           this.loadCommentsPromises.delete(cacheKey);
           resolve();
         });
@@ -531,7 +533,6 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
   /**
    * Обработчик нового комментария
    */
-
   handleNewComment = action((comment: CommentType) => {
     if (!comment || !comment.id || !comment.content || !comment.createdAt) {
       logger.error("[CommentStore] Received invalid comment:", comment);
@@ -556,10 +557,17 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
       }
     }
 
-    // runInAction чтобы обновить состояние MobX атомарно
     runInAction(() => {
-      // Проверяем parentId для определения места добавления
-      if (comment.parentId) { // Это ответ на комментарий - добавляем в repliesMap
+      if (comment.parentId) {
+        // Сначала событие, ПОТОМ данные
+        window.dispatchEvent(new CustomEvent('postsHeightRecalculation', {
+          detail: {
+            feedType: 'comments',
+            reason: 'newComment',
+            addedCount: 1
+          }
+        }));
+
         if (!this.repliesMap.has(comment.parentId)) {
           this.repliesMap.set(comment.parentId, observable([]));
         }
@@ -571,20 +579,25 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
           replies[existingIndex] = comment;
           logger.log(`[CommentStore] Updated existing reply ${comment.id} in parent ${comment.parentId}`);
         } else {
-          replies.unshift(comment); // Добавляем в начало
+          replies.unshift(comment);
           logger.log(`[CommentStore] Added new reply ${comment.id} to parent ${comment.parentId}`);
 
-          // Обновляем счетчик ответов
           const currentTotal = this.totalItemsMap.get(comment.parentId) || 0;
           this.totalItemsMap.set(comment.parentId, currentTotal + 1);
         }
 
-        // Принудительно обновляем observable массив
         this.repliesMap.set(comment.parentId, observable([...replies]));
-
-        // Уведомляем слушателей ответов
         this.notifyNewComment(comment.parentId, comment);
-      } else if (comment.postId) { // Это комментарий к посту - добавляем в commentsMap
+      } else if (comment.postId) {
+        // Сначала событие, ПОТОМ данные
+        window.dispatchEvent(new CustomEvent('postsHeightRecalculation', {
+          detail: {
+            feedType: 'comments',
+            reason: 'newComment',
+            addedCount: 1
+          }
+        }));
+
         if (!this.commentsMap.has(comment.postId)) {
           this.commentsMap.set(comment.postId, observable([]));
         }
@@ -596,7 +609,7 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
           comments[existingIndex] = comment;
           logger.log(`[CommentStore] Updated existing comment ${comment.id}`);
         } else {
-          comments.unshift(comment); // Добавляем в начало
+          comments.unshift(comment);
           logger.log(`[CommentStore] Added new comment ${comment.id} to top of list`);
 
           const currentTotal = this.totalItemsMap.get(comment.postId) || 0;
@@ -607,10 +620,9 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
           }
         }
 
-        // Принудительно обновляем observable массив
         this.commentsMap.set(comment.postId, observable([...comments]));
 
-        // Уведомляем слушателей комментариев к посту
+        // Уведомляем слушателей ПОСЛЕ добавления данных
         this.notifyNewComment(comment.postId, comment);
       } else {
         logger.error("[CommentStore] Cannot process comment without postId or parentId:", comment);

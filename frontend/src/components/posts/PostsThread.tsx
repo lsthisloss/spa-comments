@@ -25,7 +25,6 @@ interface PostsFeedProps {
 }
 
 const PostsThread = observer(({ activeTab, userId: propsUserId, forceTopScroll }: PostsFeedProps) => {
-  // MobX stores
   // Используем MobX для управления состоянием постов и пользователя
   const postStore = usePostStore();
   const userStore = useUserStore();
@@ -51,21 +50,82 @@ const PostsThread = observer(({ activeTab, userId: propsUserId, forceTopScroll }
     return activeTab === "all" ? "feed" : "following";
   }, [activeTab]);
 
-  // Реактивная связь с MobX store
-  useEffect(() => {
-    // Начальное значение
+
+  // Feed state - получаем один раз и кешируем, чтобы избежать лишних пересчетов
+  const feedState = useMemo(() => {
     if (activeTab === "user" && actualUserId) {
-      setLocalPosts(postStore.currentUserFeedList);
+      return postStore.feeds.user;
+    }
+    return activeTab === "all"
+      ? postStore.feeds.feed
+      : postStore.feeds.following;
+  }, [activeTab, actualUserId, postStore]);
+
+  // Feed key generation
+  const feedKey = useMemo(() => {
+    if (activeTab === "user" && stableUserId) {
+      return `user-${stableUserId}`;
+    }
+    return activeTab === "all" ? 'feed-default' : 'following-default';
+  }, [activeTab, stableUserId]);
+
+  const { estimateItemHeight, getItemKey } = usePostsFeed();
+
+  useEffect(() => {
+    // Если переключились на "my" таб и данных нет - принудительно загружаем
+    if (activeTab === "my") {
+      const followingFeed = postStore.feeds.following;
+      if (followingFeed.list.length === 0 && !followingFeed.loading) {
+        logger.log(`[useTabs] Switched to 'my' tab with empty following feed, forcing load`);
+        postStore.fetchFollowingPosts(1);
+      }
+    }
+  }, [activeTab, postStore]);
+
+  useEffect(() => {
+    // Инициализация localPosts и отслеживание изменений
+    let initialPosts: Post[];
+    if (activeTab === "user" && actualUserId) {
+      initialPosts = postStore.currentUserFeedList;
     } else if (activeTab === "all") {
-      setLocalPosts(postStore.currentFeedList);
+      initialPosts = postStore.currentFeedList;
     } else {
-      setLocalPosts(postStore.currentFollowingList);
+      initialPosts = postStore.currentFollowingList;
+    }
+
+    setLocalPosts(initialPosts);
+
+    // Если данных нет для ТЕКУЩЕГО feedType - загружаем
+    const currentFeedState = activeTab === "user" && actualUserId
+      ? postStore.feeds.user
+      : activeTab === "all"
+        ? postStore.feeds.feed
+        : postStore.feeds.following;
+
+    // Проверяем данные именно для текущего feed, а не общие localPosts
+    if (currentFeedState.list.length === 0 && !isLoadingRef.current && !currentFeedState.loading) {
+      logger.log(`[PostsThread] No data for current ${feedType} feed, loading...`);
+
+      isLoadingRef.current = true;
+      let fetchPromise: Promise<void>;
+
+      if (feedType === "user" && stableUserId) {
+        fetchPromise = postStore.fetchUserPosts(stableUserId, 1);
+      } else if (feedType === "following") {
+        fetchPromise = postStore.fetchFollowingPosts(1);
+      } else {
+        fetchPromise = postStore.fetchFeedPosts(1);
+      }
+
+      fetchPromise.finally(() => {
+        isLoadingRef.current = false;
+        logger.log(`[PostsThread] ${feedType} load completed after tab switch`);
+      });
     }
 
     // Отслеживаем изменения в store через reaction
     const disposer = reaction(
       () => {
-        // Отслеживаем нужную коллекцию в зависимости от таба
         if (activeTab === "user" && actualUserId) {
           const directList = postStore.feeds.user.list.length;
           return {
@@ -94,95 +154,21 @@ const PostsThread = observer(({ activeTab, userId: propsUserId, forceTopScroll }
     );
 
     return () => {
-      disposer(); // Очищаем reaction при размонтировании
+      disposer();
     };
-  }, [activeTab, actualUserId, postStore, feedType]);
-
-  // Feed state - получаем один раз и кешируем
-  const feedState = useMemo(() => {
-    if (activeTab === "user" && actualUserId) {
-      return postStore.feeds.user;
-    }
-    return activeTab === "all"
-      ? postStore.feeds.feed
-      : postStore.feeds.following;
-  }, [activeTab, actualUserId, postStore]);
-
-  // Feed key generation
-  const feedKey = useMemo(() => {
-    if (activeTab === "user" && stableUserId) {
-      return `user-${stableUserId}`;
-    }
-    return activeTab === "all" ? 'feed-default' : 'following-default';
-  }, [activeTab, stableUserId]);
-
-  const { estimateItemHeight, getItemKey } = usePostsFeed();
-
-  // Initial data loading
-  useEffect(() => {
-    const actualFeedLength = postStore.getFeed("feed").list.length;
-
-    if ((actualFeedLength === 0 || postStore.needsFeedCheck) && !feedState.loading) {
-      logger.log('[PostsThread] No data for feed, loading fresh');
-      postStore.setNeedsFeedCheck(false);
-      postStore.fetchPosts('feed', 1);
-    }
-  }, [postStore, feedState.loading]);
-
+  }, [activeTab, actualUserId, postStore, feedType, stableUserId, feedState.loading]);
   // Force top scroll
   useEffect(() => {
     if (forceTopScroll && localPosts.length > 0) {
-      logger.log(`[PostsThread] forceTopScroll requested, scrolling to top`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [forceTopScroll, localPosts.length]);
 
-  // Data loading logic
-useEffect(() => {
-  if (isLoadingRef.current || feedState.loading) return;
-
-  const hasData = localPosts.length > 0;
-  const needsRefresh = feedState.reset;
-  
-  // Проверка на пустую базу данных
-  const isEmpty = feedState.allLoaded && feedState.total === 0 && localPosts.length === 0;
-  
-  if (isEmpty) {
-    logger.log(`[PostsThread] ${feedType} feed is empty (total: 0), skipping load`);
-    return;
-  }
-
-  if (hasData && !needsRefresh) {
-    logger.log(`[PostsThread] Using cached data for ${feedType} (${localPosts.length} posts)`);
-    return;
-  }
-
-  if (!hasData) {
-    logger.log(`[PostsThread] No data for ${feedType}, loading fresh`);
-  } else if (needsRefresh) {
-    logger.log(`[PostsThread] Force refresh requested for ${feedType}, loading fresh`);
-    postStore.clearResetFlag(feedType, feedType === "user" ? stableUserId : undefined);
-  }
-
-  // Проверяем, не выполняется ли уже загрузка
-  isLoadingRef.current = true;
-
-    let fetchPromise: Promise<void>;
-
-    if (feedType === "user" && stableUserId) {
-      fetchPromise = postStore.fetchUserPosts(stableUserId, 1);
-    } else if (feedType === "following") {
-      fetchPromise = postStore.fetchFollowingPosts(1);
-    } else {
-      fetchPromise = postStore.fetchFeedPosts(1);
-    }
-
-    fetchPromise.finally(() => {
-      isLoadingRef.current = false;
-    });
-  }, [feedType, stableUserId, feedState.loading, feedState.reset, localPosts.length, postStore, feedState.allLoaded, feedState.total]);
-
-  // User feed switching
+  /*
+    Эффект для переключения на пользовательскую ленту.
+    Если выбран тип ленты "user" и есть stableUserId, переключаемся на эту ленту.
+    Это позволяет динамически менять контекст пользователя в зависимости от выбранной вкладки.
+  */
   useEffect(() => {
     if (feedType === "user" && stableUserId) {
       postStore.switchToUser(stableUserId);
@@ -211,8 +197,11 @@ useEffect(() => {
     }
   }, [feedState, feedType, postStore, actualUserId]);
 
-  // Обработчик загрузки новых постов из буфера
-  // Вызывается при клике на уведомление о новых постах
+  /*
+    Обработчик загрузки новых постов из буфера.
+    Вызывается при клике на уведомление о новых постах.
+    Прокручивает страницу вверх и инициирует загрузку новых постов из буфера.
+  */
   const handleLoadNewPosts = useCallback(() => {
     if (feedState.buffer.length === 0) return;
 
@@ -255,6 +244,28 @@ useEffect(() => {
 
   const shouldShowNotification = feedState.manualUpdateMode && feedState.newPostsCount > 0 && feedType !== "user";
 
+  useEffect(() => {
+    const handleLoadBufferedPosts = (event: CustomEvent) => {
+      const { feedType: eventFeedType } = event.detail;
+
+      if (eventFeedType === 'posts' || eventFeedType === feedType) {
+        logger.log(`[PostsThread] Loading buffered posts for ${feedType}`);
+        postStore.loadBufferedPosts(feedType);
+      }
+    };
+
+    window.addEventListener('loadBufferedPosts', handleLoadBufferedPosts as EventListener);
+
+    return () => {
+      window.removeEventListener('loadBufferedPosts', handleLoadBufferedPosts as EventListener);
+    };
+  }, [feedType, postStore]);
+
+  /*
+    Эффект для логирования состояния компонента после рендера.
+    Используется для отладки и мониторинга состояния ленты постов.
+    Логирует количество постов, состояние загрузки и другие параметры.
+  */
   useEffect(() => {
     logger.log(`[PostsThread] Final debug state:`, {
       feedType,

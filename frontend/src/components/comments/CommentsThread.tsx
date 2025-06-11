@@ -71,27 +71,33 @@ const CommentsThread = observer(({
   // Извлекаем целевой ID и флаг поста из разрешенных ID
   const { targetId, isPost } = resolveEntityIds;
 
-  if (!targetId) {
-    return <Empty description="No post or comment ID specified" />;
-  }
-
-  /*
-    Обработчик для получения новых комментариев или ответов.
-    Подписываемся на события новых комментариев в хранилище.
-    Если целевой ID не указан, ничего не делаем.
-    Если проверка прошла, логируем получение нового комментария.
-    Используем useEffect для подписки на события.
-  */
   useEffect(() => {
-    if (!targetId) return;
+    logger.log(`[CommentsThread] useEffect triggered with targetId=${targetId}`);
+    
+    if (!targetId) {
+      logger.log(`[CommentsThread] No targetId, skipping listener registration`);
+      return;
+    }
 
     const handleNewComment = (newComment: Comment) => {
       logger.log(`[CommentsThread] New comment received for ${targetId}:`, newComment.id);
     };
 
+    logger.log(`[CommentsThread] About to register listener for ${targetId} (isPost: ${isPost})`);
     commentStore.onNewComment(targetId, handleNewComment);
-    return () => commentStore.offNewComment(targetId);
-  }, [targetId, commentStore]);
+    logger.log(`[CommentsThread] Successfully registered listener for ${targetId} (isPost: ${isPost})`);
+
+    return () => {
+      logger.log(`[CommentsThread] Cleanup: unregistering listener for ${targetId}`);
+      commentStore.offNewComment(targetId);
+      logger.log(`[CommentsThread] Successfully unregistered listener for ${targetId}`);
+    };
+  }, [targetId, commentStore, isPost]);
+
+  if (!targetId) {
+    return <Empty description="No post or comment ID specified" />;
+  }
+
 
   // Получаем список комментариев или ответов в зависимости от типа
   const comments = isPost ? commentStore.getComments(targetId) : commentStore.getReplies(targetId);

@@ -15,6 +15,13 @@ import { CommonWsService } from '../common/common-ws.service';
 import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
 
+interface FileProcessResult {
+  imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+}
+
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/comments' })
 export class CommentsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
@@ -72,9 +79,7 @@ export class CommentsGateway
     // Проверка капчи только для обычных пользователей
     const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
-    // Если пользователь НЕ админ, проверяем капчу
     if (!isAdmin) {
-      // Используем новый метод для проверки верификации капчи
       const captchaVerified = this.commonWsService.isCaptchaVerified(client);
       if (!captchaVerified) {
         return { success: false, message: 'CAPTCHA verification required' };
@@ -88,25 +93,57 @@ export class CommentsGateway
 
     try {
       if (createCommentDto.image && createCommentDto.file) {
-        const fileResult = this.commonWsService.processContentWithMultipleFiles(
-          createCommentDto.content,
-          {
-            image: createCommentDto.image,
-            file: createCommentDto.file,
-          },
-        );
+        const fileResult =
+          (await this.commonWsService.processContentWithMultipleFiles(
+            createCommentDto.content,
+            {
+              image: createCommentDto.image,
+              file: createCommentDto.file,
+            },
+          )) as FileProcessResult;
 
-        void Object.assign(createCommentDto, fileResult);
+        createCommentDto.imageUrl = fileResult.imageUrl ?? null;
+        createCommentDto.fileUrl = fileResult.fileUrl ?? null;
+        createCommentDto.fileName = fileResult.fileName ?? null;
+        createCommentDto.fileType = fileResult.fileType ?? null;
+
+        delete createCommentDto.image;
         delete createCommentDto.file;
-        delete createCommentDto.imageUrl;
+
+        console.log(
+          `[CommentsGateway] Multiple files processed: imageUrl=${fileResult.imageUrl}, fileUrl=${fileResult.fileUrl}`,
+        );
       } else if (createCommentDto.file) {
-        const fileResult = this.commonWsService.processContentWithFile(
+        const fileResult = (await this.commonWsService.processContentWithFile(
           createCommentDto.content,
           { file: createCommentDto.file },
-        );
+        )) as FileProcessResult;
 
-        void Object.assign(createCommentDto, fileResult);
+        createCommentDto.fileUrl = fileResult.fileUrl ?? null;
+        createCommentDto.fileName = fileResult.fileName ?? null;
+        createCommentDto.fileType = fileResult.fileType ?? null;
+
         delete createCommentDto.file;
+
+        console.log(
+          `[CommentsGateway] File processed: fileUrl=${fileResult.fileUrl}, fileName=${fileResult.fileName}`,
+        );
+      } else if (createCommentDto.image) {
+        const fileResult = (await this.commonWsService.processContentWithFile(
+          createCommentDto.content,
+          { file: createCommentDto.image },
+        )) as FileProcessResult;
+
+        createCommentDto.imageUrl =
+          fileResult.imageUrl ?? fileResult.fileUrl ?? null;
+        createCommentDto.fileName = fileResult.fileName ?? null;
+        createCommentDto.fileType = fileResult.fileType ?? null;
+
+        delete createCommentDto.image;
+
+        console.log(
+          `[CommentsGateway] Image processed: imageUrl=${createCommentDto.imageUrl}, fileName=${fileResult.fileName}`,
+        );
       }
 
       console.log('Final comment data before queue:', createCommentDto);

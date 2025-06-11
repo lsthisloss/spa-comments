@@ -433,6 +433,31 @@ export class PostsGateway
     return { pong: now };
   }
 
+  @SubscribeMessage('joinRoom')
+  handleJoinRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() room: string,
+  ) {
+    void client.join(room);
+    console.log(`[PostsGateway] Client ${client.id} joined room: ${room}`);
+
+    client.emit('joinedRoom', { room, success: true });
+    return { success: true, room };
+  }
+
+  @SubscribeMessage('joinUserRoom')
+  handleJoinUserRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { userId: string },
+  ) {
+    const room = `user:${data.userId}`;
+    void client.join(room);
+    console.log(`[PostsGateway] Client ${client.id} joined user room: ${room}`);
+
+    client.emit('roomJoined', { room, userId: data.userId, success: true });
+    return { success: true, room, userId: data.userId };
+  }
+
   @SubscribeMessage('fetchPost')
   async handleFetchPostWithComments(
     @MessageBody() data: { postId?: string; slug?: string },

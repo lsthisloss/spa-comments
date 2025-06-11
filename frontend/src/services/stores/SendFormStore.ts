@@ -80,6 +80,62 @@ class SendFormStore {
 
   }
 
+  private showOptimisticMessage(type: "post" | "comment", hasAttachments: boolean): (success: boolean, finalMessage?: string, extraData?: { postId?: string; queued?: boolean }) => void {
+    const messageKey = `optimistic-${type}-${Date.now()}`;
+
+    // Определяем текст сообщения
+    const getMessageText = () => {
+      if (type === "post") {
+        return hasAttachments ? "📤 Publishing post with attachments..." : "📤 Publishing post...";
+      } else {
+        return hasAttachments ? "💬 Adding comment with attachments..." : "💬 Adding comment...";
+      }
+    };
+
+    // Показываем loading сообщение
+    message.loading({
+      content: getMessageText(),
+      key: messageKey,
+      duration: 0, // Не исчезает автоматически
+    });
+
+    // Возвращаем функцию для обновления сообщения
+    return (success: boolean, finalMessage?: string, extraData?: { postId?: string; queued?: boolean }) => {
+      if (success) {
+        // Адаптируем сообщения под разные форматы ответов
+        let successMessage = "";
+
+        if (type === "post") {
+          // Для постов показываем детальную информацию
+          if (extraData?.queued) {
+            successMessage = `Post added successfully!`;
+          } else {
+            successMessage = finalMessage || `Post added successfully!`;
+          }
+        } else {
+          // Для комментариев - более простое сообщение
+          if (finalMessage?.includes("queue")) {
+            successMessage = "Comment added successfully!";
+          } else {
+            successMessage = finalMessage || "Comment added successfully!";
+          }
+        }
+
+        message.success({
+          content: successMessage,
+          key: messageKey,
+          duration: type === "post" ? 4 : 3, // Посты показываем дольше
+        });
+      } else {
+        message.error({
+          content: finalMessage || (type === "post" ? "❌ Failed to publish post" : "❌ Failed to add comment"),
+          key: messageKey,
+          duration: 4,
+        });
+      }
+    };
+  }
+
   /*
     Инициализация пользователя из userStore.
     Слушает изменения пользователя и обновляет данные в SendFormStore.
@@ -353,6 +409,10 @@ class SendFormStore {
   ): void {
     const socket = this.socketStore[type === "post" ? "posts" : "comments"];
 
+    // Показываем оптимистичное сообщение
+    const hasAttachments = !!(this.selectedImageFile || this.selectedFile);
+    const updateOptimisticMessage = this.showOptimisticMessage(type, hasAttachments);
+
     // Добавляем роль пользователя для серверной проверки
     const dataWithRole = {
       ...baseData,
@@ -362,38 +422,62 @@ class SendFormStore {
     if (!socket) {
       runInAction(() => {
         this.setLoading(false);
-        this.setErrorMessage("Connection error. Please try again.");
+        updateOptimisticMessage(false, "Connection error. Please try again.");
       });
       return;
     }
+
     // Отправляем данные через WebSocket  
     socket.emit(
       type === "post" ? "addPost" : "addComment",
       dataWithRole,
-      (ack: { success: boolean; message?: string }) => {
+      (ack: { success: boolean; message?: string; postId?: string; queued?: boolean;[key: string]: unknown }) => {
         runInAction(() => {
           this.setLoading(false);
+
           if (ack.success) {
-            this.setSuccessMessage(ack.message || "Your content has been posted successfully!");
+            //  Передаем все данные ответа для адаптации сообщения
+            updateOptimisticMessage(true, ack.message, {
+              postId: ack.postId,
+              queued: ack.queued,
+              ...ack
+            });
             onSuccess?.();
             this.resetForm();
           } else {
-            this.setErrorMessage(ack.message || "Failed to post content");
+            updateOptimisticMessage(false, ack.message);
           }
         });
       }
     );
 
-    // Также слушаем WebSocket события для дополнительной обратной связи
     const eventName = type === "post" ? "postAdded" : "commentAdded";
 
-    const handleSuccess = (response: { success?: boolean; message?: string }) => {
+    const handleSuccess = (response: { success?: boolean; message?: string; postId?: string; commentId?: string }) => {
       console.log(`[SendFormStore] Received ${eventName} event:`, response);
+
       if (response && response.success !== false) {
-        runInAction(() => {
-          // Показываем уведомление о добавлении в очередь
-          this.setSuccessMessage("Post added to queue and will be processed shortly!");
-        });
+        // Показываем дополнительное сообщение о queue с задержкой
+        setTimeout(() => {
+          if (type === "post" && response.postId) {
+            message.info({
+              content: `📦 Post ${response.postId.slice(0, 8)}... added to processing queue`,
+              duration: 2,
+            });
+          } else if (type === "comment" && response.commentId) {
+            message.info({
+              content: `📦 Comment ${response.commentId.slice(0, 8)}... added to processing queue`,
+              duration: 2,
+            });
+          } else {
+            message.info({
+              content: type === "post"
+                ? "📦 Post added to processing queue"
+                : "📦 Comment added to processing queue",
+              duration: 2,
+            });
+          }
+        }, 1500); // Увеличили задержку чтобы не конфликтовать с основным сообщением
       }
     };
 
@@ -478,9 +562,7 @@ class SendFormStore {
 
     // 1. Проверяем наличие контента
     if (!this.text.trim() && !this.selectedImageFile && !this.selectedFile) {
-      runInAction(() => {
-        this.setError("Please enter some text, upload an image, or attach a file.");
-      });
+      message.warning("Please enter some text, upload an image, or attach a file.");
       return;
     }
 
@@ -495,26 +577,20 @@ class SendFormStore {
     // 3. Проверяем текст на валидность
     const { valid, error } = ContentSanitizer.sanitizeContent(this.text);
     if (!valid) {
-      runInAction(() => {
-        this.setError(error || "Invalid content");
-      });
+      message.error(error || "Invalid content");
       return;
     }
 
     // 4. Проверяем пользователя
     if (!this.userId || this.userId.trim() === '') {
-      runInAction(() => {
-        this.setError("You must be logged in to post.");
-      });
+      message.error("You must be logged in to post.");
       return;
     }
 
     // 5. Проверяем соединение
     const socket = this.socketStore[type === "post" ? "posts" : "comments"];
     if (!socket) {
-      runInAction(() => {
-        this.setError("Connection error. Please try again.");
-      });
+      message.error("Connection error. Please try again.");
       return;
     }
 
@@ -527,7 +603,6 @@ class SendFormStore {
     const isAdmin = (this.userStore && this.userStore.user?.role === 'admin') ||
       (this.userStore && this.userStore.user?.role === 'superadmin');
 
-    // Устанавливаем флаг в true для админов, для остальных сбрасываем
     this.setCaptchaVerified(isAdmin);
 
     try {
@@ -542,9 +617,9 @@ class SendFormStore {
 
       if (resolved.error) {
         runInAction(() => {
-          this.setError(resolved.error || "An error occurred");
           this.setLoading(false);
         });
+        message.error(resolved.error || "An error occurred");
         return;
       }
 
@@ -560,13 +635,13 @@ class SendFormStore {
       // 11. Добавляем вложения
       const dataWithAttachments = await this.handleAttachments(baseData);
 
-      // 12. Отправляем данные
+      // 12. Отправляем данные (оптимистичные сообщения внутри emitData)
       this.emitData(type, dataWithAttachments, onSuccess);
     } catch (error) {
       runInAction(() => {
         this.setLoading(false);
-        this.setError("An error occurred while posting");
       });
+      message.error("An error occurred while posting");
       logger.error("Send error:", error);
     }
   }

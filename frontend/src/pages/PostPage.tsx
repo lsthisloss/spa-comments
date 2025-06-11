@@ -8,23 +8,34 @@ import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
 import { logger } from "../utils/Logger";
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
+import { useNavigationHelper } from '../hooks/useNavigationHelper';
+import { Post } from '../types/interfaces';
 
 /*
   Страница отдельного поста с комментариями.
   Позволяет просматривать пост, добавлять комментарии и видеть комментарии других пользователей.
   Используется в ленте постов и профиле пользователя.
+  Используем MobX для доступа к хранилищам постов, комментариев и пользователя
 */
 const PostPage = observer(() => {
+  // Подключаем MobX хранилища
   const postStore = usePostStore();
   const commentStore = useCommentStore();
   const userStore = useUserStore();
+  // Получаем слаг поста из URL
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  // Подключаем хук для навигации
+  const { smartGoBack } = useNavigationHelper();
 
+  // Ссылка для отслеживания монтирования компонента
   const mountedRef = useRef(true);
+  // Локальное состояние для управления загрузкой и ошибками
   const [loading, setLoading] = useState(true);
+  // Локальные состояния для комментариев и поста
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedPost, setLoadedPost] = useState<Post | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -33,11 +44,12 @@ const PostPage = observer(() => {
     };
   }, []);
 
-  // Ищем пост по slug
+  // Получаем пост по слагу реактивно
   const post = useMemo(() => {
-    if (!slug) return null;
-    return postStore.getPostBySlug(slug);
-  }, [slug, postStore]);
+    if (!slug) return loadedPost || null;
+    const storePost = postStore.getPostBySlug(slug);
+    return storePost || loadedPost || null;
+  }, [slug, postStore, loadedPost]);
 
   // Загрузка поста - с защитой от StrictMode
   useEffect(() => {
@@ -46,17 +58,19 @@ const PostPage = observer(() => {
       return;
     }
 
-    // Проверяем есть ли уже пост
+    // Проверяем есть ли уже пост в store
     const existingPost = postStore.getPostBySlug(slug);
     if (existingPost) {
       console.log(`[PostPage] Post already exists:`, existingPost.id);
+      setLoadedPost(existingPost); // Устанавливаем в локальное состояние
       setLoading(false);
       setError(null);
       return;
     }
 
-    // ЗАЩИТА ОТ REACT STRICTMODE - проверяем активные запросы
-    const activePromise = postStore.fetchPostPromises.get(slug);
+    const cacheKey = `slug:${slug}`;
+    const activePromise = postStore.fetchPostPromises.get(cacheKey);
+    
     if (activePromise) {
       console.log(`[PostPage] Request already in progress for: ${slug}, reusing promise`);
       
@@ -65,6 +79,7 @@ const PostPage = observer(() => {
           if (!mountedRef.current) return;
           if (fetchedPost) {
             console.log(`[PostPage] Post loaded from active promise:`, fetchedPost.id);
+            setLoadedPost(fetchedPost); // Устанавливаем в локальное состояние
             setLoading(false);
             setError(null);
           } else {
@@ -85,12 +100,13 @@ const PostPage = observer(() => {
     setLoading(true);
     setError(null);
 
-    // 3агружаем пост
+    // Загружаем пост
     postStore.fetchPostBySlug(slug)
       .then(fetchedPost => {
         if (!mountedRef.current) return;
         if (fetchedPost) {
           console.log(`[PostPage] Post loaded:`, fetchedPost.id);
+          setLoadedPost(fetchedPost); // Устанавливаем в локальное состояние
           setLoading(false);
           setError(null);
         } else {
@@ -105,9 +121,8 @@ const PostPage = observer(() => {
         setLoading(false);
       });
 
-  }, [slug, postStore]);
-  
-  // Загрузка поста по slug
+  }, [slug, postStore]); 
+
   const handleLoadMoreComments = useCallback(() => {
     if (!post?.id || commentsLoading) return;
     setCommentsLoading(true);
@@ -119,10 +134,19 @@ const PostPage = observer(() => {
     logger.log(`[PostPage] Comment added successfully`);
   }, []);
 
+  // Умная навигация назад
   const handleGoBack = useCallback(() => {
     logger.log(`[PostPage] Going back from post`);
-    navigate(-1);
-  }, [navigate]);
+    smartGoBack();
+  }, [smartGoBack]);
+
+  console.log(`[PostPage] Render state:`, {
+    slug,
+    loading,
+    error,
+    hasPost: !!post,
+    postId: post?.id
+  });
 
   return (
     <section className="post-page-container">

@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Post } from '../../posts/entities/post.entity';
 import { SearchService } from '../../search/search.service';
+import { PostResponseDto } from '../../posts/dto/post-response.dto';
 import type {
   PostIndexInput,
   AuthorIndexInput,
@@ -20,7 +21,7 @@ export class PostsConsumer implements OnModuleInit {
   private readonly logger = new Logger(PostsConsumer.name);
   private readonly queueName = 'add_post_queue';
 
-  private processedPostIds = new Set<string>();
+  private processedPostIds = new Map<string, number>();
   private userPostCounts = new Map<
     string,
     { count: number; resetTime: number }
@@ -28,7 +29,7 @@ export class PostsConsumer implements OnModuleInit {
   private readonly MAX_POSTS_PER_MINUTE = 10;
   private readonly TEST_USER_MAX_POSTS = 100;
   private readonly RATE_LIMIT_WINDOW = 60 * 1000;
-  private readonly CACHE_TTL = 10 * 60 * 1000;
+  private readonly CACHE_TTL: number = 10 * 60 * 1000;
 
   private stats = {
     totalProcessed: 0,
@@ -52,7 +53,7 @@ export class PostsConsumer implements OnModuleInit {
   private cleanupCaches() {
     const now = Date.now();
     let rateLimitCleaned = 0;
-    let cacheCleared = false;
+    let cacheEntriesCleaned = 0;
 
     // Очищаем истекшие rate limits
     for (const [userId, limit] of this.userPostCounts.entries()) {
@@ -62,32 +63,40 @@ export class PostsConsumer implements OnModuleInit {
       }
     }
 
-    // ОСТОРОЖНАЯ очистка кеша обработанных постов
-    // Очищаем только если кеш стал очень большим И прошло достаточно времени
-    if (this.processedPostIds.size > 2000) {
-      // Увеличиваем лимит
-      this.logger.warn(
-        `Processed posts cache size: ${this.processedPostIds.size}, clearing...`,
-      );
-
-      // Очищаем не весь кеш, а только часть (старые записи)
-      // Так как Set не имеет timestamps, очищаем полностью только при критическом размере
-      if (this.processedPostIds.size > 5000) {
-        this.processedPostIds.clear();
-        cacheCleared = true;
-        this.logger.log('Processed posts cache cleared due to critical size');
+    // Очищаем кеш по TTL
+    for (const [messageHash, timestamp] of this.processedPostIds.entries()) {
+      if (now - timestamp > this.CACHE_TTL) {
+        this.processedPostIds.delete(messageHash);
+        cacheEntriesCleaned++;
       }
     }
 
+    // Дополнительная очистка если кеш все еще большой
+    if (this.processedPostIds.size > 2000) {
+      this.logger.warn(
+        `Cache size still large after TTL cleanup: ${this.processedPostIds.size}, performing size-based cleanup...`,
+      );
+
+      // Очищаем половину самых старых записей
+      const entries = Array.from(this.processedPostIds.entries()).sort(
+        ([, a], [, b]) => a - b,
+      ); // сортируем по timestamp
+
+      const toDelete = entries.slice(0, Math.floor(entries.length / 2));
+      toDelete.forEach(([hash]) => {
+        this.processedPostIds.delete(hash);
+        cacheEntriesCleaned++;
+      });
+    }
+
     // Логируем только если что-то очистили
-    if (rateLimitCleaned > 0 || cacheCleared) {
+    if (rateLimitCleaned > 0 || cacheEntriesCleaned > 0) {
       this.logger.log(
-        `Cache cleanup: ${rateLimitCleaned} rate limits, cache cleared: ${cacheCleared}`,
+        `Cache cleanup: ${rateLimitCleaned} rate limits, ${cacheEntriesCleaned} cached entries (TTL: ${this.CACHE_TTL}ms)`,
       );
     }
   }
-
-  // Добавляем новый метод для более умной очистки кеша
+  // метод для более умной очистки кеша
   private smartCacheCleanup() {
     const cacheSize = this.processedPostIds.size;
 
@@ -107,13 +116,12 @@ export class PostsConsumer implements OnModuleInit {
         void this.handleMessage(msg);
       });
 
-      // Уменьшаем частоту очистки кеша и делаем ее более осторожной
       setInterval(
         () => {
           this.cleanupCaches();
         },
         10 * 60 * 1000,
-      ); // Увеличиваем до 10 минут
+      );
 
       // Добавляем дополнительный интервал для критической очистки
       setInterval(
@@ -144,7 +152,11 @@ export class PostsConsumer implements OnModuleInit {
     );
   }
 
-  // Добавляем метод для мониторинга состояния consumer
+  private addToProcessedCache(messageHash: string): void {
+    this.processedPostIds.set(messageHash, Date.now());
+  }
+
+  // метод для мониторинга состояния consumer
   getConsumerHealth() {
     return {
       isHealthy: true,
@@ -252,8 +264,8 @@ export class PostsConsumer implements OnModuleInit {
           createPostDto.userId,
         );
 
-        this.emitNewPostEvent(postWithUser);
-        this.processedPostIds.add(messageHash);
+        void this.emitNewPostEvent(postWithUser);
+        this.addToProcessedCache(messageHash);
 
         this.rabbitMQService.ackMessage(msg);
         return;
@@ -341,7 +353,7 @@ export class PostsConsumer implements OnModuleInit {
 
         post = await this.postsService.createPost(processedData);
         console.log(`[QUEUE] New post created: ${post?.id}`);
-        this.processedPostIds.add(messageHash);
+        this.addToProcessedCache(messageHash);
       }
 
       if (!post) {
@@ -361,7 +373,7 @@ export class PostsConsumer implements OnModuleInit {
         createPostDto.userId,
       );
 
-      this.emitNewPostEvent(postWithUser);
+      void this.emitNewPostEvent(postWithUser);
       this.updateRateLimit(createPostDto.userId);
 
       this.rabbitMQService.ackMessage(msg);
@@ -449,34 +461,34 @@ export class PostsConsumer implements OnModuleInit {
     return userLimit.count < this.MAX_POSTS_PER_MINUTE;
   }
 
-  private async enrichPostWithUserData<T extends object>(
+  private async enrichPostWithUserData<T extends Post>(
     post: T,
     userId: string,
-  ): Promise<
-    T & {
-      user: {
-        id: string;
-        userName: string;
-        avatarUrl: string | null;
-        avatarShape: string;
-        slug?: string;
-        role: string;
-      };
-    }
-  > {
+  ): Promise<PostResponseDto> {
     try {
       const isTestUser = this.testService.isTestUserId(userId);
-
       const user = await this.usersService.findById(userId);
 
       if (!user) {
         console.warn(`❌ User ${userId} not found`);
         return {
-          ...post,
+          id: post.id,
+          userId: post.userId,
+          userName: 'Unknown',
+          content: post.content,
+          createdAt: post.createdAt,
+          imageUrl: post.imageUrl,
+          fileUrl: post.fileUrl,
+          fileName: post.fileName,
+          fileType: post.fileType,
+          likes: post.likes,
+          likedUserIds: post.likedUserIds,
+          repliesCount: post.repliesCount,
+          slug: post.slug,
           user: {
             id: userId,
             userName: 'Unknown',
-            avatarUrl: null,
+            avatarUrl: undefined,
             avatarShape: 'circle',
             role: isTestUser ? 'test' : 'user',
           },
@@ -484,7 +496,19 @@ export class PostsConsumer implements OnModuleInit {
       }
 
       return {
-        ...post,
+        id: post.id,
+        userId: post.userId,
+        userName: user.userName,
+        content: post.content,
+        createdAt: post.createdAt,
+        imageUrl: post.imageUrl,
+        fileUrl: post.fileUrl,
+        fileName: post.fileName,
+        fileType: post.fileType,
+        likes: post.likes,
+        likedUserIds: post.likedUserIds,
+        repliesCount: post.repliesCount,
+        slug: post.slug,
         user: {
           id: userId,
           userName: user.userName,
@@ -497,11 +521,23 @@ export class PostsConsumer implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`Failed to get user data for ${userId}:`, error);
       return {
-        ...post,
+        id: post.id,
+        userId: post.userId,
+        userName: 'Anonymous',
+        content: post.content,
+        createdAt: post.createdAt,
+        imageUrl: post.imageUrl,
+        fileUrl: post.fileUrl,
+        fileName: post.fileName,
+        fileType: post.fileType,
+        likes: post.likes,
+        likedUserIds: post.likedUserIds,
+        repliesCount: post.repliesCount,
+        slug: post.slug,
         user: {
           id: userId,
           userName: 'Anonymous',
-          avatarUrl: null,
+          avatarUrl: undefined,
           avatarShape: 'circle',
           role: 'user',
         },
@@ -548,13 +584,67 @@ export class PostsConsumer implements OnModuleInit {
     }
   }
 
-  private emitNewPostEvent(postWithUser: any) {
+  private async emitNewPostEvent(postWithUser: PostResponseDto) {
     try {
       if (this.postsGateway.server) {
+        // Отправляем в общую ленту всем
         this.postsGateway.server.emit('newPost', postWithUser);
+        console.log(`[EMIT] Sent newPost to ALL clients`);
+
+        if (postWithUser.userId) {
+          const room = `user:${postWithUser.userId}`;
+
+          // Проверяем кто в room
+          const socketsInRoom = await this.postsGateway.server
+            .in(room)
+            .fetchSockets();
+          console.log(
+            `[EMIT] Clients in room ${room}: ${socketsInRoom.length}`,
+          );
+
+          if (socketsInRoom.length === 0) {
+            console.warn(
+              `[EMIT] ⚠️ No clients in room ${room}! Event will not be delivered.`,
+            );
+          }
+
+          // Отправляем в room
+          this.postsGateway.server
+            .to(room)
+            .emit('newFollowingPost', postWithUser);
+
+          console.log(
+            `[EMIT] Sent newFollowingPost to room ${room} (${socketsInRoom.length} clients)`,
+          );
+
+          // Получаем подписчиков
+          const followers = await this.getFollowers(postWithUser.userId);
+          followers.forEach((followerId) => {
+            const followerRoom = `user:${followerId}`;
+            this.postsGateway.server
+              .to(followerRoom)
+              .emit('newFollowingPost', postWithUser);
+          });
+
+          this.logger.log(
+            `[EMIT] Sent newFollowingPost to ${followers.length + 1} users (author + followers)`,
+          );
+        }
       }
     } catch (error) {
       this.logger.error('Failed to emit new post event:', error);
+    }
+  }
+
+  //  вспомогательный метод
+  private async getFollowers(userId: string): Promise<string[]> {
+    try {
+      // Получаем подписчиков из UsersService
+      const followers = await this.usersService.getFollowers(userId);
+      return followers.map((f) => f.id);
+    } catch (error) {
+      this.logger.error('Failed to get followers:', error);
+      return [];
     }
   }
 
@@ -583,6 +673,7 @@ export class PostsConsumer implements OnModuleInit {
       rateLimitSummary: {
         usersWithLimits: activeRateLimits.length,
         totalDropped: this.stats.rateLimitedDropped,
+        cacheTTL: this.CACHE_TTL,
         maxPostsPerMinute: this.MAX_POSTS_PER_MINUTE,
         testUserMaxPosts: this.TEST_USER_MAX_POSTS,
       },

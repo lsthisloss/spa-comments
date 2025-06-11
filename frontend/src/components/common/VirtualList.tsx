@@ -69,7 +69,7 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
   const prevLoadingRef = useRef(loading);
   const lastLoadTriggeredRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
-
+  
   /*
     Счетчик для принудительного обновления компонента
     - Используем useState для создания счетчика
@@ -81,29 +81,65 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     //logger.log('[VirtualList] Force update triggered');
   }, []);
 
-  /*
-    Стабильный estimateSize для виртуализатора
-    - Используем useCallback для мемоизации функции
-    - Проверяем индекс и наличие элемента
-    - Возвращаем высоту элемента или 150px по умолчанию
-  */
+  //  Кеш измеренных высот
+  const measuredHeights = useRef(new Map<string, number>());
+
   const stableEstimateSize = useCallback((index: number) => {
     if (index < 0 || index >= items.length) {
-      return 150;
+      return 128;
     }
 
     const item = items[index];
     if (!item) {
-      return 150;
+      return 128;
     }
 
     try {
-      const height = estimateItemHeight(item);
-      return height || 150;
+      const itemKey = getItemKey(item);
+
+      //  кешированную высоту если есть
+      if (measuredHeights.current.has(itemKey)) {
+        return measuredHeights.current.get(itemKey)!;
+      }
+
+      const baseHeight = estimateItemHeight(item);
+
+      // Проверяем наличие изображения
+      const hasImage = item.imageUrl || item.fileName || item.fileUrl;
+
+      let estimatedHeight;
+
+      if (hasImage) {
+        const content = typeof item.content === 'string' ? item.content : '';
+        const textHeight = Math.max(40, content.length * 0.6);
+        const headerHeight = 60;
+        const imageMinHeight = 80;
+        const imageMaxHeight = 240;
+        const footerHeight = 50;
+        const padding = 20;
+
+        const imageHeight = Math.min(imageMaxHeight, Math.max(imageMinHeight, 120));
+        estimatedHeight = headerHeight + imageHeight + textHeight + footerHeight + padding;
+      } else {
+        const content = item.content || '';
+        if (typeof content === 'string' && content.length > 200) {
+          estimatedHeight = Math.max(baseHeight, 180);
+        } else {
+          estimatedHeight = Math.max(baseHeight, 100);
+        }
+      }
+
+      //  Округляем до целого числа
+      estimatedHeight = Math.round(estimatedHeight);
+
+      // КЕШИРУЕМ оценку СРАЗУ
+      measuredHeights.current.set(itemKey, estimatedHeight);
+
+      return estimatedHeight;
     } catch {
-      return 150;
+      return 128;
     }
-  }, [items, estimateItemHeight]);
+  }, [items, estimateItemHeight, getItemKey]);
 
   /*
     Объект виртуализатора
@@ -141,12 +177,10 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
   if (itemsChanged) {
     renderCountRef.current += 1;
     prevItemsLengthRef.current = items.length;
-    //logger.log(`[VirtualList] Items changed: ${items.length}, loading: ${loading}, render: #${renderCountRef.current}`);
   }
 
   if (loadingChanged) {
     prevLoadingRef.current = loading;
-    //logger.log(`[VirtualList] Loading state changed: ${loading}`);
   }
   // Мемоизация ключа элемента, чтобы избежать лишних вычислений
   const memoizedGetItemKey = useCallback((item: T) => {
@@ -158,6 +192,42 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     }
   }, [getItemKey]);
 
+  /*
+    Обработчик события изменения высоты
+    - Используем useEffect для подписки на событие postsHeightRecalculation
+    - Проверяем, что feedType совпадает с текущим контекстом
+    - Если событие связано с новым комментарием или постом, очищаем кеш высот
+    - Вызываем forceUpdate для перерисовки компонента
+  */
+  useEffect(() => {
+    const handleHeightRecalculation = (event: CustomEvent) => {
+      const { feedType, reason, addedCount } = event.detail;
+
+      const currentFeedType = feedContextId?.split('-')[0];
+
+      if (feedType !== currentFeedType) {
+        logger.log(`[VirtualList] Ignoring height recalculation for ${feedType} (current: ${currentFeedType})`);
+        return;
+      }
+
+      logger.log(`[VirtualList] Height recalculation requested for ${feedType}: ${reason} (+${addedCount} items)`);
+
+      // Обрабатываем comments точно так же как feed/following
+      if (reason === 'newComment' || reason === 'newPost') {
+        // Очищаем кеш высот для новых элементов
+        measuredHeights.current.clear();
+      }
+
+      forceUpdate();
+      logger.log(`[VirtualList] Force update completed for ${feedType} (immediate)`);
+    };
+
+    window.addEventListener('postsHeightRecalculation', handleHeightRecalculation as EventListener);
+
+    return () => {
+      window.removeEventListener('postsHeightRecalculation', handleHeightRecalculation as EventListener);
+    };
+  }, [forceUpdate, feedContextId]);
 
   // Сброс флага загрузки при изменении состояния
   useEffect(() => {
@@ -223,14 +293,13 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     - Загружаем новые элементы, если прошло достаточно времени с последней загрузки
   */
   useEffect(() => {
-    // Если не нужна автоподгрузка - выходим
-    if (!onEndReached || manualMode || allLoaded || loading) return;
+    // Автоподгрузка работает независимо от manualMode LoadingIndicator
+    if (!onEndReached || allLoaded || loading) {
+      return;
+    }
 
     // Если нет элементов - выходим
-    if (virtualItems.length === 0) return;
-
-    if (items.length === 0 && allLoaded) {
-      //logger.log(`[VirtualList] Feed is empty and fully loaded, skipping auto-load`);
+    if (virtualItems.length === 0 || items.length === 0) {
       return;
     }
 
@@ -242,25 +311,21 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     if (remainingItems < 10) {
       const now = Date.now();
 
-      // Проверка что пользователь действительно скроллит вниз
-      const scrollY = window.scrollY;
-      const windowHeight = window.innerHeight;
-      const documentHeight = document.documentElement.scrollHeight;
-      const isNearBottom = scrollY + windowHeight >= documentHeight - 1000; // 1000px от конца
+      if (now - lastLoadTriggeredRef.current > 1000) {
+        const scrollY = window.scrollY;
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        const isNearBottom = scrollY + windowHeight >= documentHeight - 500;
 
-      if (now - lastLoadTriggeredRef.current > 1000 && isNearBottom) {
-        lastLoadTriggeredRef.current = now;
-        //logger.log(`[VirtualList] Auto-load: remaining ${remainingItems}, near bottom, loading more...`);
-        onEndReached();
-      } else if (!isNearBottom) {
-        //logger.log(`[VirtualList] Not near bottom, skipping auto-load (scroll: ${scrollY}, remaining: ${remainingItems})`);
+        if (isNearBottom) {
+          lastLoadTriggeredRef.current = now;
+          logger.log(`[VirtualList] Auto-load triggered: remaining=${remainingItems}${manualMode ? ' (manual mode)' : ''}`);
+          onEndReached();
+        }
       }
     }
 
-    //const firstIndex = virtualItems[0].index;
-    //logger.log(`[VirtualList] ${firstIndex}-${lastVisibleIndex}/${totalItems} (${remainingItems} left)`);
-
-  }, [virtualItems, items.length, onEndReached, manualMode, allLoaded, loading]);
+  }, [virtualItems, items.length, onEndReached, allLoaded, loading, manualMode]);
 
   // Дебаг объект для отладки
   const debugProps = React.useMemo(() => {

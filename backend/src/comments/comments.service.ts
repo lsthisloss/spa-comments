@@ -302,13 +302,59 @@ export class CommentsService {
         `Updated comment ${savedComment.parentId} replies count to ${repliesCount}`,
       );
     }
+    const fullComment = await this.commentRepository.findOne({
+      where: { id: savedComment.id },
+      relations: ['user'],
+      select: {
+        user: {
+          id: true,
+          userName: true,
+          email: true,
+          avatarUrl: true,
+          avatarShape: true,
+          slug: true,
+          role: true,
+        },
+      },
+    });
 
     // Отправляем уведомление всем клиентам
-    if (this.server) {
+    if (this.server && fullComment) {
+      // Отправляем fullComment с пользователем и файлами
       this.server.emit('newComment', {
-        postId: savedComment.postId,
-        comment: savedComment,
+        postId: fullComment.postId,
+        comment: {
+          id: fullComment.id,
+          content: fullComment.content,
+          slug: fullComment.slug,
+          numericId: fullComment.numericId,
+          likes: fullComment.likes || 0,
+          likedUserIds: fullComment.likedUserIds || [],
+          repliesCount: fullComment.repliesCount || 0,
+          userId: fullComment.userId,
+          postId: fullComment.postId,
+          parentId: fullComment.parentId,
+          imageUrl: fullComment.imageUrl,
+          fileUrl: fullComment.fileUrl,
+          fileName: fullComment.fileName,
+          fileType: fullComment.fileType,
+          user: {
+            id: fullComment.user?.id,
+            userName: fullComment.user?.userName,
+            email: fullComment.user?.email,
+            avatarUrl: fullComment.user?.avatarUrl,
+            avatarShape: fullComment.user?.avatarShape,
+            slug: fullComment.user?.slug,
+            role: fullComment.user?.role,
+          },
+          createdAt: fullComment.createdAt,
+          updatedAt: fullComment.updatedAt,
+        },
       });
+
+      console.log(
+        `✅ NewComment event sent with files: imageUrl=${fullComment.imageUrl}, fileUrl=${fullComment.fileUrl}`,
+      );
     }
 
     return savedComment;
@@ -336,7 +382,7 @@ export class CommentsService {
     // Удаляем комментарий
     await this.commentRepository.delete(commentId);
 
-    // Правильно обновляем счетчики после удаления
+    // Обновляем счетчики после удаления
     if (!comment.parentId) {
       // Если это комментарий к посту
       const commentCount = await this.commentRepository.count({

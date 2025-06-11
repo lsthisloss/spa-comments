@@ -334,15 +334,57 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     postsSocket.off("postLiked");
     postsSocket.off("postUnliked");
 
-    // Новые посты обрабатываем через батчинг
+    // Глобальная дедупликация для всех событий
+    const globalProcessedPosts = new Set<string>();
+
+    const processPostEvent = (post: Post, feedType: FeedType, eventType: string) => {
+      const dedupeKey = `${post.id}:${feedType}`;
+
+      if (globalProcessedPosts.has(dedupeKey)) {
+        logger.log(`[PostStore] Skipping duplicate ${eventType} event for ${post.id} in ${feedType}`);
+        return;
+      }
+
+      globalProcessedPosts.add(dedupeKey);
+      this.batchingService.addToBatch(post, feedType, post.id);
+
+      // Очищаем через 10 секунд
+      setTimeout(() => globalProcessedPosts.delete(dedupeKey), 10000);
+    };
+
+    // Подключаемся к room пользователя
+    if (this.userStore.user?.id) {
+      postsSocket.emit('joinRoom', `user:${this.userStore.user.id}`);
+      logger.log(`[PostStore] Attempting to join room: user:${this.userStore.user.id}`);
+
+      postsSocket.on('joinedRoom', (data: { room: string; success: boolean }) => {
+        logger.log(`[PostStore] Successfully joined room:`, data);
+      });
+
+      postsSocket.on('roomJoined', (data: { room: string; userId: string; success: boolean }) => {
+        logger.log(`[PostStore] Room joined confirmation:`, data);
+      });
+    }
+
+    //  Единый обработчик с дедупликацией
     postsSocket.on("newPost", (post: Post) => {
       logger.log("[PostStore] New post received", post.id);
-      this.batchingService.addToBatch(post, "feed", post.id);
+      processPostEvent(post, "feed", "newPost");
     });
 
     postsSocket.on("newFollowingPost", (post: Post) => {
       logger.log("[PostStore] New following post received", post.id);
-      this.batchingService.addToBatch(post, "following", post.id);
+
+      const currentUserId = this.userStore.user?.id;
+
+      // Проверяем что это релевантный пост
+      if (post.userId === currentUserId ||
+        (this.userStore.isFollowing && this.userStore.isFollowing(post.userId))) {
+
+        processPostEvent(post, "following", "newFollowingPost");
+      } else {
+        logger.log(`[PostStore] Skipping following post from non-followed user: ${post.userId}`);
+      }
     });
 
     // Лайки обрабатываем сразу
@@ -407,9 +449,6 @@ class PostStore extends BaseStore<Post> implements IPostStore {
     };
   }
 
-  /**
-   * Тоггл лайка поста
-   */
   private processBatchedPosts = action((posts: Post[], feedType: FeedType) => {
     const isCrashTest = window.__CRASH_TEST_MODE__ || false;
 
@@ -424,14 +463,12 @@ class PostStore extends BaseStore<Post> implements IPostStore {
           post.createdAt = new Date().toISOString();
         }
 
-        // Проверяем, есть ли уже пост в postsMap
         let observablePost = this.postsMap.get(post.id);
         if (!observablePost) {
           observablePost = observable(post);
           this.postsMap.set(post.id, observablePost);
         }
 
-        // Проверяем дубликаты
         const existingIndex = feed.list.findIndex(p => p.id === post.id);
         const bufferExists = feed.buffer.some(p => p.id === post.id);
 
@@ -450,39 +487,38 @@ class PostStore extends BaseStore<Post> implements IPostStore {
 
       const isCurrentUserPosts = processedPosts.some(post => post.userId === this.userStore.user?.id);
 
-      // Используем splice для более эффективного добавления
-      if (isCurrentUserPosts) {
-        // Добавляем по одному в начало списка
+      // В crash test режиме НЕ используем manual mode
+      if (isCurrentUserPosts || isCrashTest) {
+        // Сначала событие, ПОТОМ данные
+        window.dispatchEvent(new CustomEvent('postsHeightRecalculation', {
+          detail: {
+            feedType,
+            reason: 'newPost',
+            addedCount: processedPosts.length
+          }
+        }));
+
+        // Добавляем данные синхронно после события
         processedPosts.reverse().forEach(post => {
           feed.list.splice(0, 0, post);
         });
-        logger.log(`[PostStore] Added ${processedPosts.length} current user posts directly to ${feedType} feed`);
-
-        // Диспатчим событие для force update
-        window.dispatchEvent(new CustomEvent('newPost', {
-          detail: {
-            feedType,
-            isCurrentUser: true,
-            posts: processedPosts
-          }
-        }));
+        feed.latestPost = processedPosts[0] || feed.latestPost;
+        logger.log(`[PostStore] Added ${processedPosts.length} posts directly to ${feedType} feed${isCrashTest ? ' (crash test)' : ' (current user)'}`);
       }
       else {
-        // Включаем manual mode если еще не включен
+        // Manual mode только для чужих постов вне краш-теста
         if (!feed.manualUpdateMode) {
           feed.manualUpdateMode = true;
-          logger.log(`[PostStore] Manual mode enabled for ${feedType}${isCrashTest ? ' (crash test)' : ''}`);
+          logger.log(`[PostStore] Manual mode enabled for ${feedType}`);
         }
 
-        // Используем splice для буфера
         processedPosts.reverse().forEach(post => {
           feed.buffer.splice(0, 0, post);
         });
         feed.newPostsCount = feed.buffer.length;
-        logger.log(`[PostStore] Added ${processedPosts.length} posts to ${feedType} buffer${isCrashTest ? ' (crash test)' : ''}, buffer size: ${feed.buffer.length}`);
+        feed.latestPost = processedPosts[0] || feed.latestPost;
+        logger.log(`[PostStore] Added ${processedPosts.length} posts to ${feedType} buffer, buffer size: ${feed.buffer.length}`);
       }
-
-      feed.latestPost = processedPosts[0] || feed.latestPost;
     });
   });
 

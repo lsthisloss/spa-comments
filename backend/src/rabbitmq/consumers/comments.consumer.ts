@@ -103,40 +103,11 @@ export class CommentsConsumer implements OnModuleInit {
         return;
       }
 
-      if (createCommentDto.image && createCommentDto.file) {
-        // Есть и изображение, и файл
-        const fileResult = this.commonWsService.processContentWithMultipleFiles(
-          createCommentDto.content,
-          {
-            image: createCommentDto.image,
-            file: createCommentDto.file,
-          },
-        );
+      console.log(
+        `[CommentsConsumer] Received comment with files: imageUrl=${createCommentDto.imageUrl || 'null'}, fileUrl=${createCommentDto.fileUrl || 'null'}, fileName=${createCommentDto.fileName || 'null'}`,
+      );
 
-        void Object.assign(createCommentDto, fileResult);
-        delete createCommentDto.image;
-        delete createCommentDto.file;
-      } else if (createCommentDto.file) {
-        // Только файл
-        const fileResult = this.commonWsService.processContentWithFile(
-          createCommentDto.content,
-          { file: createCommentDto.file },
-        );
-
-        void Object.assign(createCommentDto, fileResult);
-        delete createCommentDto.file;
-      } else if (createCommentDto.image) {
-        // Только изображение
-        const fileResult = this.commonWsService.processContentWithFile(
-          createCommentDto.content,
-          { file: createCommentDto.image },
-        );
-
-        void Object.assign(createCommentDto, fileResult);
-        delete createCommentDto.image;
-      }
-
-      // Сохраняем комментарий
+      // Сохраняем комментарий с уже обработанными файловыми полями
       const comment =
         await this.commentsService.saveCommentFromQueue(createCommentDto);
 
@@ -162,6 +133,7 @@ export class CommentsConsumer implements OnModuleInit {
       this.rabbitMQService.nackMessage(msg);
     }
   }
+
   /**
    * Проверяет, не превышает ли пользователь лимит комментариев в минуту
    * @param userId - ID пользователя
@@ -181,6 +153,7 @@ export class CommentsConsumer implements OnModuleInit {
 
     return userLimit.count < this.MAX_COMMENTS_PER_MINUTE;
   }
+
   /**
    * Обновляет счетчик комментариев для пользователя
    * @param userId - ID пользователя
@@ -191,6 +164,7 @@ export class CommentsConsumer implements OnModuleInit {
       userLimit.count++;
     }
   }
+
   /**
    * Обогащает комментарий данными пользователя
    * @param comment - Комментарий, полученный из RabbitMQ

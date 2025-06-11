@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useEffect } from "react";
-import { Form, Input, Avatar, Image, message } from "antd";
+import { Form, Input, Avatar, Image } from "antd";
 import { observer } from "mobx-react-lite";
 import SendFormFooter from "./SendFormFooter";
 import CaptchaModal from "../ui/modals/CaptchaModal";
@@ -78,38 +78,6 @@ const SendForm = observer(({
   /*
     * Реакция на сообщения об успехе/ошибке для показа Ant Design уведомлений
     */
-  useEffect(() => {
-    const successDisposer = reaction(
-      () => sendFormStore.successMessage,
-      (successMessage) => {
-        if (successMessage) {
-          message.success(successMessage);
-          // Очищаем сообщение после показа
-          setTimeout(() => {
-            sendFormStore.setSuccessMessage('');
-          }, 100);
-        }
-      }
-    );
-
-    const errorDisposer = reaction(
-      () => sendFormStore.errorMessage,
-      (errorMessage) => {
-        if (errorMessage) {
-          message.error(errorMessage);
-          // Очищаем сообщение после показа
-          setTimeout(() => {
-            sendFormStore.setErrorMessage('');
-          }, 100);
-        }
-      }
-    );
-
-    return () => {
-      successDisposer();
-      errorDisposer();
-    };
-  }, [sendFormStore]);
 
   /*
     * Обработчики событий drag-and-drop

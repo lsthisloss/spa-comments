@@ -22,8 +22,7 @@ const CommentPage = observer(() => {
   const userStore = useUserStore();
   const postStore = usePostStore();
 
-  const navigationHelper = useNavigationHelper();
-
+  const { navigateToPost } = useNavigationHelper();
   const navigate = useNavigate();
   const params = useParams();
 
@@ -46,7 +45,6 @@ const CommentPage = observer(() => {
   const [comment, setComment] = useState<Comment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setRepliesLoading] = useState(false);
-
 
   // Инициализация компонента
   useEffect(() => {
@@ -213,7 +211,6 @@ const CommentPage = observer(() => {
       });
   }, [commentSlug, commentStore, postStore]);
 
-
   // Обработчик загрузки дополнительных ответов
   const handleLoadMoreReplies = useCallback(() => {
     if (!comment?.id) return;
@@ -237,11 +234,10 @@ const CommentPage = observer(() => {
     logger.log(`[CommentPage] Reply created successfully`);
   }, []);
 
-
-  // Обработчик возврата назад
+  // Умная навигация назад к посту
   const handleGoBack = useCallback(() => {
     if (!comment) {
-      navigationHelper.goBack();
+      navigate(-1);
       return;
     }
 
@@ -250,34 +246,22 @@ const CommentPage = observer(() => {
 
     if (comment.postSlug) {
       logger.log(`[CommentPage] Navigating back to parent post: ${comment.postSlug}`);
-      navigate(`/post/${comment.postSlug}`, {
-        replace: true,
-        state: {
-          fromComment: true,
-          commentId: comment.id
-        }
-      });
+      navigateToPost(comment.postSlug, true); // Указываем что пришли с комментария
     } else if (comment.postId) {
       // Ищем пост по ID в уже загруженных данных
       const existingPost = postStore.postsMap.get(comment.postId);
       if (existingPost && existingPost.slug) {
         logger.log(`[CommentPage] Found existing post slug: ${existingPost.slug}`);
-        navigate(`/post/${existingPost.slug}`, {
-          replace: true,
-          state: {
-            fromComment: true,
-            commentId: comment.id
-          }
-        });
+        navigateToPost(existingPost.slug, true); // Указываем что пришли с комментария
       } else {
-        // Если пост не найден, просто используем navigationHelper
+        // Если пост не найден, просто используем браузерную навигацию
         logger.warn(`[CommentPage] Post not found for postId: ${comment.postId}, using browser back`);
-        navigationHelper.goBack();
+        navigate(-1);
       }
     } else {
-      navigationHelper.goBack();
+      navigate(-1);
     }
-  }, [comment, navigate, navigationHelper, postStore]);
+  }, [comment, navigate, navigateToPost, postStore]);
 
   return (
     <section className="post-page-container">
