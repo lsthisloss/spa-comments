@@ -214,29 +214,34 @@ function app_create_superadmin() {
 function app_run_production() {
     echo -e "\n${YELLOW}Starting production environment...${NORMAL}\n"
     
-    # Используем production .env файл
-    if [ -f ".env.prod" ]; then
-        echo -e "${CYAN}Using production environment variables${NORMAL}"
-        export $(cat .env.prod | grep -v '^#' | xargs)
+    # Используем production .env файл для backend
+    if [ -f "backend/.env.example" ] && [ ! -f "backend/.env" ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
     fi
     
     echo -e "${CYAN}Stopping any running containers...${NORMAL}"
     docker-compose -f docker-compose.prod.yml down --remove-orphans
     
-    echo -e "${CYAN}Building production images...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml --env-file=.env.prod build --no-cache
+    echo -e "${CYAN}Building backend production image...${NORMAL}"
+    # Собираем только backend сервисы (без frontend)
+    docker-compose -f docker-compose.prod.yml build --no-cache backend postgres rabbitmq elasticsearch
     
-    echo -e "${CYAN}Starting production containers...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml --env-file=.env.prod up -d
+    echo -e "${CYAN}Starting backend production containers...${NORMAL}"
+    # Запускаем только backend сервисы
+    docker-compose -f docker-compose.prod.yml up -d postgres rabbitmq elasticsearch backend
     
-    echo -e "${GREEN}✅ Production environment started!${NORMAL}"
-    echo -e "${CYAN}Backend: http://localhost:3001${NORMAL}"
+    echo -e "${GREEN}✅ Backend production environment started!${NORMAL}"
+    echo -e "${CYAN}Backend API: http://localhost:3001${NORMAL}"
     echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
     echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
+    echo -e "${CYAN}Frontend: Served by system Nginx from /var/www/sk8.pw/${NORMAL}"
     
-    # Показываем статус
-    echo -e "\n${CYAN}Services status:${NORMAL}"
+    # Показываем статус только backend сервисов
+    echo -e "\n${CYAN}Backend services status:${NORMAL}"
     docker-compose -f docker-compose.prod.yml ps
+    
+    echo -e "\n${YELLOW}💡 To deploy frontend, use option 8 (Build Frontend Production)${NORMAL}"
 }
 
 function app_clean_all() {
@@ -310,7 +315,7 @@ function app_build_frontend_prod() {
     
     cd frontend
     
-    # Увеличиваем лимит памяти для Node.js (ТОЛЬКО валидные опции)
+    # Увеличиваем лимит памяти для Node.js
     export NODE_OPTIONS="--max-old-space-size=1536"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
@@ -321,26 +326,18 @@ function app_build_frontend_prod() {
     rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
     
     echo -e "${CYAN}Installing dependencies with minimal memory usage...${NORMAL}"
-    # Устанавливаем пакеты с минимальным потреблением памяти
     npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to install dependencies. Trying with optional dependencies...${NORMAL}"
-        
-        # Пробуем с optional dependencies для Rollup
         npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
         
         if [ $? -ne 0 ]; then
             echo -e "${RED}Failed to install dependencies. Trying minimal install...${NORMAL}"
-            
-            # Устанавливаем только самое необходимое
             npm install typescript vite @vitejs/plugin-react rollup --no-save --loglevel=silent
             
             if [ $? -ne 0 ]; then
-                echo -e "${RED}Installation failed. Server memory too low.${NORMAL}"
                 echo -e "${YELLOW}Creating swap space automatically...${NORMAL}"
-                
-                # Автоматически создаем swap если его нет
                 if ! swapon --show | grep -q "/swapfile"; then
                     echo -e "${CYAN}Creating 2GB swap file...${NORMAL}"
                     sudo fallocate -l 2G /swapfile
@@ -348,7 +345,6 @@ function app_build_frontend_prod() {
                     sudo mkswap /swapfile
                     sudo swapon /swapfile
                     
-                    # Пробуем установить еще раз после создания swap
                     npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
                     
                     if [ $? -ne 0 ]; then
@@ -385,12 +381,10 @@ EOF
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     
     echo -e "${CYAN}Building frontend for production (with memory optimization)...${NORMAL}"
-    # Компилируем TypeScript с оптимизацией памяти
     NODE_ENV=production timeout 1200 npx tsc -b
     
     if [ $? -ne 0 ]; then
         echo -e "${YELLOW}TypeScript compilation failed, trying without type checking...${NORMAL}"
-        # Пробуем без проверки типов для экономии памяти
         NODE_ENV=production timeout 1200 npx tsc --build --force --skipLibCheck
         
         if [ $? -ne 0 ]; then
@@ -402,13 +396,10 @@ EOF
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     
     echo -e "${CYAN}Running Vite build (memory optimized)...${NORMAL}"
-    # Собираем с максимальной оптимизацией
     NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1800 npx vite build
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Vite build failed. Trying with even more memory...${NORMAL}"
-        
-        # Увеличиваем лимит еще больше
         export NODE_OPTIONS="--max-old-space-size=2048"
         NODE_ENV=production timeout 2400 npx vite build
         
@@ -426,7 +417,7 @@ EOF
         exit 1
     fi
     
-    echo -e "${CYAN}Copying to /var/www/sk8.pw/...${NORMAL}"
+    echo -e "${CYAN}Deploying to web directory...${NORMAL}"
     sudo mkdir -p /var/www/sk8.pw
     sudo cp -r dist/* /var/www/sk8.pw/
     sudo chown -R www-data:www-data /var/www/sk8.pw/
@@ -434,7 +425,24 @@ EOF
     
     echo -e "${GREEN}✅ Production frontend built and deployed!${NORMAL}"
     echo -e "${CYAN}📁 Location: /var/www/sk8.pw/${NORMAL}"
-    echo -e "${CYAN}🔗 Configured for https://sk8.pw${NORMAL}"
+    echo -e "${CYAN}🌐 URL: https://sk8.pw${NORMAL}"
+    echo -e "${CYAN}🔧 Nginx config: Using system configuration${NORMAL}"
+    
+    # Проверяем статус Nginx
+    echo -e "\n${CYAN}Checking Nginx status...${NORMAL}"
+    if sudo nginx -t; then
+        echo -e "${GREEN}✅ Nginx configuration is valid${NORMAL}"
+        
+        # Предлагаем перезагрузить Nginx
+        echo -n -e "${CYAN}Reload Nginx to apply any changes? (y/N): ${NORMAL}"
+        read -r RELOAD_NGINX
+        if [[ $RELOAD_NGINX =~ ^[Yy]$ ]]; then
+            sudo systemctl reload nginx
+            echo -e "${GREEN}✅ Nginx reloaded successfully${NORMAL}"
+        fi
+    else
+        echo -e "${RED}❌ Nginx configuration has errors${NORMAL}"
+    fi
     
     cd ..
 }
