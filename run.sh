@@ -6,8 +6,10 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NORMAL='\033[0m'
 
+# Замените функцию app_run_dev() на эту:
+
 function app_run_dev() {
-    echo -e "\n${YELLOW}Starting development environment with frontend in Docker...${NORMAL}\n"
+    echo -e "\n${YELLOW}Starting development environment (local + Docker)...${NORMAL}\n"
     
     # Копируем .env.example в .env для фронтенда (если нет .env)
     if [ -f .env.example ] && [ ! -f .env ]; then
@@ -21,18 +23,60 @@ function app_run_dev() {
         echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
     fi
 
+    # Устанавливаем зависимости локально для VS Code
+    echo -e "${CYAN}Setting up local development for VS Code...${NORMAL}"
+    cd backend
+    if [ ! -d "node_modules" ] || [ ! -f "dist/main.js" ]; then
+        echo -e "${CYAN}Installing backend dependencies locally...${NORMAL}"
+        npm install
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ Backend dependencies installed${NORMAL}"
+            
+            echo -e "${CYAN}Building backend locally...${NORMAL}"
+            npm run build
+            
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}✅ Backend built locally for VS Code${NORMAL}"
+            else
+                echo -e "${YELLOW}⚠️  Local build warning (will work in Docker)${NORMAL}"
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Local install warning (will work in Docker)${NORMAL}"
+        fi
+    else
+        echo -e "${GREEN}✅ Local backend already ready${NORMAL}"
+    fi
+    cd ..
+
+    # Теперь запускаем Docker
+    echo -e "\n${CYAN}Starting Docker containers...${NORMAL}"
     docker-compose -f docker-compose.dev.yml down
     
-    echo -e "\n${YELLOW}Building development images...${NORMAL}\n"
+    echo -e "${CYAN}Building development images...${NORMAL}"
     docker-compose -f docker-compose.dev.yml build --no-cache
     
     if [ $? -ne 0 ]; then
-        echo -e "\n${RED}Error building images. Please check the Dockerfiles and try again.${NORMAL}\n"
+        echo -e "\n${RED}Error building Docker images. Please check the Dockerfiles and try again.${NORMAL}\n"
         exit 1
     fi
 
-    echo -e "\n${YELLOW}Starting development containers...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml up
+    echo -e "${CYAN}Starting development containers...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml up -d
+    
+    if [ $? -eq 0 ]; then
+        echo -e "\n${GREEN}✅ Development environment ready!${NORMAL}"
+        echo -e "${CYAN}📦 Docker: http://localhost:3000 (frontend) + http://localhost:3001 (backend)${NORMAL}"
+        echo -e "${CYAN}💻 VS Code: cd backend && npm run start:dev (local development)${NORMAL}"
+        echo -e "${CYAN}🔧 You can now develop both ways!${NORMAL}"
+        
+        # Показываем статус
+        echo -e "\n${CYAN}Docker services:${NORMAL}"
+        docker-compose -f docker-compose.dev.yml ps
+    else
+        echo -e "\n${RED}Docker startup failed, but local development is ready${NORMAL}"
+        echo -e "${CYAN}You can still develop locally: cd backend && npm run start:dev${NORMAL}"
+    fi
 }
 
 function app_run_local() {

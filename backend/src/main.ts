@@ -8,13 +8,12 @@ import { createConnection } from 'net';
 import { Client, ClientConfig } from 'pg';
 import * as crypto from 'crypto';
 
-if (typeof globalThis !== 'undefined') {
-  // @ts-expect-error: Assigning Node.js crypto to globalThis for compatibility
-  globalThis.crypto = crypto;
-} else if (typeof global !== 'undefined') {
-  // @ts-expect-error: Assigning Node.js crypto to global for compatibility
-  global.crypto = crypto;
-}
+// Убираем эти строки - в Node.js 20 crypto уже доступен глобально
+// if (typeof globalThis !== 'undefined') {
+//   globalThis.crypto = crypto;
+// } else if (typeof global !== 'undefined') {
+//   global.crypto = crypto;
+// }
 
 interface ErrorLike {
   message: unknown;
@@ -55,24 +54,19 @@ async function createDatabaseIfNotExists(): Promise<void> {
 
   console.log(`🔧 Checking if database "${dbName}" exists...`);
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
   const client = new Client(clientConfig);
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.connect();
     console.log('✅ Connected to PostgreSQL server');
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     const result = await client.query<{ datname: string }>(
       'SELECT 1 FROM pg_database WHERE datname = $1',
       [dbName],
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if (result.rows.length === 0) {
       console.log(`📦 Creating database "${dbName}"...`);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await client.query(`CREATE DATABASE "${dbName}"`);
       console.log(`✅ Database "${dbName}" created successfully!`);
     } else {
@@ -83,7 +77,6 @@ async function createDatabaseIfNotExists(): Promise<void> {
     console.error('❌ Error creating database:', error.message);
     throw error;
   } finally {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     await client.end();
   }
 }
@@ -119,7 +112,7 @@ async function waitForPostgres(): Promise<void> {
       });
 
       console.log('✅ PostgreSQL server is ready!');
-      return; // ВАЖНО: выход из функции при успешном подключении
+      return;
     } catch (err: unknown) {
       const error = toError(err);
       console.log(
@@ -134,6 +127,7 @@ async function waitForPostgres(): Promise<void> {
     }
   }
 }
+
 async function bootstrap(): Promise<void> {
   try {
     await waitForPostgres();
@@ -164,6 +158,7 @@ async function bootstrap(): Promise<void> {
       );
       throw adapterError;
     }
+
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
@@ -171,12 +166,14 @@ async function bootstrap(): Promise<void> {
         forbidNonWhitelisted: true,
       }),
     );
+
     app.use(
       (req: { method: string; url: string }, res: any, next: () => void) => {
         console.log(`[HTTP] ${req.method} ${req.url}`);
         next();
       },
     );
+
     // Uploads directory setup
     const uploadsPath =
       process.env.NODE_ENV === 'production'
@@ -207,7 +204,9 @@ async function bootstrap(): Promise<void> {
       origin:
         process.env.NODE_ENV === 'production'
           ? [
-              process.env.FRONTEND_URL || 'http://localhost',
+              process.env.FRONTEND_URL || 'https://sk8.pw',
+              'https://sk8.pw',
+              'https://www.sk8.pw',
               /^https?:\/\/localhost(:\d+)?$/,
             ]
           : true,
@@ -243,20 +242,19 @@ async function bootstrap(): Promise<void> {
     process.on('SIGINT', gracefulShutdown);
 
     // Start listening
-    //const port = process.env.PORT ?? 3001;
-    await app.listen(3001, '0.0.0.0'); // Изменили с app.listen(3001)
+    await app.listen(3001, '0.0.0.0');
 
-    console.log('🎉 Application is running on: http://0.0.0.0:3001');
+    console.log('🎉 Application is running on: http://localhost:3001');
     console.log('📁 Static files served from: /app/uploads -> /uploads/*');
     console.log('Environment:', process.env.NODE_ENV);
-    console.log('Health check: http://0.0.0.0:3001/health');
-    console.log('🔍 Monitoring: http://0.0.0.0:3001/api/monitoring/health');
+    console.log('Health check: http://localhost:3001/health');
+    console.log('🔍 Monitoring: http://localhost:3001/api/monitoring/health');
     console.log(
-      '📊 Queue status: http://0.0.0.0:3001/api/monitoring/queue-status',
+      '📊 Queue status: http://localhost:3001/api/monitoring/queue-status',
     );
 
     // Добавим проверку Socket.IO
-    console.log('🔌 Socket.IO endpoint: http://0.0.0.0:3001/socket.io/');
+    console.log('🔌 Socket.IO endpoint: http://localhost:3001/socket.io/');
   } catch (err: unknown) {
     const error = toError(err);
     console.error('❌ Failed to start application:', error.message);

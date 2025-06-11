@@ -9,7 +9,7 @@ ENV NODE_ENV=development
 # Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies with memory optimization
+# Install ALL dependencies (including dev) for development
 RUN npm ci --no-audit --progress=false && npm cache clean --force
 
 # Copy source code
@@ -17,8 +17,8 @@ COPY . .
 
 EXPOSE 3001
 
-# Development command
-CMD ["npm", "run", "dev"]
+# Development command - use ts-node or nest start
+CMD ["npm", "run", "start:dev"]
 
 # Build stage
 FROM node:20-alpine AS build
@@ -31,7 +31,7 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 COPY package*.json ./
 COPY tsconfig*.json ./
 
-# Install all dependencies for build
+# Install ALL dependencies for build (including devDependencies for TypeScript)
 RUN npm ci --no-audit --progress=false
 
 # Copy source code
@@ -39,6 +39,10 @@ COPY . .
 
 # Build the application
 RUN npm run build
+
+# Debug: показать что создалось после сборки
+RUN echo "=== Files after build ===" && ls -la
+RUN echo "=== Dist directory ===" && ls -la dist/ || echo "No dist directory"
 
 # Production stage
 FROM node:20-alpine AS production
@@ -54,11 +58,15 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
+# Install ONLY production dependencies
 RUN npm ci --only=production --no-audit --progress=false && npm cache clean --force
 
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
+
+# Debug: проверить что скопировалось
+RUN echo "=== Production files ===" && ls -la
+RUN echo "=== Production dist ===" && ls -la dist/ || echo "No dist in production"
 
 # Create uploads directory structure
 RUN mkdir -p uploads/avatars uploads/images uploads/files
