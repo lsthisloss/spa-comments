@@ -10,14 +10,14 @@ ENV NODE_ENV=development
 COPY package*.json ./
 
 # Install ALL dependencies (including dev) for development
-RUN npm ci --no-audit --progress=false && npm cache clean --force
+RUN npm install --no-audit --progress=false && npm cache clean --force
 
 # Copy source code
 COPY . .
 
 EXPOSE 3001
 
-# Development command - use ts-node or nest start
+# Development command
 CMD ["npm", "run", "start:dev"]
 
 # Build stage
@@ -31,7 +31,7 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 COPY package*.json ./
 COPY tsconfig*.json ./
 
-# Install ALL dependencies for build (including devDependencies for TypeScript)
+# Install ALL dependencies for build (using npm install instead of npm ci)
 RUN npm install --no-audit --progress=false
 
 # Copy source code
@@ -58,8 +58,9 @@ ENV NODE_ENV=production
 # Copy package files
 COPY package*.json ./
 
-# Install ONLY production dependencies
-RUN npm install --only=production --no-audit --progress=false && npm cache clean --force
+# Install ONLY production dependencies (using npm install instead of npm ci)
+RUN npm install --omit=dev --no-audit --progress=false && npm cache clean --force
+
 # Copy built application from build stage
 COPY --from=build /app/dist ./dist
 
