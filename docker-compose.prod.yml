@@ -21,15 +21,17 @@ services:
     restart: unless-stopped
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    image: elasticsearch:8.9.0
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms256m -Xmx512m  # Уменьшаем память для VPS
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
       - bootstrap.memory_lock=false
       - cluster.routing.allocation.disk.threshold_enabled=false
+      - http.cors.enabled=true
+      - http.cors.allow-origin="*"
     ports:
       - "9200:9200"
       - "9300:9300"
@@ -42,6 +44,12 @@ services:
       retries: 10
       start_period: 120s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+        reservations:
+          memory: 256m
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -68,7 +76,7 @@ services:
   backend:
     build:
       context: ./backend
-      target: production  # Исправляем на production target
+      target: production
     container_name: backend
     ports:
       - "3001:3001"
@@ -83,7 +91,7 @@ services:
       elasticsearch:
         condition: service_healthy
     environment:
-      # Database - используем prod хосты (без -dev суффикса)
+      # Database
       DATABASE_URL: ${DB_URL:-postgresql://postgres:password@postgres:5432/spa_comments}
       DB_HOST: postgres
       DB_PORT: ${DB_PORT:-5432}
@@ -115,10 +123,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-production_jwt_secret_change_me}
       
       # Production settings
-      NODE_OPTIONS: "--max-old-space-size=1024"
+      NODE_OPTIONS: "--max-old-space-size=512"  # Уменьшаем для VPS
       NODE_ENV: production
       LOG_LEVEL: info
-    command: npm run start:prod  # Исправляем команду для production
+    command: npm run start:prod
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -126,21 +134,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  frontend:
-    build:
-      context: ./frontend
-      target: production  # Production target для фронтенда
-    container_name: frontend
-    ports:
-      - "80:80"  # Nginx на 80 порту
-    depends_on:
-      - backend
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
-      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3001}
-      VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:3001}
-    restart: unless-stopped
+    # Ограничения памяти для backend
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
 volumes:
   postgres_data:
