@@ -60,7 +60,6 @@
 
 .ant-image-mask {
   border-radius: $border-radius-medium;
-  max-width: 180px;
   max-height: 120px;
 }
  .ant-image-img {
@@ -144,7 +143,7 @@
 }
 
 .item-image-container {
-  min-height: 50px;
+  min-height: 128px;
   position: relative;
 }
 

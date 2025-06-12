@@ -14,17 +14,25 @@ import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 
 const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 /*
-  Компонент для предварительной загрузки изображений с улучшенным скелетоном
+  Компонент PreloadImage для предварительной загрузки изображений с со скелетоном
   Используется для отображения изображений в ленте постов и комментариев
   Предоставляет улучшенный UX при загрузке изображений
+  Поддерживает автоматическое определение ширины изображения на основе его пропорций
+  Использует Ant Design Image компонент для отображения изображений
 */
+
 const PreloadImage = ({ src, alt, onLoad }: { src: string; alt: string; onLoad: () => void }) => {
   const [loaded, setLoaded] = useState(false);
+  const [naturalWidth, setNaturalWidth] = useState(120); // Изменено начальное значение на 120px
 
   useEffect(() => {
     const img = new window.Image();
     img.src = src;
     img.onload = () => {
+      // Вычисляем пропорциональную ширину при высоте 120px
+      const proportionalWidth = (img.width / img.height) * 120;
+      // Используем минимум 120px для квадратных и вытянутых по вертикали изображений
+      setNaturalWidth(Math.max(120, proportionalWidth));
       setLoaded(true);
       onLoad();
     };
@@ -35,42 +43,49 @@ const PreloadImage = ({ src, alt, onLoad }: { src: string; alt: string; onLoad: 
   }, [src, onLoad]);
 
   return (
-    <div className="item-image-container">
+    <div 
+      className="image-wrapper" 
+      style={{
+        height: '120px',
+        display: 'inline-block',
+        maxWidth: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRadius: '8px',
+        margin: '8px 0'
+      }}
+    >
       {loaded ? (
         <AntImage
           src={src}
           alt={alt}
           preview={true}
           style={{
-            width: '100%',
-            height: '120px',
-            objectFit: 'cover',
-            display: 'block'
+            height: '120px !important',
+            width: 'auto !important',
+            objectFit: 'contain',
+            objectPosition: 'left'
           }}
+          height={120}
         />
       ) : (
-        // Скелетон для изображения
         <div style={{
           height: '120px',
-          width: '120px',
+          // Используем минимальную ширину 120px для скелетона
+          width: `${Math.max(120, Math.min(naturalWidth, 500))}px`,
           background: 'linear-gradient(90deg, #f5f5f5 25%, #e8e8e8 50%, #f5f5f5 75%)',
           backgroundSize: '200% 100%',
           animation: 'shimmer 2s ease-in-out infinite',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#9ca3af',
-          fontSize: '14px',
-          borderRadius: '8px',
-          position: 'relative'
+          borderRadius: '8px'
         }}>
-          {/* Иконка и текст */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: '8px',
-            zIndex: 1
           }}>
             <div style={{
               width: '40px',
@@ -86,24 +101,46 @@ const PreloadImage = ({ src, alt, onLoad }: { src: string; alt: string; onLoad: 
             </div>
             <span style={{ fontSize: '12px', fontWeight: '500' }}>Loading...</span>
           </div>
-
-          {/* CSS для shimmer эффекта */}
-          <style>{`
-            @keyframes shimmer {
-              0% {
-                background-position: -200% 0;
-              }
-              100% {
-                background-position: 200% 0;
-              }
-            }
-          `}</style>
         </div>
       )}
+      
+      {/* Стили для изображения и маски */}
+      <style>{`
+        .image-wrapper {
+          display: inline-block !important;
+        }
+        
+        .image-wrapper .ant-image {
+          height: 120px !important;
+          display: inline-block !important;
+        }
+        
+        .image-wrapper .ant-image-img {
+          height: 120px !important;
+          width: auto !important;
+          object-fit: contain !important;
+          object-position: left !important;
+          max-width: none !important;
+        }
+
+        .image-wrapper .ant-image-mask {
+          height: 120px !important;
+          border-radius: 8px !important;
+        }
+        
+        /* Стили для модального окна предпросмотра */
+        .ant-image-preview-img {
+          max-width: none !important;
+        }
+      
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
     </div>
   );
 };
-
 /*
   * Типы для элементов ленты
   * Используются для типизации пропсов компонента FeedItem
@@ -139,8 +176,6 @@ const FeedItemComponent = ({
   hideCommentButton,
 }: FeedItemProps) => {
   const heightCache = useRef<Map<string, number>>(new Map());
-
-
 
   /*
       * Используем MobX store для доступа к данным пользователя и постов

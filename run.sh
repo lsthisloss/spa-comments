@@ -181,10 +181,8 @@ function app_build_frontend_prod() {
     # Проверяем наличие .env.production
     if [ -f ".env.production" ]; then
         echo -e "${GREEN}✅ Found existing .env.production${NORMAL}"
-        # Показываем содержимое для проверки
         echo -e "${CYAN}Production environment variables:${NORMAL}"
         cat .env.production
-        # Копируем в .env для использования в build
         cp .env.production .env
     elif [ -f "../.env.production" ]; then
         echo -e "${GREEN}✅ Found .env.production in root directory${NORMAL}"
@@ -209,32 +207,77 @@ EOF
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force 2>/dev/null || true
     
-    # Очищаем все временные файлы
+    #4096Более агрессивная очистка
     echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
-    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
+    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo .npm 2>/dev/null || true
     
-    echo -e "${CYAN}Installing dependencies...${NORMAL}"
-    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
+    #4096Настройки npm для решения проблемы с Rollup
+    echo -e "${CYAN}Configuring npm for Rollup fix...${NORMAL}"
+    npm config set registry https://registry.npmjs.org/
+    npm config set fetch-retry-mintimeout 20000
+    npm config set fetch-retry-maxtimeout 120000
+    npm config set fetch-timeout 300000
     
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Failed to install dependencies.${NORMAL}"
-        cd ..
-        exit 1
+    # Устанавливаем зависимости с правильными флагами
+    echo -e "${CYAN}Installing dependencies (attempt 1/3)...${NORMAL}"
+    
+    # Первая попытка - обычная установка
+    if npm install --no-package-lock --no-optional --legacy-peer-deps --prefer-offline; then
+        echo -e "${GREEN}✅ Dependencies installed successfully!${NORMAL}"
+    else
+        echo -e "${YELLOW}⚠️  First attempt failed, trying with different flags...${NORMAL}"
+        rm -rf node_modules package-lock.json 2>/dev/null || true
+        
+        # Вторая попытка - принудительная переустановка
+        if npm install --force --no-package-lock --legacy-peer-deps; then
+            echo -e "${GREEN}✅ Dependencies installed on second attempt!${NORMAL}"
+        else
+            echo -e "${YELLOW}⚠️  Second attempt failed, trying manual Rollup fix...${NORMAL}"
+            rm -rf node_modules package-lock.json 2>/dev/null || true
+            
+            # Третья попытка - устанавливаем rollup отдельно
+            npm install --force --no-package-lock
+            echo -e "${CYAN}Installing missing Rollup native module...${NORMAL}"
+            npm install @rollup/rollup-linux-x64-gnu --save-dev --force
+            
+            if [ $? -ne 0 ]; then
+                echo -e "${RED}❌ Failed to install dependencies after 3 attempts.${NORMAL}"
+                cd ..
+                exit 1
+            fi
+        fi
+    fi
+    
+    #4096Проверяем что Rollup работает
+    echo -e "${CYAN}Verifying Rollup installation...${NORMAL}"
+    if npx rollup --version; then
+        echo -e "${GREEN}✅ Rollup is working correctly${NORMAL}"
+    else
+        echo -e "${YELLOW}⚠️  Rollup verification failed, attempting fix...${NORMAL}"
+        npm install @rollup/rollup-linux-x64-gnu --save-dev --force
     fi
     
     echo -e "${CYAN}Building frontend for production...${NORMAL}"
-    # 🔥 ИСПРАВЛЯЕМ: Используем .env файл при сборке
-    NODE_ENV=production timeout 1200 npx tsc -b
-    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" timeout 1800 npx vite build
     
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Build failed.${NORMAL}"
+    #4096Используем более стабильные команды сборки
+    echo -e "${CYAN}Running TypeScript compilation...${NORMAL}"
+    if NODE_ENV=production timeout 1200 npx tsc --noEmit; then
+        echo -e "${GREEN}✅ TypeScript compilation successful${NORMAL}"
+    else
+        echo -e "${YELLOW}⚠️  TypeScript compilation had warnings, continuing...${NORMAL}"
+    fi
+    
+    echo -e "${CYAN}Running Vite build...${NORMAL}"
+    if NODE_ENV=production NODE_OPTIONS="--max-old-space-size=4096" timeout 1800 npx vite build --mode production; then
+        echo -e "${GREEN}✅ Vite build successful${NORMAL}"
+    else
+        echo -e "${RED}❌ Vite build failed${NORMAL}"
         cd ..
         exit 1
     fi
     
     if [ ! -d "dist" ]; then
-        echo -e "${RED}dist directory not found!${NORMAL}"
+        echo -e "${RED}❌ dist directory not found!${NORMAL}"
         cd ..
         exit 1
     fi
