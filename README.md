@@ -356,141 +356,6 @@ const TestPanel = () => {
 
 ---
 
-## 📱 Продвинутые возможности
-
-<details>
-<summary><strong>📰 Intelligent Feed System</strong></summary>
-
-**Трёхуровневая система лент:**
-- **All Feed** - Глобальная лента всех постов
-- **Following Feed** - Персонализированная лента подписок  
-- **User Profiles** - Персональные страницы пользователей
-
-**Умное поведение:**
-- ✅ Состояние сохраняется при переходах между лентами
-- ✅ Буферизация новых постов без потери позиции
-- ✅ Manual mode - контролируемые обновления
-</details>
-
-<details>
-<summary><strong>👥 Social Features</strong></summary>
-
-- **Подписки на пользователей** с персонализированной лентой
-- **Лайки и реакции** с optimistic updates  
-- **Профили пользователей** с аватарами
-
-</details>
-
-<details>
-<summary><strong>🗨️ Advanced Comments System</strong></summary>
-
-- **Неограниченная вложенность** с производительной оптимизацией
-- **Ленивая загрузка веток** + сворачивание с сохранением состояния  
-- **Real-time обновления** на любом уровне вложенности
-- **Threaded navigation** с навигацией по веткам
-
-</details>
-
-<details>
-<summary><strong>👑 Admin Panel & Role Management</strong></summary>
-
-**Трёхуровневая система ролей:**
-- `user` - Базовые права (создание постов/комментариев), VirtualList debug tool
-- `admin` - Привилегия бейджика над постом, VirtualList debug tool
-- `superadmin` - Привилегия бейджика над постом, VirtualList debug tool, юзеры в админке, управление админами
-
-**Безопасность:**
-- JWT-based авторизация с проверкой ролей
-- Backend валидация всех админских операций
-- Frontend/Backend синхронизация ролей в реальном времени
-- 🔐 Защита от множественного входа в учетную запись
-
-</details>
-
-<details>
-<summary><strong>🔍 Elasticsearch Search</strong></summary>
-
-- Мультиентити поиск (посты/комментарии/пользователи) от 3 символов
-- Различные табы результатов (для комментариев содержит текст поста)
-
-</details>
-
-<details>
-<summary><strong>📤 Media Support</strong></summary>
-
-- Image upload с автооптимизацией + файловые вложения
-- Drag & drop с визуальной обратной связью + CAPTCHA защита
-
-</details>
-
-<details>
-<summary><strong>🔐 Session Security</strong></summary>
-
-**Защита от множественного входа:**
-- Отслеживание активных сессий пользователей на сервере
-- Автоматическое отключение предыдущей сессии при новом входе
-- Уведомление пользователя о принудительном выходе с указанием причины
-- Безопасная передача JWT-токенов и проверка авторизации
-
-**Преимущества:**
-- Защита от несанкционированного доступа к аккаунту
-- Предотвращение утечки данных при компрометации токена
-- Мгновенное оповещение владельца учетной записи о подозрительной активности
-
-</details>
-
-<details>
-<summary><strong>📊 System Monitoring</strong></summary>
-
-**Queue Health Monitoring:**
-- **Real-time статистика** очередей сообщений
-- **Автоматические алерты** при превышении лимитов (1000+ сообщений = warning, 3000+ = critical)
-- **TTL контроль**: автоудаление сообщений старше 5 минут
-- **Memory management**: ограничение использования RAM на 60%
-
-**Monitoring API:**
-```bash
-# Детальная статистика очередей
-curl http://localhost:3001/api/monitoring/queue-status
-
-# Общее состояние системы
-curl http://localhost:3001/api/monitoring/health
-```
-
-**Response примеры:**
-```json
-// Queue Status
-{
-  "totalMessages": 1500,
-  "queues": {
-    "posts": { "messageCount": 800, "unacknowledgedCount": 0 },
-    "comments": { "messageCount": 700, "unacknowledgedCount": 0 }
-  },
-  "status": "warning",
-  "timestamp": "2025-06-02T12:00:00Z",
-  "memoryUsage": { "rss": 134217728, "heapUsed": 89456432 }
-}
-
-// Health Check
-{
-  "status": "ok",
-  "timestamp": "2025-06-02T12:00:00Z",
-  "uptime": 3600,
-  "memory": { "rss": 134217728, "heapUsed": 89456432 }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>🐛 Debug Tools</strong></summary>
-
-Детальная информация о состоянии лент, виртуального списка, буферов и режимов работы с кнопками для генерации тестовых данных.
-
-</details>
-
----
-
 ## ⚡ Reactive Rendering Architecture
 
 <details>
@@ -817,7 +682,7 @@ sudo rm -rf backend/dist backend/node_modules frontend/node_modules
 
 ### 🎯 Первый запуск
 
-1. **Создайте superadmin аккаунт** через интерфейс меню (пункт 10)
+1. **Первый аккаунт - суперадмин** создайте аккаунт суперамина
 2. **Настройте тестовые данные** через Settings → Admin Panel
 3. **Протестируйте систему** с помощью встроенных stress test инструментов (только суперадмин)
 
@@ -835,7 +700,7 @@ sudo rm -rf backend/dist backend/node_modules frontend/node_modules
 <summary>🎨 Demo </summary>
   
 ---
-  ![image](https://github.com/user-attachments/assets/38841fcd-bd70-4ff2-94f2-9e765e2cd9a9)
+![image](https://github.com/user-attachments/assets/a9378a59-b3c3-419b-a7ee-aef8e4bae2f5)
 
 </details>
 

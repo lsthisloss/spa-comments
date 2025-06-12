@@ -1,5 +1,5 @@
 // Интерфейс  и типы пользователя
-export type UserRole = 'user' | 'admin' | 'superadmin';
+export type UserRole = 'user' | 'admin' | 'superadmin' | 'test';
 export interface User {
   id: string;
   userName: string;

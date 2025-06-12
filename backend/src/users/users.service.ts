@@ -130,16 +130,36 @@ export class UsersService {
         throw new ConflictException('User with this username already exists');
       }
 
+      // ПРОВЕРЯЕМ КОЛИЧЕСТВО ПОЛЬЗОВАТЕЛЕЙ - первый становится SuperAdmin
+      const totalUsers = await this.userRepository.count();
+      const isFirstUser = totalUsers === 0;
+
+      if (isFirstUser) {
+        console.log(
+          `🎯 [FIRST USER] ${userName} will be created as SUPERADMIN (first user in system)`,
+        );
+      }
+
       // Хешируем пароль
       const saltRounds = isTestMode ? 1 : 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+      // Определяем роль пользователя
+      let userRole: UserRole;
+      if (isTestMode) {
+        userRole = UserRole.TEST;
+      } else if (isFirstUser) {
+        userRole = UserRole.SUPERADMIN;
+      } else {
+        userRole = UserRole.USER;
+      }
+
       const user = this.userRepository.create({
         email,
         userName,
-        passwordHash: hashedPassword, // ← ИСПРАВЛЕНО: passwordHash вместо password
+        passwordHash: hashedPassword,
         slug: this.generateSlug(userName),
-        role: isTestMode ? UserRole.TEST : UserRole.USER,
+        role: userRole,
       });
 
       const savedUser = await this.userRepository.save(user);
@@ -149,18 +169,48 @@ export class UsersService {
         this.testService.markAsTestUser(savedUser.id);
       }
 
+      // 🔥 Специальное логирование для первого пользователя
+      if (isFirstUser) {
+        console.log(
+          `👑 FIRST USER CREATED AS SUPERADMIN: ${savedUser.userName} (${savedUser.id})`,
+        );
+        console.log(`🛡️  SuperAdmin privileges granted automatically`);
+        console.log(`🔑 SuperAdmin can manage all users and admins`);
+      }
+
       // Генерируем JWT токен
       const payload = {
         sub: savedUser.id,
         userName: savedUser.userName,
+        email: savedUser.email,
         role: savedUser.role,
         isTest: isTestMode,
       };
       const token = this.jwtService.sign(payload);
 
       console.log(
-        `User created with role: ${savedUser.role}${isTestMode ? ' [TEST]' : ''}`,
+        `User created with role: ${savedUser.role}${isTestMode ? ' [TEST]' : ''}${isFirstUser ? ' [FIRST USER - AUTO SUPERADMIN]' : ''}`,
       );
+
+      // 🔥 Индексируем в Elasticsearch
+      try {
+        await this.elasticsearchService.index({
+          index: 'users',
+          id: savedUser.id,
+          document: {
+            userName: savedUser.userName,
+            email: savedUser.email,
+            avatarUrl: savedUser.avatarUrl || '',
+            avatarShape: savedUser.avatarShape || 'circle',
+            role: savedUser.role,
+            slug: savedUser.slug,
+            isFirstUser: isFirstUser,
+            isSuperAdmin: isFirstUser,
+          },
+        });
+      } catch (esError) {
+        console.warn(`Failed to index user in Elasticsearch:`, esError);
+      }
 
       return { user: savedUser, token };
     } catch (error) {
@@ -759,60 +809,6 @@ export class UsersService {
       return null;
     }
   }
-
-  async createSuperAdmin(
-    email: string,
-    userName: string,
-    password: string,
-  ): Promise<User> {
-    try {
-      const passwordHash: string = await bcrypt.hash(password, 10);
-      const user = this.userRepository.create({
-        email,
-        userName,
-        passwordHash,
-        slug: slugify(userName),
-        role: UserRole.SUPERADMIN,
-      });
-      const savedUser = await this.userRepository.save(user);
-
-      // Индексация в Elasticsearch
-      await this.elasticsearchService.index({
-        index: 'users',
-        id: savedUser.id,
-        document: {
-          userName: savedUser.userName,
-          email: savedUser.email,
-          avatarUrl: savedUser.avatarUrl || '',
-          avatarShape: savedUser.avatarShape || 'circle',
-          role: savedUser.role,
-          slug: savedUser.slug,
-        },
-      });
-
-      this.logger.log(
-        `SuperAdmin created: ${savedUser.id} (${savedUser.userName})`,
-      );
-      return savedUser;
-    } catch (error) {
-      this.logger.error(`Error creating SuperAdmin:`, error);
-      throw new Error(
-        `Failed to create SuperAdmin: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  async findSuperAdmin(): Promise<User | null> {
-    try {
-      return await this.userRepository.findOne({
-        where: { role: UserRole.SUPERADMIN },
-      });
-    } catch (error) {
-      this.logger.error(`Error finding SuperAdmin:`, error);
-      return null;
-    }
-  }
-
   async getUserByIdOrSlug(userIdOrSlug: string): Promise<User | null> {
     try {
       let user: User | null;
@@ -902,7 +898,7 @@ export class UsersService {
     promoterId: string,
   ): Promise<User | null> {
     try {
-      // Проверяем что промоутер - суперадмин
+      // 🔥 Проверяем что промоутер - SuperAdmin
       const promoter = await this.userRepository.findOne({
         where: { id: promoterId },
       });
@@ -913,11 +909,9 @@ export class UsersService {
 
       this.logger.log(`Attempting to promote user: ${userIdOrSlug}`);
 
-      // ОБЩИЙ МЕТОД ПОИСКА
       const user = await this.getUserByIdOrSlug(userIdOrSlug);
 
       if (!user) {
-        // Для отладки показываем похожих пользователей
         const similarUsers = await this.searchUsers(userIdOrSlug, 5);
         this.logger.error(`User not found: ${userIdOrSlug}`);
         this.logger.error(
@@ -927,12 +921,12 @@ export class UsersService {
         throw new Error(`User not found: ${userIdOrSlug}`);
       }
 
-      if (user.role === UserRole.SUPERADMIN) {
-        throw new Error('Cannot modify SuperAdmin role');
-      }
-
       if (user.role === UserRole.ADMIN) {
         throw new Error('User is already an Admin');
+      }
+
+      if (user.role === UserRole.SUPERADMIN) {
+        throw new Error('Cannot promote SuperAdmin');
       }
 
       // Повышаем до админа
@@ -954,7 +948,7 @@ export class UsersService {
       }
 
       this.logger.log(
-        `User ${user.id} (${user.userName}, slug: ${user.slug}) promoted to Admin by ${promoterId}`,
+        `User ${user.id} (${user.userName}, slug: ${user.slug}) promoted to Admin by SuperAdmin ${promoterId}`,
       );
       return updatedUser;
     } catch (error) {
@@ -980,7 +974,6 @@ export class UsersService {
 
       this.logger.log(`Attempting to demote user: ${userIdOrSlug}`);
 
-      // ИСПОЛЬЗУЕМ ОБЩИЙ МЕТОД ПОИСКА
       const user = await this.getUserByIdOrSlug(userIdOrSlug);
 
       if (!user) {
@@ -1020,7 +1013,7 @@ export class UsersService {
       }
 
       this.logger.log(
-        `Admin ${user.id} (${user.userName}, slug: ${user.slug}) demoted to User by ${demoterId}`,
+        `Admin ${user.id} (${user.userName}, slug: ${user.slug}) demoted to User by SuperAdmin ${demoterId}`,
       );
       return updatedUser;
     } catch (error) {

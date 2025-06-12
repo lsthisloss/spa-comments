@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 const AuthPage = observer(() => {
   const userStore = useUserStore();
   const socketStore = useSocketStore();
-  
+
   const [showLogin, setShowLogin] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
@@ -23,7 +23,7 @@ const AuthPage = observer(() => {
     try {
       // Небольшая задержка для завершения инициализации сокетов
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Переходим на главную
       navigate('/');
       setShowRegister(false);
@@ -46,7 +46,7 @@ const AuthPage = observer(() => {
 
     try {
       const result = await userStore.login(values.email, values.password);
-      
+
       if (result.success && result.user) {
         message.success('Login successful!');
         await handleAuthSuccess();
@@ -67,9 +67,17 @@ const AuthPage = observer(() => {
 
     try {
       const result = await userStore.register(values.email, values.userName, values.password);
-      
+
       if (result.success && result.user) {
-        message.success('Registration successful!');
+        // Проверяем, стал ли пользователь админом (первый пользователь)
+        const isFirstUser = result.user.role === 'admin';
+
+        if (isFirstUser) {
+          message.success('🎉 Welcome! You are the first user and have been granted Admin privileges!', 5);
+        } else {
+          message.success('Registration successful!');
+        }
+
         await handleAuthSuccess();
       } else {
         message.error(result.message || 'Registration failed');
@@ -83,16 +91,16 @@ const AuthPage = observer(() => {
   // Функция для оценки надежности пароля
   const evaluatePasswordStrength = (password: string) => {
     if (!password) return 0;
-    
+
     let strength = 0;
-    
+
     if (password.length >= 6) strength += 20;
     if (password.length >= 10) strength += 10;
     if (/[a-z]/.test(password)) strength += 15;
     if (/[A-Z]/.test(password)) strength += 15;
     if (/[0-9]/.test(password)) strength += 15;
     if (/[@$!%*?&#^(){}[\]<>,.;:+=\-_|\\/"'`~]/.test(password)) strength += 25;
-    
+
     return Math.min(100, strength);
   };
 
@@ -120,13 +128,13 @@ const AuthPage = observer(() => {
           <div className="lock-body"></div>
           <div className="lock-key"></div>
         </div>
-        <h1 style={{ color: '#fff'}}>Who Are You?</h1>
-        
+        <h1 style={{ color: '#fff' }}>Who Are You?</h1>
+
         {/* Показываем статус подключения для отладки */}
         <div style={{ color: '#fff', fontSize: '12px', marginBottom: 16, opacity: 0.7 }}>
           Server: {connectionStatus}
         </div>
-        
+
         <Button
           className="scale-in"
           type="primary"
@@ -168,12 +176,12 @@ const AuthPage = observer(() => {
               { type: 'email', message: 'Please enter a valid email!' }
             ]}
           >
-            <Input 
+            <Input
               placeholder="your@email.com"
               autoComplete="email"
             />
           </Form.Item>
-          
+
           <Form.Item
             label="Username"
             name="userName"
@@ -181,18 +189,18 @@ const AuthPage = observer(() => {
               { required: true, message: 'Please input your username!' },
               { min: 3, message: 'Username must be at least 3 characters!' },
               { max: 20, message: 'Username must be less than 20 characters!' },
-              { 
-                pattern: /^[a-zA-Z0-9_-]+$/, 
-                message: 'Username can only contain letters, numbers, _ and -' 
+              {
+                pattern: /^[a-zA-Z0-9_-]+$/,
+                message: 'Username can only contain letters, numbers, _ and -'
               }
             ]}
           >
-            <Input 
+            <Input
               placeholder="Username"
               autoComplete="username"
             />
           </Form.Item>
-          
+
           <Form.Item
             label="Password"
             name="password"
@@ -201,18 +209,18 @@ const AuthPage = observer(() => {
               { min: 6, message: 'Password must be at least 6 characters!' }
             ]}
           >
-            <Input.Password 
+            <Input.Password
               placeholder="Password"
               autoComplete="new-password"
               onChange={(e) => setPasswordStrength(evaluatePasswordStrength(e.target.value))}
             />
           </Form.Item>
-          
+
           {passwordStrength > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
                 marginBottom: 4,
                 fontSize: '12px',
                 color: '#666'
@@ -222,15 +230,15 @@ const AuthPage = observer(() => {
                   {getPasswordStrengthText(passwordStrength)}
                 </span>
               </div>
-              <Progress 
-                percent={passwordStrength} 
+              <Progress
+                percent={passwordStrength}
                 strokeColor={getPasswordStrengthColor(passwordStrength)}
                 showInfo={false}
                 size="small"
               />
             </div>
           )}
-          
+
           <Form.Item
             label="Confirm Password"
             name="confirmPassword"
@@ -247,12 +255,12 @@ const AuthPage = observer(() => {
               }),
             ]}
           >
-            <Input.Password 
+            <Input.Password
               placeholder="Confirm Password"
               autoComplete="new-password"
             />
           </Form.Item>
-          
+
           <Button
             className="scale-in"
             type="primary"
@@ -284,12 +292,12 @@ const AuthPage = observer(() => {
               { type: 'email', message: 'Please enter a valid email!' }
             ]}
           >
-            <Input 
+            <Input
               placeholder="your@email.com"
               autoComplete="email"
             />
           </Form.Item>
-          
+
           <Form.Item
             label="Password"
             name="password"
@@ -297,12 +305,12 @@ const AuthPage = observer(() => {
               { required: true, message: 'Please input your password!' }
             ]}
           >
-            <Input.Password 
+            <Input.Password
               placeholder="Password"
               autoComplete="current-password"
             />
           </Form.Item>
-          
+
           <Button
             className="scale-in"
             type="primary"

@@ -57,648 +57,10 @@ function app_run_dev() {
         echo -e "\n${CYAN}Recent container logs:${NORMAL}"
         docker-compose -f docker-compose.dev.yml logs --tail=10
         
-        echo -e "\n${YELLOW}💡 For local development setup, use option 2${NORMAL}"
-        
     else
         echo -e "\n${RED}Docker startup failed${NORMAL}"
         echo -e "${CYAN}Check logs: docker-compose -f docker-compose.dev.yml logs${NORMAL}"
     fi
-}
-
-function app_run_local() {
-    echo -e "\n${YELLOW}Stopping app containers ...${NORMAL}\n"
-    
-    # Копируем .env.example в .env для фронтенда (если нет .env)
-    if [ -f .env.example ] && [ ! -f .env ]; then
-        cp .env.example .env
-        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
-    fi
-
-    # Копируем .env.example в .env для бэкенда (если нет .env)
-    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
-        cp backend/.env.example backend/.env
-        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
-    fi
-
-    docker-compose -f docker-compose.dev.yml down
-
-    echo -e "\n${YELLOW}Building images ...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml build --no-cache
-    if [ $? -ne 0 ]; then
-        echo -e "\n${RED}Error building images. Please check the Dockerfile and try again.${NORMAL}\n"
-        exit 1
-    fi
-
-    echo -e "\n${YELLOW}Starting app containers (backend only) ...${NORMAL}\n"
-    # Only kill if a process is found
-    if lsof -t -i:3000 >/dev/null 2>&1; then
-        kill -9 $(lsof -t -i:3000)
-    fi
-    docker-compose -f docker-compose.dev.yml up
-}
-
-function app_clean_orphans() {
-    echo -e "\n${YELLOW}Cleaning orphan containers...${NORMAL}\n"
-    
-    echo -e "${CYAN}Stopping all services...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
-    
-    echo -e "${CYAN}Removing orphan containers...${NORMAL}"
-    docker container prune -f
-    
-    echo -e "${CYAN}Removing unused networks...${NORMAL}"
-    docker network prune -f
-    
-    echo -e "${GREEN}✅ Orphan containers cleaned!${NORMAL}"
-    docker ps -a
-}
-
-
-function app_create_superadmin() {
-    echo -e "\n${YELLOW}Creating superadmin user...${NORMAL}\n"
-    
-    # Определяем файл композера и .env в зависимости от окружения
-    local COMPOSE_FILE="docker-compose.dev.yml"
-    local ENV_FILE=".env"
-    
-    if [ "$1" = "prod" ]; then
-        COMPOSE_FILE="docker-compose.prod.yml"
-        ENV_FILE=".env.prod"
-        echo -e "${CYAN}Using production environment${NORMAL}"
-        
-        # Используем .env.prod для production
-        if [ -f "$ENV_FILE" ]; then
-            echo -e "${CYAN}Loading production environment variables${NORMAL}"
-            export $(cat $ENV_FILE | grep -v '^#' | xargs)
-        fi
-    else
-        echo -e "${CYAN}Using development environment${NORMAL}"
-        
-        # Используем стандартный .env для dev
-        if [ -f "$ENV_FILE" ]; then
-            echo -e "${CYAN}Loading development environment variables${NORMAL}"
-            export $(cat $ENV_FILE | grep -v '^#' | xargs)
-        fi
-    fi
-    
-    # Проверяем, что backend контейнер запущен
-    local BACKEND_CONTAINER=$(docker-compose -f $COMPOSE_FILE ps -q backend)
-    
-    if [ -z "$BACKEND_CONTAINER" ] || ! docker ps --format "table {{.Names}}" | grep -q "backend"; then
-        echo -e "${YELLOW}Backend container not running. Starting required services...${NORMAL}"
-        
-        # Запускаем только необходимые сервисы
-        docker-compose -f $COMPOSE_FILE up -d postgres rabbitmq elasticsearch backend
-        
-        # Ждем готовности сервисов
-        echo -e "${CYAN}Waiting for services to be ready...${NORMAL}"
-        sleep 15
-        
-        # Проверяем статус
-        docker-compose -f $COMPOSE_FILE ps
-    else
-        echo -e "${GREEN}Backend container is already running${NORMAL}"
-    fi
-    
-    # Выполняем команду в уже запущенном контейнере
-    echo -e "${CYAN}🔧 Running superadmin script in existing container...${NORMAL}"
-    
-    if [ "$1" = "prod" ]; then
-        docker-compose -f $COMPOSE_FILE exec backend npm run create-superadmin
-    else
-        docker-compose -f $COMPOSE_FILE exec backend npm run create-superadmin
-    fi
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ SuperAdmin created successfully!${NORMAL}"
-        return 0
-    fi
-    
-    # Fallback: если exec не сработал, пробуем run
-    echo -e "\n${YELLOW}Exec failed, trying with run (will create new container)...${NORMAL}"
-    
-    if [ "$1" = "prod" ]; then
-        docker-compose -f $COMPOSE_FILE --env-file=$ENV_FILE run --rm backend npm run create-superadmin
-    else
-        docker-compose -f $COMPOSE_FILE run --rm backend npm run create-superadmin
-    fi
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ SuperAdmin created successfully!${NORMAL}"
-        return 0
-    fi
-    
-    # Вариант с кастомными данными
-    echo -e "\n${YELLOW}Script failed. Enter custom SuperAdmin details:${NORMAL}"
-    
-    if [ "$1" = "prod" ]; then
-        read -p "Email (default: admin@sk8.dev): " ADMIN_EMAIL
-        ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sk8.dev}
-        
-        read -p "Username (default: sk8): " ADMIN_USERNAME  
-        ADMIN_USERNAME=${ADMIN_USERNAME:-sk8}
-    else
-        read -p "Email (default: dev@example.com): " ADMIN_EMAIL
-        ADMIN_EMAIL=${ADMIN_EMAIL:-dev@example.com}
-        
-        read -p "Username (default: DevAdmin): " ADMIN_USERNAME  
-        ADMIN_USERNAME=${ADMIN_USERNAME:-DevAdmin}
-    fi
-    
-    read -s -p "Password (leave empty for auto-generated): " ADMIN_PASSWORD
-    echo
-    
-    # Пробуем с переменными окружения через exec
-    echo -e "${CYAN}Trying with custom environment variables in running container...${NORMAL}"
-    
-    local ENV_VARS=""
-    if [ ! -z "$ADMIN_EMAIL" ]; then
-        ENV_VARS="SUPERADMIN_EMAIL=\"$ADMIN_EMAIL\""
-    fi
-    if [ ! -z "$ADMIN_USERNAME" ]; then
-        ENV_VARS="$ENV_VARS SUPERADMIN_USERNAME=\"$ADMIN_USERNAME\""
-    fi
-    if [ ! -z "$ADMIN_PASSWORD" ]; then
-        ENV_VARS="$ENV_VARS SUPERADMIN_PASSWORD=\"$ADMIN_PASSWORD\""
-    fi
-    
-    if [ "$1" = "prod" ]; then
-        ENV_VARS="$ENV_VARS NODE_ENV=production"
-    else
-        ENV_VARS="$ENV_VARS NODE_ENV=development"
-    fi
-    
-    # Выполняем с переменными окружения в запущенном контейнере
-    docker-compose -f $COMPOSE_FILE exec -e SUPERADMIN_EMAIL="$ADMIN_EMAIL" -e SUPERADMIN_USERNAME="$ADMIN_USERNAME" -e SUPERADMIN_PASSWORD="$ADMIN_PASSWORD" backend npm run create-superadmin
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ SuperAdmin created with custom details!${NORMAL}"
-    else
-        echo -e "${RED}❌ Failed to create SuperAdmin. Check database connection.${NORMAL}"
-        echo -e "${CYAN}Try running: docker-compose -f $COMPOSE_FILE logs backend${NORMAL}"
-        echo -e "${CYAN}Or check database: docker-compose -f $COMPOSE_FILE logs postgres${NORMAL}"
-    fi
-}
-
-function app_run_production() {
-    echo -e "\n${YELLOW}Starting production environment...${NORMAL}\n"
-    
-    # Используем production .env файл для backend
-    if [ -f "backend/.env.example" ] && [ ! -f "backend/.env" ]; then
-        cp backend/.env.example backend/.env
-        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
-    fi
-    
-    echo -e "${CYAN}Stopping any running containers...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml down --remove-orphans
-    
-    echo -e "${CYAN}Building backend production image...${NORMAL}"
-    # Собираем только backend сервисы (без frontend)
-    docker-compose -f docker-compose.prod.yml build --no-cache backend postgres rabbitmq elasticsearch
-    
-    echo -e "${CYAN}Starting backend production containers...${NORMAL}"
-    # Запускаем только backend сервисы
-    docker-compose -f docker-compose.prod.yml up -d postgres rabbitmq elasticsearch backend
-    
-    echo -e "${GREEN}✅ Backend production environment started!${NORMAL}"
-    echo -e "${CYAN}Backend API: http://localhost:3001${NORMAL}"
-    echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
-    echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
-    echo -e "${CYAN}Frontend: Served by system Nginx from /var/www/sk8.pw/${NORMAL}"
-    
-    # Показываем статус только backend сервисов
-    echo -e "\n${CYAN}Backend services status:${NORMAL}"
-    docker-compose -f docker-compose.prod.yml ps
-    
-    echo -e "\n${YELLOW}💡 To deploy frontend, use option 8 (Build Frontend Production)${NORMAL}"
-}
-
-function app_clean_all() {
-    echo -e "\n${RED}Останавливаю и удаляю все контейнеры, образы и volume'ы...${NORMAL}\n"
-    
-    # Принудительно останавливаем все контейнеры
-    echo -e "${YELLOW}Stopping all containers...${NORMAL}"
-    docker stop $(docker ps -aq) 2>/dev/null || true
-    
-    # Удаляем контейнеры с таймаутом
-    echo -e "${YELLOW}Removing containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
-    docker-compose down --timeout 10 -v --remove-orphans 2>/dev/null || true
-    
-    # Принудительно удаляем все контейнеры
-    echo -e "${YELLOW}Force removing all containers...${NORMAL}"
-    docker rm -f $(docker ps -aq) 2>/dev/null || true
-    
-    # Удаляем образы по частям
-    echo -e "${YELLOW}Removing images...${NORMAL}"
-    docker rmi -f $(docker images -q) 2>/dev/null || true
-    
-    # Удаляем volume'ы
-    echo -e "${YELLOW}Removing volumes...${NORMAL}"
-    docker volume rm $(docker volume ls -q) 2>/dev/null || true
-    
-    # Удаляем сети
-    echo -e "${YELLOW}Removing networks...${NORMAL}"
-    docker network prune -f 2>/dev/null || true
-    
-    # Финальная очистка системы
-    echo -e "${YELLOW}Final system cleanup...${NORMAL}"
-    docker system prune -af --volumes 2>/dev/null || true
-    
-    echo -e "\n${GREEN}Всё очищено!${NORMAL}\n"
-    
-    # Показываем статус
-    echo -e "${CYAN}Remaining containers:${NORMAL}"
-    docker ps -a || echo "No containers"
-    
-    echo -e "${CYAN}Remaining images:${NORMAL}"
-    docker images || echo "No images"
-    
-    echo -e "${CYAN}Remaining volumes:${NORMAL}"
-    docker volume ls || echo "No volumes"
-}
-function app_stop_all() {
-    echo -e "\n${YELLOW}Stopping all containers...${NORMAL}\n"
-    
-    # Быстрая остановка всех контейнеров
-    docker stop $(docker ps -aq) 2>/dev/null || true
-    
-    # Остановка через docker-compose
-    docker-compose -f docker-compose.dev.yml down --timeout 5 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --timeout 5 2>/dev/null || true
-    docker-compose down --timeout 5 2>/dev/null || true
-    
-    echo -e "${GREEN}All containers stopped!${NORMAL}"
-    docker ps
-}
-function app_run_backend() {
-    echo -e "\n${YELLOW}Starting backend with docker-compose...${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml up -d
-    echo -e "\n${GREEN}Backend services started!${NORMAL}\n"
-    docker-compose -f docker-compose.prod.yml ps
-}
-
-function app_build_frontend_prod() {
-    echo -e "\n${YELLOW}Building frontend for production...${NORMAL}\n"
-    
-    cd frontend
-    
-    # Увеличиваем лимит памяти для Node.js
-    export NODE_OPTIONS="--max-old-space-size=4096"
-    
-    echo -e "${CYAN}Clearing npm cache...${NORMAL}"
-    npm cache clean --force
-    
-    # Очищаем все временные файлы
-    echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
-    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
-    
-    echo -e "${CYAN}Installing dependencies with minimal memory usage...${NORMAL}"
-    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Failed to install dependencies. Trying with optional dependencies...${NORMAL}"
-        npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
-        
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}Failed to install dependencies. Trying minimal install...${NORMAL}"
-            npm install typescript vite @vitejs/plugin-react rollup --no-save --loglevel=silent
-            
-            if [ $? -ne 0 ]; then
-                echo -e "${YELLOW}Creating swap space automatically...${NORMAL}"
-                if ! swapon --show | grep -q "/swapfile"; then
-                    echo -e "${CYAN}Creating 2GB swap file...${NORMAL}"
-                    sudo fallocate -l 2G /swapfile
-                    sudo chmod 600 /swapfile
-                    sudo mkswap /swapfile
-                    sudo swapon /swapfile
-                    
-                    npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
-                    
-                    if [ $? -ne 0 ]; then
-                        echo -e "${RED}Installation still failed even with swap. Build locally.${NORMAL}"
-                        cd ..
-                        exit 1
-                    fi
-                else
-                    echo -e "${RED}Swap exists but installation still failed. Build locally.${NORMAL}"
-                    cd ..
-                    exit 1
-                fi
-            fi
-        fi
-    fi
-    
-    # Проверяем что Rollup корректно установлен
-    echo -e "${CYAN}Checking Rollup installation...${NORMAL}"
-    if ! npx rollup --version >/dev/null 2>&1; then
-        echo -e "${YELLOW}Rollup not working, reinstalling with optional dependencies...${NORMAL}"
-        npm install rollup --force --loglevel=silent
-    fi
-    
-    echo -e "${CYAN}Creating production environment...${NORMAL}"
-    cat > .env.production << EOF
-VITE_API_URL=https://sk8.pw
-VITE_WS_URL=wss://sk8.pw
-VITE_SOCKET_URL=https://sk8.pw
-NODE_ENV=production
-EOF
-    
-    # Освобождаем память перед компиляцией
-    echo -e "${CYAN}Clearing system memory...${NORMAL}"
-    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
-    
-    echo -e "${CYAN}Building frontend for production (with memory optimization)...${NORMAL}"
-    NODE_ENV=production timeout 1200 npx tsc -b
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${YELLOW}TypeScript compilation failed, trying without type checking...${NORMAL}"
-        NODE_ENV=production timeout 1200 npx tsc --build --force --skipLibCheck
-        
-        if [ $? -ne 0 ]; then
-            echo -e "${YELLOW}TypeScript compilation failed, continuing with Vite build...${NORMAL}"
-        fi
-    fi
-    
-    # Очищаем память снова перед Vite build
-    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
-    
-    echo -e "${CYAN}Running Vite build (memory optimized)...${NORMAL}"
-    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" timeout 1800 npx vite build
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Vite build failed. Trying with even more memory...${NORMAL}"
-        export NODE_OPTIONS="--max-old-space-size=2048"
-        NODE_ENV=production timeout 2400 npx vite build
-        
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}Build failed even with 2GB memory limit.${NORMAL}"
-            echo -e "${YELLOW}Server memory insufficient. Please build locally and upload dist/ folder.${NORMAL}"
-            cd ..
-            exit 1
-        fi
-    fi
-    
-    if [ ! -d "dist" ]; then
-        echo -e "${RED}dist directory not found!${NORMAL}"
-        cd ..
-        exit 1
-    fi
-    
-    echo -e "${CYAN}Deploying to web directory...${NORMAL}"
-    sudo mkdir -p /var/www/sk8.pw
-    sudo cp -r dist/* /var/www/sk8.pw/
-    sudo chown -R www-data:www-data /var/www/sk8.pw/
-    sudo chmod -R 755 /var/www/sk8.pw/
-    
-    echo -e "${GREEN}✅ Production frontend built and deployed!${NORMAL}"
-    echo -e "${CYAN}📁 Location: /var/www/sk8.pw/${NORMAL}"
-    echo -e "${CYAN}🌐 URL: https://sk8.pw${NORMAL}"
-    echo -e "${CYAN}🔧 Nginx config: Using system configuration${NORMAL}"
-    
-    # Проверяем статус Nginx
-    echo -e "\n${CYAN}Checking Nginx status...${NORMAL}"
-    if sudo nginx -t; then
-        echo -e "${GREEN}✅ Nginx configuration is valid${NORMAL}"
-        
-        # Предлагаем перезагрузить Nginx
-        echo -n -e "${CYAN}Reload Nginx to apply any changes? (y/N): ${NORMAL}"
-        read -r RELOAD_NGINX
-        if [[ $RELOAD_NGINX =~ ^[Yy]$ ]]; then
-            sudo systemctl reload nginx
-            echo -e "${GREEN}✅ Nginx reloaded successfully${NORMAL}"
-        fi
-    else
-        echo -e "${RED}❌ Nginx configuration has errors${NORMAL}"
-    fi
-    
-    cd ..
-}
-
-function app_build_frontend_dev() {
-    echo -e "\n${YELLOW}Building frontend for development...${NORMAL}\n"
-    
-    cd frontend
-    
-    # Увеличиваем лимит памяти (ТОЛЬКО валидные опции)
-    export NODE_OPTIONS="--max-old-space-size=4096"
-    
-    echo -e "${CYAN}Clearing npm cache...${NORMAL}"
-    npm cache clean --force
-    
-    # Удаляем package-lock.json и node_modules
-    echo -e "${CYAN}Removing package-lock.json and node_modules to fix Rollup issue...${NORMAL}"
-    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
-    
-    echo -e "${CYAN}Installing dependencies with memory limits...${NORMAL}"
-    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Failed to install dependencies. Trying with optional dependencies...${NORMAL}"
-        
-        # Пробуем с optional dependencies для Rollup
-        npm install --prefer-offline --progress=false --loglevel=silent --maxsockets=1
-        
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}Failed to install dependencies. Trying alternative approach...${NORMAL}"
-            # Устанавливаем TypeScript и Vite через npx для разового использования
-            echo -e "${CYAN}Installing build tools...${NORMAL}"
-            npm install typescript vite @vitejs/plugin-react rollup --no-save --loglevel=silent
-            
-            if [ $? -ne 0 ]; then
-                echo -e "${RED}Installation failed. Server memory too low. Try building locally.${NORMAL}"
-                cd ..
-                exit 1
-            fi
-        fi
-    fi
-    
-    # Проверяем что Rollup корректно установлен
-    echo -e "${CYAN}Checking Rollup installation...${NORMAL}"
-    if ! npx rollup --version >/dev/null 2>&1; then
-        echo -e "${YELLOW}Rollup not working, reinstalling with optional dependencies...${NORMAL}"
-        npm install rollup --force --loglevel=silent
-    fi
-    
-    echo -e "${CYAN}Creating development environment...${NORMAL}"
-    cat > .env << EOF
-VITE_API_URL=http://localhost:3001
-VITE_WS_URL=ws://localhost:3001
-VITE_SOCKET_URL=http://localhost:3001
-NODE_ENV=development
-EOF
-    
-    # Очищаем память
-    sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
-    
-    echo -e "${CYAN}Building frontend...${NORMAL}"
-    # Используем npx и добавляем timeout БЕЗ неправильных опций
-    NODE_ENV=development timeout 1200 npx tsc -b
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}TypeScript compilation failed!${NORMAL}"
-        cd ..
-        exit 1
-    fi
-    
-    NODE_ENV=development timeout 1200 npx vite build
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Vite build failed!${NORMAL}"
-        cd ..
-        exit 1
-    fi
-    
-    if [ ! -d "dist" ]; then
-        echo -e "${RED}dist directory not found!${NORMAL}"
-        cd ..
-        exit 1
-    fi
-    
-    echo -e "${CYAN}Copying to /var/www/sk8.pw/...${NORMAL}"
-    sudo mkdir -p /var/www/sk8.pw
-    sudo cp -r dist/* /var/www/sk8.pw/
-    sudo chown -R www-data:www-data /var/www/sk8.pw/
-    sudo chmod -R 755 /var/www/sk8.pw/
-    
-    echo -e "${GREEN}✅ Development frontend built and deployed!${NORMAL}"
-    echo -e "${CYAN}📁 Location: /var/www/sk8.pw/${NORMAL}"
-    echo -e "${CYAN}🔗 Configured for backend on localhost:3001${NORMAL}"
-    
-    cd ..
-}
-
-function app_setup_swap() {
-    echo -e "\n${YELLOW}Setting up swap space for build process...${NORMAL}\n"
-    
-    # Проверяем есть ли уже swap
-    if swapon --show | grep -q "/swapfile"; then
-        echo -e "${GREEN}Swap already exists${NORMAL}"
-        swapon --show
-        return 0
-    fi
-    
-    echo -e "${CYAN}Creating 2GB swap file...${NORMAL}"
-    sudo fallocate -l 2G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    
-    # Добавляем в fstab для постоянного использования
-    if ! grep -q "/swapfile" /etc/fstab; then
-        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-    fi
-    
-    echo -e "${GREEN}✅ Swap space created successfully!${NORMAL}"
-    echo -e "${CYAN}Memory status:${NORMAL}"
-    free -h
-}
-
-
-function app_fix_memory_issues() {
-    echo -e "\n${YELLOW}Fixing memory issues...${NORMAL}\n"
-    
-    # Остановить все контейнеры
-    docker-compose -f docker-compose.prod.yml down
-    
-    # Создать swap если его нет
-    if ! swapon --show | grep -q "/swapfile"; then
-        echo -e "${CYAN}Creating swap space...${NORMAL}"
-        app_setup_swap
-    fi
-    
-    # Очистить системную память
-    echo -e "${CYAN}Clearing system memory...${NORMAL}"
-    sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
-    
-    # Пересобрать с оптимизацией
-    echo -e "${CYAN}Rebuilding with memory optimization...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml build --no-cache
-    
-    # Запустить с новыми лимитами
-    echo -e "${CYAN}Starting with optimized memory settings...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml up -d
-    
-    echo -e "${GREEN}✅ Memory optimization complete!${NORMAL}"
-    docker-compose -f docker-compose.prod.yml ps
-}
-function app_clean_uploads() {
-    echo -e "\n${YELLOW}Cleaning uploads directory...${NORMAL}\n"
-    
-    # Показываем размер папки uploads
-    if [ -d "backend/uploads" ]; then
-        UPLOADS_SIZE=$(du -sh backend/uploads 2>/dev/null | cut -f1)
-        echo -e "${CYAN}Current uploads size: ${UPLOADS_SIZE}${NORMAL}"
-        
-        # Показываем количество файлов
-        FILES_COUNT=$(find backend/uploads -type f 2>/dev/null | wc -l)
-        echo -e "${CYAN}Total files: ${FILES_COUNT}${NORMAL}"
-        
-        if [ "$FILES_COUNT" -gt 0 ]; then
-            echo -e "${YELLOW}⚠️  This will delete ALL uploaded files (avatars, images, documents)${NORMAL}"
-            echo -e "${RED}⚠️  This action cannot be undone!${NORMAL}"
-            echo -n -e "${CYAN}Are you sure? (y/N): ${NORMAL}"
-            read -r CONFIRM
-            
-            if [[ $CONFIRM =~ ^[Yy]$ ]]; then
-                echo -e "${CYAN}Removing all files in uploads directory...${NORMAL}"
-                
-                # Удаляем все файлы и пустые папки через find (без лимита на количество файлов)
-                if find backend/uploads -type f -delete 2>/dev/null; then
-                    # Удаляем пустые папки, кроме самой uploads
-                    find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
-                    echo -e "${GREEN}✅ Uploads cleaned successfully!${NORMAL}"
-                else
-                    echo -e "${YELLOW}Need elevated permissions...${NORMAL}"
-                    if sudo find backend/uploads -type f -delete 2>/dev/null; then
-                        sudo find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
-                        echo -e "${GREEN}✅ Uploads cleaned successfully with sudo!${NORMAL}"
-                    else
-                        echo -e "${RED}❌ Still failed. Manual cleanup required.${NORMAL}"
-                        echo -e "${CYAN}Try: sudo find backend/uploads -type f -delete${NORMAL}"
-                        return 1
-                    fi
-                fi
-                
-                # Пересоздаем структуру папок
-                echo -e "${CYAN}Recreating uploads structure...${NORMAL}"
-                mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files 2>/dev/null || sudo mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files
-                
-                chmod 755 backend/uploads 2>/dev/null || sudo chmod 755 backend/uploads
-                chmod 755 backend/uploads/* 2>/dev/null || sudo chmod 755 backend/uploads/*
-                
-                echo -e "${GREEN}✅ Uploads directory structure recreated!${NORMAL}"
-                
-                # Показываем финальный размер
-                NEW_SIZE=$(du -sh backend/uploads 2>/dev/null | cut -f1)
-                echo -e "${CYAN}New uploads size: ${NEW_SIZE}${NORMAL}"
-            else
-                echo -e "${YELLOW}Operation cancelled.${NORMAL}"
-            fi
-        else
-            echo -e "${GREEN}Uploads directory is already empty.${NORMAL}"
-        fi
-    else
-        echo -e "${YELLOW}Uploads directory does not exist. Creating...${NORMAL}"
-        mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files
-        chmod 755 backend/uploads backend/uploads/*
-        echo -e "${GREEN}✅ Uploads directory created!${NORMAL}"
-    fi
-}
-
-function app_dev_setup_and_start() {
-    echo -e "\n${YELLOW}Setting up local development + Docker...${NORMAL}\n"
-    
-    # Сначала устанавливаем локальные зависимости
-    app_setup_local_dev
-    
-    # Затем запускаем Docker
-    echo -e "\n${CYAN}Now starting Docker services...${NORMAL}"
-    app_run_dev
-    
-    echo -e "\n${GREEN}✅ Full development environment ready!${NORMAL}"
-    echo -e "${CYAN}🐳 Docker: Frontend http://localhost:3000 + Backend http://localhost:3001${NORMAL}"
-    echo -e "${CYAN}💻 Local: You can also develop with local tools${NORMAL}"
 }
 
 function app_setup_local_dev() {
@@ -761,69 +123,12 @@ function app_setup_local_dev() {
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✅ Frontend dependencies installed${NORMAL}"
-        
-        # Проверяем инструменты
-        if npx tsc --version >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ TypeScript ready${NORMAL}"
-        else
-            echo -e "${YELLOW}⚠️  TypeScript might have issues${NORMAL}"
-        fi
-        
-        if npx vite --version >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Vite ready${NORMAL}"
-        else
-            echo -e "${YELLOW}⚠️  Vite might have issues${NORMAL}"
-        fi
     else
         echo -e "${RED}❌ Frontend dependencies installation failed${NORMAL}"
     fi
     cd ..
     
     echo -e "\n${GREEN}✅ Local development dependencies installed!${NORMAL}"
-    echo -e "${CYAN}Now you can develop locally:${NORMAL}"
-    echo -e "${CYAN}• Backend: cd backend && npm run start:dev${NORMAL}"
-    echo -e "${CYAN}• Frontend: cd frontend && npm run dev${NORMAL}"
-    echo -e "${CYAN}• Or use Docker: ./run.sh option 1${NORMAL}"
-    
-    # Показываем статус установки
-    echo -e "\n${CYAN}Installation status:${NORMAL}"
-    echo -e "${CYAN}Backend node_modules:${NORMAL} $([ -d backend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
-    echo -e "${CYAN}Frontend node_modules:${NORMAL} $([ -d frontend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
-    echo -e "${CYAN}Backend dist:${NORMAL} $([ -f backend/dist/main.js ] && echo "✅ Built" || echo "❌ Not built")"
-}
-
-# Добавляем dev функции
-function app_dev_start() {
-    echo -e "\n${YELLOW}Starting DEV environment...${NORMAL}\n"
-    
-    # Копируем .env.example в .env для фронтенда (если нет .env)
-    if [ -f .env.example ] && [ ! -f .env ]; then
-        cp .env.example .env
-        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
-    fi
-
-    # Копируем .env.example в .env для бэкенда (если нет .env)
-    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
-        cp backend/.env.example backend/.env
-        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
-    fi
-    
-    # Очищаем orphans
-    docker-compose -f docker-compose.dev.yml down --remove-orphans
-
-    # Запускаем все сервисы
-    echo -e "${CYAN}Starting all development services...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml up -d
-    
-    echo -e "${GREEN}✅ Development environment started!${NORMAL}"
-    echo -e "${CYAN}Frontend: http://localhost:3000${NORMAL}"
-    echo -e "${CYAN}Backend: http://localhost:3001${NORMAL}"
-    echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
-    echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
-    
-    # Показываем статус
-    echo -e "\n${CYAN}Services status:${NORMAL}"
-    docker-compose -f docker-compose.dev.yml ps
 }
 
 function app_dev_logs() {
@@ -834,45 +139,217 @@ function app_dev_logs() {
     
     echo -e "\n${CYAN}Recent logs (last 50 lines):${NORMAL}"
     docker-compose -f docker-compose.dev.yml logs --tail=50
-    
-    echo -e "\n${YELLOW}💡 For live logs: docker-compose -f docker-compose.dev.yml logs -f${NORMAL}"
 }
 
-function app_dev_stop() {
-    echo -e "\n${YELLOW}Stopping DEV environment...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml down --remove-orphans
-    echo -e "${GREEN}✅ Development environment stopped!${NORMAL}"
+function app_run_production() {
+    echo -e "\n${YELLOW}Starting production environment...${NORMAL}\n"
+    
+    # Используем production .env файл для backend
+    if [ -f "backend/.env.example" ] && [ ! -f "backend/.env" ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
+    fi
+    
+    echo -e "${CYAN}Stopping any running containers...${NORMAL}"
+    docker-compose -f docker-compose.prod.yml down --remove-orphans
+    
+    echo -e "${CYAN}Building backend production image...${NORMAL}"
+    # Собираем только backend сервисы (без frontend)
+    docker-compose -f docker-compose.prod.yml build --no-cache backend postgres rabbitmq elasticsearch
+    
+    echo -e "${CYAN}Starting backend production containers...${NORMAL}"
+    # Запускаем только backend сервисы
+    docker-compose -f docker-compose.prod.yml up -d postgres rabbitmq elasticsearch backend
+    
+    echo -e "${GREEN}✅ Backend production environment started!${NORMAL}"
+    echo -e "${CYAN}Backend API: http://localhost:3001${NORMAL}"
+    echo -e "${CYAN}RabbitMQ: http://localhost:15672${NORMAL}"
+    echo -e "${CYAN}Elasticsearch: http://localhost:9200${NORMAL}"
+    
+    # Показываем статус только backend сервисов
+    echo -e "\n${CYAN}Backend services status:${NORMAL}"
+    docker-compose -f docker-compose.prod.yml ps
 }
 
-function app_create_superadmin_prod() {
-    echo -e "\n${YELLOW}Creating superadmin user (PRODUCTION mode)...${NORMAL}\n"
-    app_create_superadmin "prod"
+function app_build_frontend_prod() {
+    echo -e "\n${YELLOW}Building frontend for production...${NORMAL}\n"
+    
+    cd frontend
+    
+    # Увеличиваем лимит памяти для Node.js
+    export NODE_OPTIONS="--max-old-space-size=4096"
+    
+    echo -e "${CYAN}Clearing npm cache...${NORMAL}"
+    npm cache clean --force
+    
+    # Очищаем все временные файлы
+    echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
+    rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo
+    
+    echo -e "${CYAN}Installing dependencies...${NORMAL}"
+    npm install --no-optional --prefer-offline --progress=false --loglevel=silent --maxsockets=1
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to install dependencies.${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Creating production environment...${NORMAL}"
+    cat > .env.production << EOF
+VITE_API_URL=https://sk8.pw
+VITE_WS_URL=wss://sk8.pw
+VITE_SOCKET_URL=https://sk8.pw
+NODE_ENV=production
+EOF
+    
+    echo -e "${CYAN}Building frontend for production...${NORMAL}"
+    NODE_ENV=production timeout 1200 npx tsc -b
+    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" timeout 1800 npx vite build
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Build failed.${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    if [ ! -d "dist" ]; then
+        echo -e "${RED}dist directory not found!${NORMAL}"
+        cd ..
+        exit 1
+    fi
+    
+    echo -e "${CYAN}Deploying to web directory...${NORMAL}"
+    sudo mkdir -p /var/www/sk8.pw
+    sudo cp -r dist/* /var/www/sk8.pw/
+    sudo chown -R www-data:www-data /var/www/sk8.pw/
+    sudo chmod -R 755 /var/www/sk8.pw/
+    
+    echo -e "${GREEN}✅ Production frontend built and deployed!${NORMAL}"
+    echo -e "${CYAN}📁 Location: /var/www/sk8.pw/${NORMAL}"
+    echo -e "${CYAN}🌐 URL: https://sk8.pw${NORMAL}"
+    
+    cd ..
 }
 
-
-function app_fix_permissions() {
-    echo -e "\n${YELLOW}Fixing file permissions in the project (requires sudo)...${NORMAL}\n"
+function app_clean_all() {
+    echo -e "\n${RED}Останавливаю и удаляю все контейнеры, образы и volume'ы...${NORMAL}\n"
     
-    echo -e "${RED}⚠️  This will ask for your password to fix file ownership${NORMAL}"
+    # Принудительно останавливаем все контейнеры
+    echo -e "${YELLOW}Stopping all containers...${NORMAL}"
+    docker stop $(docker ps -aq) 2>/dev/null || true
     
-    echo -e "${CYAN}Fixing ownership...${NORMAL}"
-    sudo chown -R $USER:$USER /home/dev/spa-comments/
+    # Удаляем контейнеры с таймаутом
+    echo -e "${YELLOW}Removing containers...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
     
-    echo -e "${CYAN}Setting correct permissions...${NORMAL}"
-    chmod -R 755 /home/dev/spa-comments/
+    # Принудительно удаляем все контейнеры
+    echo -e "${YELLOW}Force removing all containers...${NORMAL}"
+    docker rm -f $(docker ps -aq) 2>/dev/null || true
     
-    echo -e "${CYAN}Removing problematic files...${NORMAL}"
-    sudo rm -rf backend/dist backend/node_modules frontend/node_modules
-    sudo rm -rf backend/package-lock.json frontend/package-lock.json
+    # Удаляем образы
+    echo -e "${YELLOW}Removing images...${NORMAL}"
+    docker rmi -f $(docker images -q) 2>/dev/null || true
     
-    echo -e "${CYAN}Creating directories with correct permissions...${NORMAL}"
-    mkdir -p backend/dist frontend/dist
-    chmod 755 backend/dist frontend/dist
+    # Удаляем volume'ы
+    echo -e "${YELLOW}Removing volumes...${NORMAL}"
+    docker volume rm $(docker volume ls -q) 2>/dev/null || true
     
-    echo -e "${GREEN}✅ Permissions fixed!${NORMAL}"
-    echo -e "${CYAN}Now you can run: ./run.sh and select option 1 or 18${NORMAL}"
+    # Финальная очистка системы
+    echo -e "${YELLOW}Final system cleanup...${NORMAL}"
+    docker system prune -af --volumes 2>/dev/null || true
+    
+    echo -e "\n${GREEN}Всё очищено!${NORMAL}\n"
 }
 
+function app_stop_all() {
+    echo -e "\n${YELLOW}Stopping all containers...${NORMAL}\n"
+    
+    # Быстрая остановка всех контейнеров
+    docker stop $(docker ps -aq) 2>/dev/null || true
+    
+    # Остановка через docker-compose
+    docker-compose -f docker-compose.dev.yml down --timeout 5 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --timeout 5 2>/dev/null || true
+    
+    echo -e "${GREEN}All containers stopped!${NORMAL}"
+    docker ps
+}
+
+function app_clean_orphans() {
+    echo -e "\n${YELLOW}Cleaning orphan containers...${NORMAL}\n"
+    
+    echo -e "${CYAN}Stopping all services...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+    docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+    
+    echo -e "${CYAN}Removing orphan containers...${NORMAL}"
+    docker container prune -f
+    
+    echo -e "${CYAN}Removing unused networks...${NORMAL}"
+    docker network prune -f
+    
+    echo -e "${GREEN}✅ Orphan containers cleaned!${NORMAL}"
+    docker ps -a
+}
+
+function app_clean_uploads() {
+    echo -e "\n${YELLOW}Cleaning uploads directory...${NORMAL}\n"
+    
+    # Показываем размер папки uploads
+    if [ -d "backend/uploads" ]; then
+        UPLOADS_SIZE=$(du -sh backend/uploads 2>/dev/null | cut -f1)
+        echo -e "${CYAN}Current uploads size: ${UPLOADS_SIZE}${NORMAL}"
+        
+        # Показываем количество файлов
+        FILES_COUNT=$(find backend/uploads -type f 2>/dev/null | wc -l)
+        echo -e "${CYAN}Total files: ${FILES_COUNT}${NORMAL}"
+        
+        if [ "$FILES_COUNT" -gt 0 ]; then
+            echo -e "${YELLOW}⚠️  This will delete ALL uploaded files (avatars, images, documents)${NORMAL}"
+            echo -e "${RED}⚠️  This action cannot be undone!${NORMAL}"
+            echo -n -e "${CYAN}Are you sure? (y/N): ${NORMAL}"
+            read -r CONFIRM
+            
+            if [[ $CONFIRM =~ ^[Yy]$ ]]; then
+                echo -e "${CYAN}Removing all files in uploads directory...${NORMAL}"
+                
+                # Удаляем все файлы и пустые папки через find
+                if find backend/uploads -type f -delete 2>/dev/null; then
+                    # Удаляем пустые папки, кроме самой uploads
+                    find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
+                    echo -e "${GREEN}✅ Uploads cleaned successfully!${NORMAL}"
+                else
+                    echo -e "${YELLOW}Need elevated permissions...${NORMAL}"
+                    if sudo find backend/uploads -type f -delete 2>/dev/null; then
+                        sudo find backend/uploads -type d ! -path 'backend/uploads' -empty -delete 2>/dev/null
+                        echo -e "${GREEN}✅ Uploads cleaned successfully with sudo!${NORMAL}"
+                    else
+                        echo -e "${RED}❌ Still failed. Manual cleanup required.${NORMAL}"
+                        return 1
+                    fi
+                fi
+                
+                # Пересоздаем структуру папок
+                echo -e "${CYAN}Recreating uploads structure...${NORMAL}"
+                mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files 2>/dev/null || sudo mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files
+                
+                echo -e "${GREEN}✅ Uploads directory structure recreated!${NORMAL}"
+            else
+                echo -e "${YELLOW}Operation cancelled.${NORMAL}"
+            fi
+        else
+            echo -e "${GREEN}Uploads directory is already empty.${NORMAL}"
+        fi
+    else
+        echo -e "${YELLOW}Uploads directory does not exist. Creating...${NORMAL}"
+        mkdir -p backend/uploads/avatars backend/uploads/images backend/uploads/files
+        echo -e "${GREEN}✅ Uploads directory created!${NORMAL}"
+    fi
+}
+
+# Основное меню
 while getopts c:t: flag; do
     case "${flag}" in
     c) choice=${OPTARG} ;;
@@ -883,67 +360,34 @@ if [ ! $choice ] && [ $1 ]; then
     choice=$1
 fi
 
-
 if [ -z $choice ]; then
- echo -e "  ----------------------------------------------------------------------  "
-    echo "  -                        Deployment Menu                             -  "
-    echo "  ----------------------------------------------------------------------  "
-    echo
-    echo -e "${YELLOW}DEVELOPMENT${NORMAL}"
+    echo -e "  --------------------------------------------------  "
+    echo "  -                Deployment Menu                 -  "
+    echo "  --------------------------------------------------  "
     echo "  1 - Start Development (Docker only)"
     echo "  2 - Install Local Dependencies (npm install)"  
     echo "  3 - Show Development Logs"
-    echo "  4 - Stop Development"
-    echo "  5 - Setup Local + Docker (full setup)"
-    echo
-    echo -e "${GREEN}PRODUCTION${NORMAL}"
-    echo "  6 - Start Production (backend services)"
-    echo "  7 - Build Frontend for Production"
-    echo
-    echo -e "${CYAN} MAINTENANCE${NORMAL}"
-    echo "  8 - Clean All (containers, images, volumes)"
-    echo "  9 - Stop All Containers"
-    echo "  10 - Clean Orphan Containers"
-    echo "  11 - Clean Uploads Directory"
-    echo "  12 - Fix File Permissions [SUDO]"
-    echo
-    
-    echo -e "${BLUE}ADMIN USERS${NORMAL}"
-    echo "  13 - Create Superadmin (DEV)"
-    echo "  14 - Create Superadmin (PROD)"
-    echo
-    echo "  ----------------------------------------------------------------------  "
+    echo "  4 - Start Production (backend services)"
+    echo "  5 - Build Frontend for Production"
+    echo "  6 - Clean All (containers, images, volumes)"
+    echo "  7 - Stop All Containers"
+    echo "  8 - Clean Orphan Containers"
+    echo "  9 - Clean Uploads Directory"
+    echo "  --------------------------------------------------  "
     echo -e "${CYAN}Input action number > ${NORMAL}"
 
     read -p "" choice
 
     case "$choice" in
-    # DEVELOPMENT
     1) app_run_dev ;;
     2) app_setup_local_dev ;;
     3) app_dev_logs ;;
-    4) app_dev_stop ;;
-    5) app_dev_setup_and_start ;;
-    
-    # PRODUCTION (сдвигаем номера)
-    6) app_run_production ;;
-    7) app_build_frontend_prod ;;
-    
-    # MAINTENANCE (сдвигаем номера)
-    8) app_clean_all ;;
-    9) app_stop_all ;;
-    10) app_clean_orphans ;;
-    11) app_clean_uploads ;;
-    12) app_fix_permissions ;;
-    
-    # ADMIN USERS (сдвигаем номера)
-    13) app_create_superadmin ;;
-    14) app_create_superadmin_prod ;;
-    
-    # SYSTEM (сдвигаем номера)
-    15) app_setup_swap ;;
-    16) app_fix_memory_issues ;;
-
+    4) app_run_production ;;
+    5) app_build_frontend_prod ;;
+    6) app_clean_all ;;
+    7) app_stop_all ;;
+    8) app_clean_orphans ;;
+    9) app_clean_uploads ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
 fi

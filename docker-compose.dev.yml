@@ -115,10 +115,6 @@ services:
       NODE_ENV: ${NODE_ENV}
       LOG_LEVEL: debug
       
-      # Superadmin
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
-      SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
       FORCE_UPDATE: ${FORCE_UPDATE}
     command: npm run dev
     restart: unless-stopped

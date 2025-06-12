@@ -668,6 +668,7 @@ class UserStore implements IUserStore {
   /*
     Регистрация нового пользователя
     Возвращает объект с полями success, message и user (если регистрация успешна)
+    Если это первый пользователь, ему присваивается роль SuperAdmin
   */
   async register(email: string, userName: string, password: string): Promise<{
     success: boolean;
@@ -691,6 +692,7 @@ class UserStore implements IUserStore {
           token?: string;
           user?: Partial<User>;
           message?: string;
+          isFirstUser?: boolean; // Добавляем поле для первого пользователя
         }) => {
           runInAction(() => {
             this.loginLoading = false;
@@ -715,6 +717,10 @@ class UserStore implements IUserStore {
               settings: response.user.settings || { debugMode: false },
             };
 
+            if (response.isFirstUser || validatedUser.role === 'superadmin') {
+              logger.log(`👑 [UserStore] First user registered as SuperAdmin: ${validatedUser.userName}`);
+            }
+
             // Устанавливаем пользователя
             this.setUser(validatedUser);
 
@@ -732,7 +738,10 @@ class UserStore implements IUserStore {
 
             resolve({
               success: true,
-              user: validatedUser
+              user: validatedUser,
+              message: response.isFirstUser
+                ? 'Welcome! You are the first user and have been granted SuperAdmin privileges!'
+                : 'Registration successful!'
             });
           } else {
             resolve({

@@ -19,9 +19,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "create-superadmin": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts",
+    "create-superadmin": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register",
     "create-superadmin:local": "NODE_OPTIONS='--max-old-space-size=512' DB_HOST=localhost DB_PASSWORD=password DB_NAME=spa_comments ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts",
-    "create-superadmin:docker": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register src/scripts/create-superadmin.ts"
+    "create-superadmin:docker": "NODE_OPTIONS='--max-old-space-size=512' ts-node -r tsconfig-paths/register"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.9.0",

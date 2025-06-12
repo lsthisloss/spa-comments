@@ -6,14 +6,6 @@ import * as fs from 'fs';
 import { AuthenticatedSocketIoAdapter } from './socket-io.adapter';
 import { createConnection } from 'net';
 import { Client, ClientConfig } from 'pg';
-import * as crypto from 'crypto';
-
-// Убираем эти строки - в Node.js 20 crypto уже доступен глобально
-// if (typeof globalThis !== 'undefined') {
-//   globalThis.crypto = crypto;
-// } else if (typeof global !== 'undefined') {
-//   global.crypto = crypto;
-// }
 
 interface ErrorLike {
   message: unknown;
