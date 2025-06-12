@@ -68,6 +68,8 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
       // Actions
       setupSocketListeners: action,
       handleNewComment: action,
+      handleRepliesCountUpdate: action,
+      updateParentCommentRepliesCount: action,
       loadComments: action,
       loadMoreComments: action,
       toggleRepliesShown: action,
@@ -118,11 +120,13 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
     * Настраивает обработчики событий для сокета комментариев
     * Удаляет старые обработчики и добавляет новые
     */
+
   setupSocketHandlers(commentsSocket: ReturnType<typeof io>) {
     // Убираем старые обработчики
     commentsSocket.off("newComment");
     commentsSocket.off("commentLiked");
     commentsSocket.off("commentUnliked");
+    commentsSocket.off("commentRepliesCountUpdated");
 
     // Обрабатываем новые комментарии
     commentsSocket.on("newComment", (response: { postId: string; comment: CommentType }) => {
@@ -135,6 +139,16 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
 
       logger.log("[CommentStore] New comment received", comment.id);
       this.handleNewComment({ ...comment, postId });
+    });
+
+    // обновление счетчика ответов с postId
+    commentsSocket.on("commentRepliesCountUpdated", (data: {
+      commentId: string;
+      newRepliesCount: number;
+      postId: string; 
+    }) => {
+      logger.log(`[CommentStore] Received repliesCount update for comment ${data.commentId}: ${data.newRepliesCount} (post: ${data.postId})`);
+      this.handleRepliesCountUpdate(data.commentId, data.newRepliesCount);
     });
 
     commentsSocket.on("commentLiked", (data: {
@@ -159,6 +173,7 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
 
     logger.log("[CommentStore] Socket handlers setup complete");
   }
+
 
   clearCurrentComment = action(() => {
     this.currentComment.set(null);
@@ -190,6 +205,53 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
   setTotalComments = action((parentId: string, total: number): void => {
     this.totalItemsMap.set(parentId, total);
     logger.log(`[CommentStore] Manually set total for ${parentId}: ${total}`);
+  });
+
+  private handleRepliesCountUpdate = action((commentId: string, newRepliesCount: number) => {
+    logger.log(`[CommentStore] Updating repliesCount for comment ${commentId} to ${newRepliesCount} from server`);
+
+    runInAction(() => {
+      // Используем уже существующий метод
+      this.updateParentCommentRepliesCount(commentId, newRepliesCount);
+    });
+  });
+
+  private updateParentCommentRepliesCount = action((parentCommentId: string, newRepliesCount: number) => {
+    logger.log(`[CommentStore] Updating repliesCount for parent comment ${parentCommentId} to ${newRepliesCount}`);
+
+    let commentUpdated = false;
+
+    // Ищем родительский комментарий во всех commentsMap (по всем постам)
+    this.commentsMap.forEach((comments, postId) => {
+      const parentComment = comments.find(c => c.id === parentCommentId);
+      if (parentComment) {
+        parentComment.repliesCount = newRepliesCount;
+        logger.log(`[CommentStore] Updated parent comment ${parentCommentId} repliesCount to ${newRepliesCount} in post ${postId}`);
+        commentUpdated = true;
+      }
+    });
+
+    // Также ищем в repliesMap (если это вложенный ответ)
+    this.repliesMap.forEach((replies, parentId) => {
+      const parentComment = replies.find(r => r.id === parentCommentId);
+      if (parentComment) {
+        parentComment.repliesCount = newRepliesCount;
+        logger.log(`[CommentStore] Updated parent comment ${parentCommentId} repliesCount to ${newRepliesCount} in replies of ${parentId}`);
+        commentUpdated = true;
+      }
+    });
+
+    // Обновляем currentComment если нужно
+    const current = this.currentComment.get();
+    if (current && current.id === parentCommentId) {
+      current.repliesCount = newRepliesCount;
+      logger.log(`[CommentStore] Updated currentComment ${parentCommentId} repliesCount to ${newRepliesCount}`);
+      commentUpdated = true;
+    }
+
+    if (!commentUpdated) {
+      logger.warn(`[CommentStore] Parent comment ${parentCommentId} not found for repliesCount update`);
+    }
   });
 
   /*
@@ -586,6 +648,9 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
 
           const currentTotal = this.totalItemsMap.get(comment.parentId) || 0;
           this.totalItemsMap.set(comment.parentId, currentTotal + 1);
+
+          // Обновляем repliesCount в родительском комментарии
+          this.updateParentCommentRepliesCount(comment.parentId, currentTotal + 1);
         }
 
         this.repliesMap.set(comment.parentId, observable([...replies]));

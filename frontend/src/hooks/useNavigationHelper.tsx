@@ -5,12 +5,13 @@ import { logger } from '../utils/Logger';
 interface NavigationState {
   from: string;
   fromComment: boolean;
+  commentChain?: string[];
 }
 
 export function useNavigationHelper() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   // Сохраняем состояние при инициализации
   const initialStateRef = useRef<NavigationState | null>(null);
   const navigationInProgressRef = useRef(false);
@@ -35,53 +36,60 @@ export function useNavigationHelper() {
       path = `/post/${identifier}`;
     } else if (type === 'comment') {
       path = `/comment/${identifier}`;
+
+      const currentState = location.state as NavigationState | null;
+      const currentChain = currentState?.commentChain || [];
+
+      // Добавляем текущий путь в цепочку, если это комментарий
+      if (location.pathname.startsWith('/comment/')) {
+        currentChain.push(location.pathname);
+      }
+
+      const navigationState: NavigationState = {
+        from: location.pathname,
+        fromComment: true,
+        commentChain: currentChain,
+      };
+
+      logger.log(`[NavigationHelper] Navigating to ${type} with chain:`, { identifier, chain: currentChain });
+      navigate(path, { state: navigationState });
+      return;
     }
 
     logger.log(`[NavigationHelper] Navigating to ${type}: ${identifier}`);
     navigate(path);
-  }, [navigate]);
+  }, [navigate, location]);
 
   const navigateToPost = useCallback((postSlug: string, fromComment = false) => {
+    const currentState = location.state as NavigationState | null;
+
     const navigationState: NavigationState = {
       from: location.pathname,
       fromComment,
+      commentChain: fromComment && currentState?.commentChain ? currentState.commentChain : undefined,
     };
-    
+
     logger.log(`[NavigationHelper] Navigating to post: ${postSlug}`, navigationState);
     navigate(`/post/${postSlug}`, { state: navigationState });
   }, [navigate, location]);
 
-  // Используем сохраненное состояние
   const smartGoBack = useCallback(() => {
     if (navigationInProgressRef.current) {
-      logger.log(`[NavigationHelper] Navigation already in progress, ignoring call`);
+      logger.log(`[NavigationHelper] Navigation already in progress, ignoring duplicate call`);
       return;
     }
 
     navigationInProgressRef.current = true;
 
-    // Используем сохраненное состояние вместо текущего
-    const stateToUse = initialStateRef.current || (location.state as NavigationState | null);
-    
-    logger.log(`[NavigationHelper] SmartGoBack with state:`, stateToUse);
+    logger.log(`[NavigationHelper] Simple back navigation`);
+    navigate(-1);
 
-    try {
-      if (stateToUse?.fromComment) {
-        logger.log(`[NavigationHelper] Smart back: skipping comment page`);
-        navigate(-2);
-      } else {
-        logger.log(`[NavigationHelper] Normal back navigation`);
-        navigate(-1);
-      }
-    } finally {
-      setTimeout(() => {
-        navigationInProgressRef.current = false;
-        // чищаем сохраненное состояние после использования
-        initialStateRef.current = null;
-        logger.log(`[NavigationHelper] Navigation lock released`);
-      }, 500);
-    }
-  }, [navigate, location.state]);
+    setTimeout(() => {
+      navigationInProgressRef.current = false;
+      logger.log(`[NavigationHelper] Navigation lock released`);
+    }, 300);
+
+  }, [navigate]);
 
   const navigateToProfile = useCallback((username: string) => {
     logger.log(`[NavigationHelper] Navigating to profile ${username}`);

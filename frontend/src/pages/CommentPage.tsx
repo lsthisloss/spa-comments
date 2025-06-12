@@ -6,7 +6,6 @@ import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
 import { useCommentStore, useUserStore, usePostStore } from '../hooks/useStore';
 import { Comment } from '../types/interfaces';
 import { logger } from '../utils/Logger';
-import { useNavigationHelper } from '../hooks/useNavigationHelper';
 import CommentItem from '../components/comments/CommentsItem';
 import SendForm from '../components/common/SendForm';
 import CommentsThread from '../components/comments/CommentsThread';
@@ -22,7 +21,6 @@ const CommentPage = observer(() => {
   const userStore = useUserStore();
   const postStore = usePostStore();
 
-  const { navigateToPost } = useNavigationHelper();
   const navigate = useNavigate();
   const params = useParams();
 
@@ -235,33 +233,13 @@ const CommentPage = observer(() => {
   }, []);
 
   // Умная навигация назад к посту
-  const handleGoBack = useCallback(() => {
-    if (!comment) {
-      navigate(-1);
-      return;
-    }
-
-    logger.log(`[CommentPage] Comment postSlug: ${comment.postSlug}`);
-    logger.log(`[CommentPage] Comment postId: ${comment.postId}`);
-
-    if (comment.postSlug) {
-      logger.log(`[CommentPage] Navigating back to parent post: ${comment.postSlug}`);
-      navigateToPost(comment.postSlug, true); // Указываем что пришли с комментария
-    } else if (comment.postId) {
-      // Ищем пост по ID в уже загруженных данных
-      const existingPost = postStore.postsMap.get(comment.postId);
-      if (existingPost && existingPost.slug) {
-        logger.log(`[CommentPage] Found existing post slug: ${existingPost.slug}`);
-        navigateToPost(existingPost.slug, true); // Указываем что пришли с комментария
-      } else {
-        // Если пост не найден, просто используем браузерную навигацию
-        logger.warn(`[CommentPage] Post not found for postId: ${comment.postId}, using browser back`);
-        navigate(-1);
-      }
-    } else {
-      navigate(-1);
-    }
-  }, [comment, navigate, navigateToPost, postStore]);
+const handleGoBack = useCallback(() => {
+  logger.log(`[CommentPage] Going back from comment ${comment?.slug}`);
+  
+  // 🔥 ПРОСТОЕ РЕШЕНИЕ: всегда используем браузерную навигацию
+  navigate(-1);
+  
+}, [navigate, comment?.slug]);
 
   return (
     <section className="post-page-container">

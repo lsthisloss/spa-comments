@@ -145,6 +145,10 @@ export class CommentsService {
     console.log(`Comment sent to queue "${queueName}":`, createCommentDto);
   }
 
+  /**
+   * Сохранение комментария из очереди RabbitMQ
+   * Этот метод вызывается из обработчика очереди
+   */
   async saveCommentFromQueue(
     createCommentDto: CreateCommentDto,
   ): Promise<Comment> {
@@ -202,6 +206,7 @@ export class CommentsService {
     // Сохраняем комментарий
     const savedComment = await this.commentRepository.save(comment);
 
+    // Elasticsearch индексация
     try {
       const [user, post] = await Promise.all([
         this.userRepository.findOne({
@@ -269,7 +274,7 @@ export class CommentsService {
       console.error(`❌ Failed to index comment ${savedComment.id}:`, error);
     }
 
-    // Увеличиваем счетчик комментариев в посте
+    // ОБНОВЛЕНИЕ СЧЕТЧИКОВ С РЕАЛТАЙМ СОБЫТИЯМИ
     if (!savedComment.parentId) {
       // Только для комментариев верхнего уровня обновляем счетчик в посте
       const commentCount = await this.commentRepository.count({
@@ -288,7 +293,7 @@ export class CommentsService {
         `Updated post ${createCommentDto.postId} comment count to ${commentCount}`,
       );
     } else {
-      // Для вложенных комментариев обновляем счетчик у родительского комментария
+      // ДЛЯ ВЛОЖЕННЫХ КОММЕНТАРИЕВ: обновляем счетчик у родительского комментария
       const repliesCount = await this.commentRepository.count({
         where: { parentId: savedComment.parentId },
       });
@@ -299,28 +304,48 @@ export class CommentsService {
       );
 
       console.log(
-        `Updated comment ${savedComment.parentId} replies count to ${repliesCount}`,
+        `Updated parent comment ${savedComment.parentId} replies count to ${repliesCount}`,
       );
     }
-    const fullComment = await this.commentRepository.findOne({
-      where: { id: savedComment.id },
-      relations: ['user'],
-      select: {
-        user: {
-          id: true,
-          userName: true,
-          email: true,
-          avatarUrl: true,
-          avatarShape: true,
-          slug: true,
-          role: true,
-        },
-      },
-    });
 
-    // Отправляем уведомление всем клиентам
+    // ПОЛУЧАЕМ ОБНОВЛЕННЫЕ ДАННЫЕ для отправки клиентам
+    const [fullComment, updatedParentComment] = await Promise.all([
+      // Получаем полный комментарий с пользователем
+      this.commentRepository.findOne({
+        where: { id: savedComment.id },
+        relations: ['user'],
+        select: {
+          user: {
+            id: true,
+            userName: true,
+            email: true,
+            avatarUrl: true,
+            avatarShape: true,
+            slug: true,
+            role: true,
+          },
+        },
+      }),
+      // Если это ответ, получаем обновленные данные родительского комментария
+      savedComment.parentId
+        ? this.commentRepository.findOne({
+            where: { id: savedComment.parentId },
+            relations: ['user'],
+            select: {
+              id: true,
+              repliesCount: true,
+              user: {
+                id: true,
+                userName: true,
+              },
+            },
+          })
+        : null,
+    ]);
+
+    // ОТПРАВЛЯЕМ РЕАЛТАЙМ СОБЫТИЯ
     if (this.server && fullComment) {
-      // Отправляем fullComment с пользователем и файлами
+      // 1. Отправляем событие нового комментария
       this.server.emit('newComment', {
         postId: fullComment.postId,
         comment: {
@@ -353,12 +378,26 @@ export class CommentsService {
       });
 
       console.log(
-        `✅ NewComment event sent with files: imageUrl=${fullComment.imageUrl}, fileUrl=${fullComment.fileUrl}`,
+        `✅ NewComment event sent: ${fullComment.id} with files: imageUrl=${fullComment.imageUrl}, fileUrl=${fullComment.fileUrl}`,
       );
+
+      // 2. Если это ответ на комментарий, отправляем событие обновления счетчика
+      if (fullComment.parentId && updatedParentComment) {
+        this.server.emit('commentRepliesCountUpdated', {
+          commentId: fullComment.parentId,
+          newRepliesCount: updatedParentComment.repliesCount || 0,
+          postId: fullComment.postId, // Добавляем postId для контекста
+        });
+
+        console.log(
+          `✅ RepliesCount update sent for comment ${fullComment.parentId}: ${updatedParentComment.repliesCount} replies`,
+        );
+      }
     }
 
     return savedComment;
   }
+
   async deleteComment(commentId: string): Promise<boolean> {
     const comment = await this.commentRepository.findOne({
       where: { id: commentId },
