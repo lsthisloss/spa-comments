@@ -889,19 +889,18 @@ if [ -z $choice ]; then
     echo "  -                        Deployment Menu                             -  "
     echo "  ----------------------------------------------------------------------  "
     echo
-    echo -e "${YELLOW}🚀 DEVELOPMENT${NORMAL}"
+    echo -e "${YELLOW}DEVELOPMENT${NORMAL}"
     echo "  1 - Start Development (Docker only)"
     echo "  2 - Install Local Dependencies (npm install)"  
     echo "  3 - Show Development Logs"
     echo "  4 - Stop Development"
     echo "  5 - Setup Local + Docker (full setup)"
     echo
-
-    echo -e "${GREEN}📦 PRODUCTION${NORMAL}"
+    echo -e "${GREEN}PRODUCTION${NORMAL}"
     echo "  6 - Start Production (backend services)"
     echo "  7 - Build Frontend for Production"
     echo
-    echo -e "${CYAN}🛠️  MAINTENANCE${NORMAL}"
+    echo -e "${CYAN} MAINTENANCE${NORMAL}"
     echo "  8 - Clean All (containers, images, volumes)"
     echo "  9 - Stop All Containers"
     echo "  10 - Clean Orphan Containers"
@@ -909,20 +908,15 @@ if [ -z $choice ]; then
     echo "  12 - Fix File Permissions [SUDO]"
     echo
     
-    echo -e "${BLUE}👤 ADMIN USERS${NORMAL}"
+    echo -e "${BLUE}ADMIN USERS${NORMAL}"
     echo "  13 - Create Superadmin (DEV)"
     echo "  14 - Create Superadmin (PROD)"
-    echo
-    
-    echo -e "${RED}🔧 SYSTEM${NORMAL}"
-    echo "  15 - Setup Swap Space (for low memory)"
-    echo "  16 - Fix Memory Issues"
     echo
     echo "  ----------------------------------------------------------------------  "
     echo -e "${CYAN}Input action number > ${NORMAL}"
 
     read -p "" choice
-    
+
     case "$choice" in
     # DEVELOPMENT
     1) app_run_dev ;;
