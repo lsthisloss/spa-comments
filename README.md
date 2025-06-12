@@ -533,6 +533,9 @@ graph LR
     M --> C
 ```
 
+</details>
+
+<details>
 <summary>🔄 Reactive State Transitions</summary>
 
 ```mermaid
@@ -688,7 +691,7 @@ sudo rm -rf backend/dist backend/node_modules frontend/node_modules
 
 ### ⚠️ Важные заметки
 
-- **Опция 4** (`Полная очистка`) удаляет **ВСЕ** Docker образы и контейнеры в системе
+- **Опция 6** (`Полная очистка`) удаляет **ВСЕ** Docker образы и контейнеры в системе
 - Первая сборка может занять 5-10 минут
 - Frontend в development режиме поддерживает hot reload
 - Backend автоматически пересобирается при изменениях в коде

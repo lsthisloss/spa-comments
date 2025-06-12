@@ -40,7 +40,7 @@ function app_run_dev() {
     fi
 
     echo -e "${CYAN}Starting development containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml up -d
+    docker-compose -f docker-compose.dev.yml up
     
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}✅ Development environment ready!${NORMAL}"
@@ -365,12 +365,12 @@ if [ -z $choice ]; then
     echo "  -                Deployment Menu                 -  "
     echo "  --------------------------------------------------  "
     echo "  1 - Start Development (Docker only)"
-    echo "  2 - Install Local Dependencies (npm install)"  
+    echo "  2 - Stop All Containers"  
     echo "  3 - Show Development Logs"
     echo "  4 - Start Production (backend services)"
     echo "  5 - Build Frontend for Production"
     echo "  6 - Clean All (containers, images, volumes)"
-    echo "  7 - Stop All Containers"
+    echo "  7 - Install Local Dependencies (npm install)"
     echo "  8 - Clean Orphan Containers"
     echo "  9 - Clean Uploads Directory"
     echo "  --------------------------------------------------  "
@@ -380,12 +380,12 @@ if [ -z $choice ]; then
 
     case "$choice" in
     1) app_run_dev ;;
-    2) app_setup_local_dev ;;
+    2) app_stop_all ;;
     3) app_dev_logs ;;
     4) app_run_production ;;
     5) app_build_frontend_prod ;;
     6) app_clean_all ;;
-    7) app_stop_all ;;
+    7) app_setup_local_dev ;;
     8) app_clean_orphans ;;
     9) app_clean_uploads ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;

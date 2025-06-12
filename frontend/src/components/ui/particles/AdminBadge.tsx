@@ -1,9 +1,10 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import { CrownOutlined, StarOutlined } from '@ant-design/icons';
+import { UserRole } from '../../../types/interfaces';
 
 interface AdminBadgeProps {
-  role: 'user' | 'admin' | 'superadmin';
+  role: UserRole;
   className?: string;
 }
 
@@ -17,7 +18,8 @@ export const AdminBadge: React.FC<AdminBadgeProps> = ({ role, className = '' }) 
     return null;
   }
 
-  const getBadgeConfig = () => {
+
+    const getBadgeConfig = (role: UserRole) => {
     switch (role) {
       case 'superadmin':
         return {
@@ -33,12 +35,16 @@ export const AdminBadge: React.FC<AdminBadgeProps> = ({ role, className = '' }) 
           title: 'Administrator',
           className: 'admin-badge admin-badge--admin'
         };
+      case 'test':
+        return { color: 'purple', text: 'TEST' };
+      case 'user':
       default:
         return null;
     }
   };
 
-  const config = getBadgeConfig();
+
+  const config = getBadgeConfig(role);
   if (!config) return null;
 
   return (
