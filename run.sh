@@ -4,6 +4,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m' 
 NORMAL='\033[0m'
 
 function app_run_dev() {
@@ -994,42 +995,44 @@ fi
 
 
 if [ -z $choice ]; then
-    echo -e "  --------------------------------------------------------------  "
-    echo -e "  -                    ${CYAN}Deployment Menu${NORMAL}                         -  "
-    echo "  -------------------------------------------------------------- "
-
+ echo -e "  ----------------------------------------------------------------------  "
+    echo "  -                        Deployment Menu                             -  "
+    echo "  ----------------------------------------------------------------------  "
+    echo
     echo -e "${YELLOW}🚀 DEVELOPMENT${NORMAL}"
     echo "  1 - Start Development (Docker + Local setup)"
     echo "  2 - Setup Local Only (npm install both projects)"  
     echo "  3 - Show Development Logs"
     echo "  4 - Stop Development"
     echo
-    
+
     echo -e "${GREEN}📦 PRODUCTION${NORMAL}"
     echo "  5 - Start Production (backend services)"
     echo "  6 - Build Frontend for Production"
-    echo "  7 - Create Superadmin (PROD)"
+    echo
+    echo -e "${CYAN}🛠️  MAINTENANCE${NORMAL}"
+    echo "  7 - Clean All (containers, images, volumes)"
+    echo "  8 - Stop All Containers"
+    echo "  9 - Clean Orphan Containers"
+    echo "  10 - Clean Uploads Directory"
+    echo "  11 - Fix File Permissions [SUDO]"
     echo
     
-    echo -e "${CYAN}🛠️  MAINTENANCE${NORMAL}"
-    echo "  8 - Clean All (containers, images, volumes)"
-    echo "  9 - Stop All Containers"
-    echo "  10 - Clean Orphan Containers"
-    echo "  11 - Clean Uploads Directory"
-    echo "  12 - Fix File Permissions [SUDO]"
+    echo -e "${BLUE}👤 ADMIN USERS${NORMAL}"
+    echo "  12 - Create Superadmin (DEV)"
+    echo "  13 - Create Superadmin (PROD)"
     echo
     
     echo -e "${RED}🔧 SYSTEM${NORMAL}"
-    echo "  13 - Setup Swap Space (for low memory)"
-    echo "  14 - Fix Memory Issues"
-    echo "  15 - Create Superadmin (DEV)"
+    echo "  14 - Setup Swap Space (for low memory)"
+    echo "  15 - Fix Memory Issues"
     echo
-    echo "  --------------------------------------------------------------"
-    echo -e "${NORMAL}"
+    echo "  ----------------------------------------------------------------------  "
     echo -e "${CYAN}Input action number > ${NORMAL}"
 
     read -p "" choice
     case "$choice" in
+
     # DEVELOPMENT
     1) app_run_dev ;;
     2) app_setup_local_dev ;;
@@ -1039,19 +1042,21 @@ if [ -z $choice ]; then
     # PRODUCTION
     5) app_run_production ;;
     6) app_build_frontend_prod ;;
-    7) app_create_superadmin_prod ;;
     
     # MAINTENANCE
-    8) app_clean_all ;;
-    9) app_stop_all ;;
-    10) app_clean_orphans ;;
-    11) app_clean_uploads ;;
-    12) app_fix_permissions ;;
+    7) app_clean_all ;;
+    8) app_stop_all ;;
+    9) app_clean_orphans ;;
+    10) app_clean_uploads ;;
+    11) app_fix_permissions ;;
+    
+    # ADMIN USERS
+    12) app_create_superadmin ;;
+    13) app_create_superadmin_prod ;;
     
     # SYSTEM
-    13) app_setup_swap ;;
-    14) app_fix_memory_issues ;;
-    15) app_create_superadmin ;;
+    14) app_setup_swap ;;
+    15) app_fix_memory_issues ;;
     
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
