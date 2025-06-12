@@ -176,11 +176,38 @@ function app_build_frontend_prod() {
     
     cd frontend
     
+    echo -e "${CYAN}Setting up production environment...${NORMAL}"
+    
+    # Проверяем наличие .env.production
+    if [ -f ".env.production" ]; then
+        echo -e "${GREEN}✅ Found existing .env.production${NORMAL}"
+        # Показываем содержимое для проверки
+        echo -e "${CYAN}Production environment variables:${NORMAL}"
+        cat .env.production
+        # Копируем в .env для использования в build
+        cp .env.production .env
+    elif [ -f "../.env.production" ]; then
+        echo -e "${GREEN}✅ Found .env.production in root directory${NORMAL}"
+        cp ../.env.production .env.production
+        cp ../.env.production .env
+        echo -e "${CYAN}Production environment variables:${NORMAL}"
+        cat .env.production
+    else
+        echo -e "${YELLOW}⚠️  .env.production not found, creating default...${NORMAL}"
+        cat > .env.production << EOF
+VITE_API_URL=https://sk8.pw
+VITE_WS_URL=wss://sk8.pw
+VITE_SOCKET_URL=https://sk8.pw
+NODE_ENV=production
+EOF
+        cp .env.production .env
+    fi
+    
     # Увеличиваем лимит памяти для Node.js
     export NODE_OPTIONS="--max-old-space-size=4096"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
-    npm cache clean --force
+    npm cache clean --force 2>/dev/null || true
     
     # Очищаем все временные файлы
     echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
@@ -195,15 +222,8 @@ function app_build_frontend_prod() {
         exit 1
     fi
     
-    echo -e "${CYAN}Creating production environment...${NORMAL}"
-    cat > .env.production << EOF
-VITE_API_URL=https://sk8.pw
-VITE_WS_URL=wss://sk8.pw
-VITE_SOCKET_URL=https://sk8.pw
-NODE_ENV=production
-EOF
-    
     echo -e "${CYAN}Building frontend for production...${NORMAL}"
+    # 🔥 ИСПРАВЛЯЕМ: Используем .env файл при сборке
     NODE_ENV=production timeout 1200 npx tsc -b
     NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" timeout 1800 npx vite build
     
