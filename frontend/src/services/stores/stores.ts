@@ -15,6 +15,7 @@ export const userStore = stores.userStore;
 export const postStore = stores.postStore;
 export const commentStore = stores.commentStore;
 export const sendFormStore = stores.sendFormStore;
+export const testStore = stores.testStore;
 
 // Для использования в React Context
 export { storesContext };

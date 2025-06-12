@@ -18,13 +18,14 @@ class AuthStore {
       this.initFromLocalStorage();
     }, 0);
   }
+
   // Инициализация из localStorage
   async initFromLocalStorage() {
     try {
       const token = localStorage.getItem('token');
       const userId = localStorage.getItem('userId');
       const userName = localStorage.getItem('userName');
-      
+
       if (token) {
         logger.log('[AuthStore] Found token in localStorage');
         runInAction(() => {
@@ -44,16 +45,17 @@ class AuthStore {
       });
     }
   }
+
   // Установка токена и данных пользователя
   setAuth(token: string, userId?: string, userName?: string) {
     logger.log(`[AuthStore] Setting auth token`);
-    
+
     runInAction(() => {
       this.token = token;
       if (userId) this.userId = userId;
       if (userName) this.userName = userName;
     });
-    
+
     try {
       localStorage.setItem('token', token);
       if (userId) localStorage.setItem('userId', userId);
@@ -67,13 +69,13 @@ class AuthStore {
   // Синхронизация с UserStore
   syncWithUserStore(userData: { id: string; token: string; userName: string }) {
     logger.log('[AuthStore] Syncing with UserStore');
-    
+
     runInAction(() => {
       this.token = userData.token;
       this.userId = userData.id;
       this.userName = userData.userName;
     });
-    
+
     try {
       localStorage.setItem('token', userData.token);
       localStorage.setItem('userId', userData.id);
@@ -86,13 +88,13 @@ class AuthStore {
   // Очистка данных авторизации
   clearAuthData() {
     logger.log('[AuthStore] Clearing auth data');
-    
+
     runInAction(() => {
       this.token = null;
       this.userId = null;
       this.userName = null;
     });
-    
+
     try {
       localStorage.removeItem('token');
       localStorage.removeItem('userId');
@@ -101,6 +103,7 @@ class AuthStore {
       logger.error('[AuthStore] Failed to clear localStorage', e);
     }
   }
+  
   // Метод для выхода из системы
   logout() {
     logger.log('[AuthStore] Logging out');

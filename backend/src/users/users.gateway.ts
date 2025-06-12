@@ -19,6 +19,7 @@ import { WsThrottlerGuard } from '../common/guards/ws-throttler.guard';
 import { CommonWsService } from '../common/common-ws.service';
 import { SessionService } from '../auth/session.service';
 import { RequestPatternGuard } from '../common/guards/request-pattern.guard';
+import { TestService } from 'src/test/test.service';
 
 @UseGuards(WsThrottlerGuard, RequestPatternGuard)
 @WebSocketGateway({
@@ -41,6 +42,7 @@ export class UsersGateway
     private readonly usersService: UsersService,
     private readonly commonWsService: CommonWsService,
     private readonly sessionService: SessionService,
+    private readonly testService: TestService,
   ) {
     console.log('[UsersGateway] Constructor called');
   }
@@ -138,23 +140,62 @@ export class UsersGateway
   }
 
   @SubscribeMessage('register')
-  async handleRegister(@MessageBody() dto: CreateUserDto) {
+  async handleRegister(
+    @MessageBody() dto: CreateUserDto,
+    @ConnectedSocket() client: Socket,
+  ): Promise<{
+    success: boolean;
+    user?: User;
+    token?: string;
+    message?: string;
+  }> {
     try {
-      console.log(`
-        Registration attempt for email: ${dto.email}, userName: ${dto.userName}`);
+      console.log(
+        `Registration attempt for email: ${dto.email}, userName: ${dto.userName}`,
+      );
+
+      // Безопасное извлечение параметров тестового режима
+      const testModeQuery = client.handshake?.query?.testDataGeneration;
+      const testTokenQuery = client.handshake?.query?.testToken;
+      const testTokenAuth = client.handshake?.auth?.testToken as unknown;
+
+      // Безопасное приведение типов
+      const testMode =
+        typeof testModeQuery === 'string' ? testModeQuery : undefined;
+      const testToken =
+        typeof testTokenQuery === 'string'
+          ? testTokenQuery
+          : typeof testTokenAuth === 'string'
+            ? testTokenAuth
+            : undefined;
+
+      // Используем TestService для проверки с правильными типами
+      const isTestMode = this.testService.isTestMode(testMode, testToken);
+
+      console.log(
+        `[REGISTER] Client: ${client.id}, Test mode: ${isTestMode}, testMode flag: ${testMode}, testToken: ${testToken ? String(testToken).substring(0, 10) + '...' : 'null'}`,
+      );
+
+      // Создаем пользователя с учетом тестового режима
       const { token, user } = await this.usersService.createUser(
         dto.email,
         dto.userName,
         dto.password,
+        isTestMode,
       );
 
       console.log(
-        `User registered successfully: ${user.id} (${user.userName})`,
+        `User registered successfully: ${user.id} (${user.userName})${isTestMode ? ' [TEST MODE]' : ''}`,
       );
+
       return { success: true, user, token };
     } catch (error: unknown) {
+      // Безопасная обработка ошибок
       let message = 'Internal server error';
-      if (
+
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (
         error &&
         typeof error === 'object' &&
         error !== null &&
@@ -163,6 +204,7 @@ export class UsersGateway
       ) {
         message = (error as { message: string }).message;
       }
+
       console.error('Registration error:', message);
       return { success: false, message };
     }

@@ -11,3 +11,4 @@ export const useSocketStore = () => useContext(StoresContext).socketStore;
 export const usePostStore = () => useContext(StoresContext).postStore;
 export const useCommentStore = () => useContext(StoresContext).commentStore;
 export const useSendFormStore = () => useContext(StoresContext).sendFormStore;
+export const useTestStore = () => useContext(StoresContext).testStore;

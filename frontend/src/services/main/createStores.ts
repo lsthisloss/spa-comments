@@ -6,6 +6,7 @@ import UserStore from "../stores/UserStore";
 import PostStore from "../stores/PostStore";
 import CommentStore from "../stores/CommentStore";
 import SendFormStore from "../stores/SendFormStore";
+import TestStore from "../stores/TestStore";
 
 export interface Stores {
   authStore: AuthStore;
@@ -14,11 +15,9 @@ export interface Stores {
   postStore: PostStore;
   commentStore: CommentStore;
   sendFormStore: SendFormStore;
+  testStore: TestStore;
 }
 
-/**
- * Фабрика для создания всех сторов с правильными зависимостями
- */
 export function createStores(): Stores {
   logger.log("[Stores] Creating application stores...");
   
@@ -53,8 +52,10 @@ export function createStores(): Stores {
 
   commentStore.setPostStore(postStore);
   logger.log("[Stores] Set PostStore reference in CommentStore");
+  
   // Создаем остальные сторы
   const sendFormStore = new SendFormStore(socketStore, userStore);
+  const testStore = new TestStore(); // TestStore не имеет зависимостей
   
   const stores = {
     authStore,
@@ -63,6 +64,7 @@ export function createStores(): Stores {
     postStore,
     commentStore,
     sendFormStore,
+    testStore,
   };
   
   // Создаем синглтон для доступа из любого места
@@ -73,9 +75,6 @@ export function createStores(): Stores {
   return stores;
 }
 
-/**
- * Контекст сторов для глобального доступа
- */
 export const storesContext = {
   stores: null as Stores | null,
   
@@ -97,4 +96,5 @@ export const storesContext = {
   get post() { return this.stores?.postStore; },
   get comment() { return this.stores?.commentStore; },
   get sendForm() { return this.stores?.sendFormStore; },
+  get test() { return this.stores?.testStore; },
 };

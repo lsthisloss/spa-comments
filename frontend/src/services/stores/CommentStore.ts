@@ -194,6 +194,8 @@ class CommentStore extends BaseStore<CommentType> implements ICommentStore {
 
   /*
     * Устанавливает комментарии для указанного ID
+    * Если parentId не указан, то это комментарии к посту
+    * Если parentId указан, то это ответы на комментарий
   */
   addComment = action((comment: CommentType, parentId?: string): void => {
     if (!comment.createdAt) {

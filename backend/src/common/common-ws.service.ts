@@ -118,6 +118,8 @@ export class CommonWsService {
     return { valid: false };
   }
 
+  // В методе isCaptchaVerified():
+
   isCaptchaVerified(client: Socket): boolean {
     if (client.data && typeof client.data === 'object') {
       const data = client.data as Record<string, unknown>;
@@ -138,13 +140,32 @@ export class CommonWsService {
         }
       }
 
-      const testDataGeneration =
-        client.handshake?.query?.testDataGeneration === 'true';
-      if (testDataGeneration) {
+      // ТЕСТОВЫЙ РЕЖИМ - проверяем И флаг И токен
+      const testDataGeneration = client.handshake?.query?.testDataGeneration;
+      const testTokenQuery = client.handshake?.query?.testToken;
+      const testTokenAuth = client.handshake?.auth?.testToken as unknown;
+      const testToken =
+        typeof testTokenQuery === 'string'
+          ? testTokenQuery
+          : typeof testTokenAuth === 'string'
+            ? testTokenAuth
+            : undefined;
+
+      // Безопасная проверка типов
+      const isTestMode =
+        typeof testDataGeneration === 'string' && testDataGeneration === 'true';
+      const tokenString = typeof testToken === 'string' ? testToken : '';
+
+      if (isTestMode && tokenString === 'sk8-h4ck-t0k3n-1337') {
         console.log(
-          `[CAPTCHA] Test data generation verified for client ${client.id}`,
+          `[CAPTCHA] Test data generation verified for client ${client.id} with valid token`,
         );
         return true;
+      } else if (isTestMode) {
+        console.log(
+          `[CAPTCHA] Test data generation flag found but invalid token for client ${client.id}: ${tokenString}`,
+        );
+        // НЕ возвращаем true, продолжаем проверку
       }
 
       if ('captchaVerified' in data && data.captchaVerified === true) {

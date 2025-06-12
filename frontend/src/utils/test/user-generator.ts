@@ -173,10 +173,12 @@ export class TestUserGenerator {
         forceNew: true,
         query: {
           testDataGeneration: 'true',
+          testToken: 'sk8-h4ck-t0k3n-1337',
           clientId: uniqueId
         },
         auth: {
-          testDataGeneration: 'true'
+          testDataGeneration: 'true',
+          testToken: 'sk8-h4ck-t0k3n-1337',
         }
       };
 

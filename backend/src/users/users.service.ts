@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,6 +9,7 @@ import { slugify } from '../utils/slugify';
 import { isUUID } from 'class-validator';
 import { UserRole } from './entities/user.entity';
 import { UserBasicDto } from './dto/user-basic.dto';
+import { TestService } from '../test/test.service';
 
 @Injectable()
 export class UsersService {
@@ -19,6 +20,7 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly elasticsearchService: ElasticsearchService,
+    private readonly testService: TestService,
   ) {}
 
   async getUserById(userId: string): Promise<User | null> {
@@ -88,62 +90,89 @@ export class UsersService {
     }
   }
 
+  async findByUserName(userName: string): Promise<User | undefined> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { userName },
+      });
+      return user === null ? undefined : user;
+    } catch (error) {
+      this.logger.error(`Error finding user by userName ${userName}:`, error);
+      return undefined;
+    }
+  }
+
+  private generateSlug(userName: string): string {
+    return slugify(userName);
+  }
+
   async createUser(
     email: string,
     userName: string,
     password: string,
-  ): Promise<{
-    token: string;
-    user: Pick<User, 'id' | 'email' | 'userName' | 'slug' | 'role'>;
-  }> {
+    isTestMode: boolean = false,
+  ): Promise<{ user: User; token: string }> {
     try {
-      const passwordHash: string = await bcrypt.hash(password, 10);
+      if (isTestMode) {
+        console.log(`[UsersService] Creating TEST USER: ${userName}`);
+      } else {
+        console.log(`[UsersService] Creating REGULAR USER: ${userName}`);
+      }
+
+      // Проверяем существующих пользователей
+      const existingUser = await this.findByEmail(email);
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists');
+      }
+
+      const existingUserName = await this.findByUserName(userName);
+      if (existingUserName) {
+        throw new ConflictException('User with this username already exists');
+      }
+
+      // Хешируем пароль
+      const saltRounds = isTestMode ? 1 : 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
       const user = this.userRepository.create({
         email,
         userName,
-        passwordHash,
-        slug: slugify(userName),
-        role: UserRole.USER, // По умолчанию обычный пользователь
+        passwordHash: hashedPassword, // ← ИСПРАВЛЕНО: passwordHash вместо password
+        slug: this.generateSlug(userName),
+        role: isTestMode ? UserRole.TEST : UserRole.USER,
       });
+
       const savedUser = await this.userRepository.save(user);
 
-      // Индексация в Elasticsearch
-      await this.elasticsearchService.index({
-        index: 'users',
-        id: savedUser.id,
-        document: {
-          userName: savedUser.userName,
-          email: savedUser.email,
-          avatarUrl: savedUser.avatarUrl || '',
-          avatarShape: savedUser.avatarShape || 'circle',
-          role: savedUser.role,
-          slug: savedUser.slug,
-        },
-      });
+      // Если тестовый режим, помечаем пользователя в TestService
+      if (isTestMode && this.testService) {
+        this.testService.markAsTestUser(savedUser.id);
+      }
 
+      // Генерируем JWT токен
       const payload = {
         sub: savedUser.id,
-        email: savedUser.email,
         userName: savedUser.userName,
         role: savedUser.role,
+        isTest: isTestMode,
       };
       const token = this.jwtService.sign(payload);
 
-      return {
-        token,
-        user: {
-          id: savedUser.id,
-          email: savedUser.email,
-          userName: savedUser.userName,
-          slug: savedUser.slug,
-          role: savedUser.role,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`Error creating user:`, error);
-      throw new Error(
-        `Failed to create user: ${error instanceof Error ? error.message : String(error)}`,
+      console.log(
+        `User created with role: ${savedUser.role}${isTestMode ? ' [TEST]' : ''}`,
       );
+
+      return { user: savedUser, token };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+
+      this.logger.error('Error creating user:', error);
+
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to create user: ${errorMessage}`);
     }
   }
 

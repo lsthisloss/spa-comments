@@ -6,58 +6,158 @@ CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NORMAL='\033[0m'
 
-# Замените функцию app_run_dev() на эту:
-
 function app_run_dev() {
     echo -e "\n${YELLOW}Starting development environment (local + Docker)...${NORMAL}\n"
     
-    # Копируем .env.example в .env для фронтенда (если нет .env)
+    # Копируем .env файлы
     if [ -f .env.example ] && [ ! -f .env ]; then
         cp .env.example .env
         echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
     fi
 
-    # Копируем .env.example в .env для бэкенда (если нет .env)
     if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
         cp backend/.env.example backend/.env
         echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
     fi
 
-    # Устанавливаем зависимости локально для VS Code
     echo -e "${CYAN}Setting up local development for VS Code...${NORMAL}"
+    
+    # === BACKEND LOCAL SETUP ===
+    echo -e "${CYAN}Setting up backend for local development...${NORMAL}"
     cd backend
-    if [ ! -d "node_modules" ] || [ ! -f "dist/main.js" ]; then
-        echo -e "${CYAN}Installing backend dependencies locally...${NORMAL}"
-        npm install
+    
+    # ПРИНУДИТЕЛЬНАЯ очистка с детальным логированием
+    echo -e "${CYAN}Cleaning backend directory (force mode)...${NORMAL}"
+    
+    # Удаляем dist с максимальной силой
+    if [ -d "dist" ]; then
+        echo -e "${YELLOW}Removing dist directory...${NORMAL}"
+        rm -rf dist 2>/dev/null || {
+            echo -e "${YELLOW}Standard rm failed, trying force removal...${NORMAL}"
+            # Попытка изменить права перед удалением
+            chmod -R 777 dist 2>/dev/null || true
+            rm -rf dist 2>/dev/null || {
+                echo -e "${RED}Cannot remove dist directory. Will try to work around it...${NORMAL}"
+                # Создаем новую папку с другим именем
+                mkdir -p dist_new
+                echo -e "${CYAN}Created dist_new directory as workaround${NORMAL}"
+            }
+        }
+    fi
+    
+    # Удаляем node_modules если есть проблемы
+    if [ -d "node_modules" ]; then
+        echo -e "${YELLOW}Removing node_modules...${NORMAL}"
+        rm -rf node_modules 2>/dev/null || {
+            echo -e "${YELLOW}Cannot remove node_modules, trying chmod...${NORMAL}"
+            chmod -R 777 node_modules 2>/dev/null || true
+            rm -rf node_modules 2>/dev/null || echo -e "${RED}node_modules removal failed${NORMAL}"
+        }
+    fi
+    
+    # Удаляем package-lock.json
+    rm -f package-lock.json 2>/dev/null || true
+    
+    # Убеждаемся что dist папка создана с правильными правами
+    mkdir -p dist
+    chmod 755 dist 2>/dev/null || true
+    
+    echo -e "${CYAN}Installing backend dependencies locally...${NORMAL}"
+    export NODE_OPTIONS="--max-old-space-size=2048"
+    npm install --loglevel=warn --progress=false 2>/dev/null || npm install
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Backend dependencies installed${NORMAL}"
+        
+        echo -e "${CYAN}Building backend locally...${NORMAL}"
+        
+        # Еще раз убеждаемся что dist чистая
+        rm -rf dist/* 2>/dev/null || true
+        
+        # Экспортируем переменные для сборки
+        export NODE_OPTIONS="--max-old-space-size=1536"
+        
+        npm run build 2>&1 | tee build.log
         
         if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✅ Backend dependencies installed${NORMAL}"
-            
-            echo -e "${CYAN}Building backend locally...${NORMAL}"
-            npm run build
-            
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}✅ Backend built locally for VS Code${NORMAL}"
-            else
-                echo -e "${YELLOW}⚠️  Local build warning (will work in Docker)${NORMAL}"
-            fi
+            echo -e "${GREEN}✅ Backend built locally for VS Code${NORMAL}"
         else
-            echo -e "${YELLOW}⚠️  Local install warning (will work in Docker)${NORMAL}"
+            echo -e "${YELLOW}⚠️  Local build warning. Check build.log for details${NORMAL}"
+            echo -e "${CYAN}Will work in Docker anyway${NORMAL}"
+            
+            # Показываем последние строки лога
+            if [ -f build.log ]; then
+                echo -e "${CYAN}Last build errors:${NORMAL}"
+                tail -10 build.log
+            fi
         fi
     else
-        echo -e "${GREEN}✅ Local backend already ready${NORMAL}"
+        echo -e "${YELLOW}⚠️  Local install warning (will work in Docker)${NORMAL}"
     fi
     cd ..
 
-    # Теперь запускаем Docker
+    # === FRONTEND LOCAL SETUP ===
+    echo -e "${CYAN}Setting up frontend for local development...${NORMAL}"
+    cd frontend
+    
+    # Очистка frontend с тем же подходом
+    echo -e "${CYAN}Cleaning frontend directory...${NORMAL}"
+    
+    # Удаляем проблемные директории
+    for dir in node_modules dist .vite build; do
+        if [ -d "$dir" ]; then
+            echo -e "${YELLOW}Removing $dir...${NORMAL}"
+            rm -rf "$dir" 2>/dev/null || {
+                chmod -R 777 "$dir" 2>/dev/null || true
+                rm -rf "$dir" 2>/dev/null || echo -e "${RED}Cannot remove $dir${NORMAL}"
+            }
+        fi
+    done
+    
+    rm -f package-lock.json 2>/dev/null || true
+    
+    echo -e "${CYAN}Installing frontend dependencies locally...${NORMAL}"
+    export NODE_OPTIONS="--max-old-space-size=4096"
+    npm install --prefer-offline --progress=false --loglevel=warn --silent 2>/dev/null || npm install --prefer-offline --progress=false --loglevel=warn
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Frontend dependencies installed${NORMAL}"
+        
+        # Проверяем TypeScript
+        if npx tsc --version >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ TypeScript ready${NORMAL}"
+        else
+            echo -e "${YELLOW}⚠️  TypeScript issue, but will work in Docker${NORMAL}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Frontend local install failed (will work in Docker)${NORMAL}"
+    fi
+    cd ..
+
+    # === DOCKER SETUP ===
     echo -e "\n${CYAN}Starting Docker containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down
+    
+    # Останавливаем старые контейнеры
+    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+    
+    # Очищаем Docker builder cache если нужно
+    echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
+    docker builder prune -f 2>/dev/null || true
     
     echo -e "${CYAN}Building development images...${NORMAL}"
     docker-compose -f docker-compose.dev.yml build --no-cache
     
     if [ $? -ne 0 ]; then
-        echo -e "\n${RED}Error building Docker images. Please check the Dockerfiles and try again.${NORMAL}\n"
+        echo -e "\n${RED}Error building Docker images.${NORMAL}"
+        echo -e "${YELLOW}But you can still develop locally:${NORMAL}"
+        echo -e "${CYAN}Backend: cd backend && npm run start:dev${NORMAL}"
+        echo -e "${CYAN}Frontend: cd frontend && npm run dev${NORMAL}"
+        
+        # Показываем статус локальной разработки
+        echo -e "\n${CYAN}Local development status:${NORMAL}"
+        echo -e "${CYAN}Backend node_modules:${NORMAL} $([ -d backend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+        echo -e "${CYAN}Frontend node_modules:${NORMAL} $([ -d frontend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+        
         exit 1
     fi
 
@@ -66,16 +166,30 @@ function app_run_dev() {
     
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}✅ Development environment ready!${NORMAL}"
-        echo -e "${CYAN}📦 Docker: http://localhost:3000 (frontend) + http://localhost:3001 (backend)${NORMAL}"
-        echo -e "${CYAN}💻 VS Code: cd backend && npm run start:dev (local development)${NORMAL}"
-        echo -e "${CYAN}🔧 You can now develop both ways!${NORMAL}"
+        echo -e "${CYAN}🐳 Docker: http://localhost:3000 (frontend) + http://localhost:3001 (backend)${NORMAL}"
+        echo -e "${CYAN}💻 VS Code Local Development:${NORMAL}"
+        echo -e "${CYAN}   Backend: cd backend && npm run start:dev${NORMAL}"
+        echo -e "${CYAN}   Frontend: cd frontend && npm run dev${NORMAL}"
         
-        # Показываем статус
+        # Показываем статус контейнеров
         echo -e "\n${CYAN}Docker services:${NORMAL}"
         docker-compose -f docker-compose.dev.yml ps
+        
+        # Показываем логи последних запусков
+        echo -e "\n${CYAN}Recent container logs:${NORMAL}"
+        docker-compose -f docker-compose.dev.yml logs --tail=5
+        
+        # Показываем статус локальной разработки
+        echo -e "\n${CYAN}Local development status:${NORMAL}"
+        echo -e "${CYAN}Backend node_modules:${NORMAL} $([ -d backend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+        echo -e "${CYAN}Frontend node_modules:${NORMAL} $([ -d frontend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+        echo -e "${CYAN}Backend dist:${NORMAL} $([ -f backend/dist/main.js ] && echo "✅ Built" || echo "❌ Not built")"
+        
     else
         echo -e "\n${RED}Docker startup failed, but local development is ready${NORMAL}"
-        echo -e "${CYAN}You can still develop locally: cd backend && npm run start:dev${NORMAL}"
+        echo -e "${CYAN}You can develop locally:${NORMAL}"
+        echo -e "${CYAN}Backend: cd backend && npm run start:dev${NORMAL}"
+        echo -e "${CYAN}Frontend: cd frontend && npm run dev${NORMAL}"
     fi
 }
 
@@ -360,7 +474,7 @@ function app_build_frontend_prod() {
     cd frontend
     
     # Увеличиваем лимит памяти для Node.js
-    export NODE_OPTIONS="--max-old-space-size=1536"
+    export NODE_OPTIONS="--max-old-space-size=4096"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
@@ -440,7 +554,7 @@ EOF
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     
     echo -e "${CYAN}Running Vite build (memory optimized)...${NORMAL}"
-    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=1024" timeout 1800 npx vite build
+    NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" timeout 1800 npx vite build
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Vite build failed. Trying with even more memory...${NORMAL}"
@@ -497,7 +611,7 @@ function app_build_frontend_dev() {
     cd frontend
     
     # Увеличиваем лимит памяти (ТОЛЬКО валидные опции)
-    export NODE_OPTIONS="--max-old-space-size=1536"
+    export NODE_OPTIONS="--max-old-space-size=4096"
     
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force
@@ -701,6 +815,92 @@ function app_clean_uploads() {
 }
 
 
+function app_setup_local_dev() {
+    echo -e "\n${YELLOW}Setting up local development environment...${NORMAL}\n"
+    
+    # Копируем .env файлы
+    if [ -f .env.example ] && [ ! -f .env ]; then
+        cp .env.example .env
+        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
+    fi
+
+    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
+    fi
+    
+    # === BACKEND ===
+    echo -e "${CYAN}Installing backend dependencies...${NORMAL}"
+    cd backend
+    
+    # Очищаем cache и переустанавливаем БЕЗ sudo
+    npm cache clean --force 2>/dev/null || true
+    rm -rf node_modules package-lock.json dist 2>/dev/null || true
+    
+    export NODE_OPTIONS="--max-old-space-size=2048"
+    npm install
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Backend dependencies installed${NORMAL}"
+        
+        echo -e "${CYAN}Building backend...${NORMAL}"
+        npm run build
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ Backend built successfully${NORMAL}"
+        else
+            echo -e "${YELLOW}⚠️  Build failed, but dependencies are installed${NORMAL}"
+        fi
+    else
+        echo -e "${RED}❌ Backend dependencies installation failed${NORMAL}"
+    fi
+    cd ..
+    
+    # === FRONTEND ===
+    echo -e "${CYAN}Installing frontend dependencies...${NORMAL}"
+    cd frontend
+    
+    # Очищаем cache и переустанавливаем БЕЗ sudo
+    npm cache clean --force 2>/dev/null || true
+    rm -rf node_modules package-lock.json dist .vite 2>/dev/null || true
+    
+    export NODE_OPTIONS="--max-old-space-size=2048"
+    npm install --prefer-offline --progress=false --loglevel=warn
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Frontend dependencies installed${NORMAL}"
+        
+        # Проверяем TypeScript
+        if npx tsc --version >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ TypeScript ready${NORMAL}"
+        else
+            echo -e "${YELLOW}⚠️  TypeScript might have issues${NORMAL}"
+        fi
+        
+        # Проверяем Vite
+        if npx vite --version >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Vite ready${NORMAL}"
+        else
+            echo -e "${YELLOW}⚠️  Vite might have issues${NORMAL}"
+        fi
+    else
+        echo -e "${RED}❌ Frontend dependencies installation failed${NORMAL}"
+    fi
+    cd ..
+    
+    echo -e "\n${GREEN}✅ Local development setup complete!${NORMAL}"
+    echo -e "${CYAN}Now you can:${NORMAL}"
+    echo -e "${CYAN}• Backend: cd backend && npm run start:dev${NORMAL}"
+    echo -e "${CYAN}• Frontend: cd frontend && npm run dev${NORMAL}"
+    echo -e "${CYAN}• Or use Docker: ./run.sh and select option 13${NORMAL}"
+    
+    # Показываем статус
+    echo -e "\n${CYAN}Local setup status:${NORMAL}"
+    echo -e "${CYAN}Backend node_modules:${NORMAL} $([ -d backend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+    echo -e "${CYAN}Frontend node_modules:${NORMAL} $([ -d frontend/node_modules ] && echo "✅ Ready" || echo "❌ Missing")"
+    echo -e "${CYAN}Backend dist:${NORMAL} $([ -f backend/dist/main.js ] && echo "✅ Built" || echo "❌ Not built")"
+}
+
 # Добавляем dev функции
 function app_dev_start() {
     echo -e "\n${YELLOW}Starting DEV environment...${NORMAL}\n"
@@ -736,8 +936,15 @@ function app_dev_start() {
 }
 
 function app_dev_logs() {
-    echo -e "\n${YELLOW}Showing development logs...${NORMAL}\n"
-    docker-compose -f docker-compose.dev.yml logs -f --tail=100
+    echo -e "\n${YELLOW}Showing recent development logs...${NORMAL}\n"
+    
+    echo -e "${CYAN}Available services:${NORMAL}"
+    docker-compose -f docker-compose.dev.yml ps --services 2>/dev/null || echo "No services running"
+    
+    echo -e "\n${CYAN}Recent logs (last 50 lines):${NORMAL}"
+    docker-compose -f docker-compose.dev.yml logs --tail=50
+    
+    echo -e "\n${YELLOW}💡 For live logs: docker-compose -f docker-compose.dev.yml logs -f${NORMAL}"
 }
 
 function app_dev_stop() {
@@ -751,6 +958,30 @@ function app_create_superadmin_prod() {
     app_create_superadmin "prod"
 }
 
+
+function app_fix_permissions() {
+    echo -e "\n${YELLOW}Fixing file permissions in the project (requires sudo)...${NORMAL}\n"
+    
+    echo -e "${RED}⚠️  This will ask for your password to fix file ownership${NORMAL}"
+    
+    echo -e "${CYAN}Fixing ownership...${NORMAL}"
+    sudo chown -R $USER:$USER /home/dev/spa-comments/
+    
+    echo -e "${CYAN}Setting correct permissions...${NORMAL}"
+    chmod -R 755 /home/dev/spa-comments/
+    
+    echo -e "${CYAN}Removing problematic files...${NORMAL}"
+    sudo rm -rf backend/dist backend/node_modules frontend/node_modules
+    sudo rm -rf backend/package-lock.json frontend/package-lock.json
+    
+    echo -e "${CYAN}Creating directories with correct permissions...${NORMAL}"
+    mkdir -p backend/dist frontend/dist
+    chmod 755 backend/dist frontend/dist
+    
+    echo -e "${GREEN}✅ Permissions fixed!${NORMAL}"
+    echo -e "${CYAN}Now you can run: ./run.sh and select option 1 or 18${NORMAL}"
+}
+
 while getopts c:t: flag; do
     case "${flag}" in
     c) choice=${OPTARG} ;;
@@ -761,50 +992,67 @@ if [ ! $choice ] && [ $1 ]; then
     choice=$1
 fi
 
+
 if [ -z $choice ]; then
-    echo -e "  ----------------------------------------------------------------------  "
-    echo "  -                        Deployment Menu                             -  "
-    echo "  ----------------------------------------------------------------------  "
-    echo "         1 - Run Development (frontend + backend in Docker)"
-    echo "         2 - Run Local (backend only in Docker)"
-    echo "         3 - Run Production" 
-    echo "         4 - Clean ALL (containers, images, volumes, DB)"
-    echo "         5 - Stop ALL (quick stop)"
-    echo "         6 - Run Backend (docker-compose up)"
-    echo "         7 - Build Frontend (Development)"
-    echo "         8 - Build Frontend (Production)"
-    echo "         9 - Setup Swap Space (for low memory servers)"
-    echo "         10 - Create Superadmin User (DEV)"
-    echo "         11 - Fix Memory Issues"
-    echo "         12 - Clean Uploads Directory"
-    echo "         13 - Start DEV Environment"
-    echo "         14 - Show DEV Logs"
-    echo "         15 - Stop DEV Environment"
-    echo "         16 - Create Superadmin User (PROD)"
-    echo "         17 - Clean Orphan Containers"
-    echo "  ----------------------------------------------------------------------  "
+    echo -e "  --------------------------------------------------------------  "
+    echo -e "  -                    ${CYAN}Deployment Menu${NORMAL}                         -  "
+    echo "  -------------------------------------------------------------- "
+
+    echo -e "${YELLOW}🚀 DEVELOPMENT${NORMAL}"
+    echo "  1 - Start Development (Docker + Local setup)"
+    echo "  2 - Setup Local Only (npm install both projects)"  
+    echo "  3 - Show Development Logs"
+    echo "  4 - Stop Development"
+    echo
+    
+    echo -e "${GREEN}📦 PRODUCTION${NORMAL}"
+    echo "  5 - Start Production (backend services)"
+    echo "  6 - Build Frontend for Production"
+    echo "  7 - Create Superadmin (PROD)"
+    echo
+    
+    echo -e "${CYAN}🛠️  MAINTENANCE${NORMAL}"
+    echo "  8 - Clean All (containers, images, volumes)"
+    echo "  9 - Stop All Containers"
+    echo "  10 - Clean Orphan Containers"
+    echo "  11 - Clean Uploads Directory"
+    echo "  12 - Fix File Permissions [SUDO]"
+    echo
+    
+    echo -e "${RED}🔧 SYSTEM${NORMAL}"
+    echo "  13 - Setup Swap Space (for low memory)"
+    echo "  14 - Fix Memory Issues"
+    echo "  15 - Create Superadmin (DEV)"
+    echo
+    echo "  --------------------------------------------------------------"
     echo -e "${NORMAL}"
-    echo -e "${CYAN}Input action number > ${NORMAL} "
+    echo -e "${CYAN}Input action number > ${NORMAL}"
 
     read -p "" choice
     case "$choice" in
+    # DEVELOPMENT
     1) app_run_dev ;;
-    2) app_run_local ;;
-    3) app_run_production ;;
-    4) app_clean_all ;;
-    5) app_stop_all ;;
-    6) app_run_backend ;;
-    7) app_build_frontend_dev ;;
-    8) app_build_frontend_prod ;;
-    9) app_setup_swap ;;
-    10) app_create_superadmin ;;
-    11) app_fix_memory_issues ;;
-    12) app_clean_uploads ;;
-    13) app_dev_start ;;
-    14) app_dev_logs ;;
-    15) app_dev_stop ;;
-    16) app_create_superadmin_prod ;;
-    17) app_clean_orphans ;;
+    2) app_setup_local_dev ;;
+    3) app_dev_logs ;;
+    4) app_dev_stop ;;
+    
+    # PRODUCTION
+    5) app_run_production ;;
+    6) app_build_frontend_prod ;;
+    7) app_create_superadmin_prod ;;
+    
+    # MAINTENANCE
+    8) app_clean_all ;;
+    9) app_stop_all ;;
+    10) app_clean_orphans ;;
+    11) app_clean_uploads ;;
+    12) app_fix_permissions ;;
+    
+    # SYSTEM
+    13) app_setup_swap ;;
+    14) app_fix_memory_issues ;;
+    15) app_create_superadmin ;;
+    
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
 fi

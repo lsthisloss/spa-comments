@@ -7,7 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { CommonModule } from '../common/common.module';
 import { SearchModule } from '../search/search.module';
-
+import { TestModule } from '../test/test.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
@@ -15,6 +15,7 @@ import { SearchModule } from '../search/search.module';
     JwtModule,
     CommonModule,
     SearchModule,
+    TestModule,
   ],
   providers: [UsersService, UsersGateway],
   exports: [UsersService, UsersGateway],

@@ -18,12 +18,48 @@ export class TestService {
   // КЕШИРОВАНИЕ ТЕСТОВЫХ ПОЛЬЗОВАТЕЛЕЙ
   private readonly testUsers = new Set<string>();
 
-  isValidTestToken(token: string): boolean {
-    return this.testTokens.has(token);
+  isTestMode(testMode: unknown, testToken: unknown): boolean {
+    // Безопасное приведение типов
+    const isModeTrue = typeof testMode === 'string' && testMode === 'true';
+    const tokenString = typeof testToken === 'string' ? testToken : '';
+    const isValidToken = this.isValidTestToken(tokenString);
+    const result = isModeTrue && isValidToken;
+
+    console.log(`[TestService] Mode check:`, {
+      testMode: typeof testMode === 'string' ? testMode : typeof testMode,
+      testToken: tokenString ? tokenString.substring(0, 10) + '...' : 'null',
+      isModeTrue,
+      isValidToken,
+      result,
+    });
+
+    if (isModeTrue && !isValidToken) {
+      console.warn(
+        `[TestService] ⚠️ Test mode attempted with invalid token: ${tokenString}`,
+      );
+    }
+
+    return result;
   }
 
-  isTestMode(testMode: any, testToken: any): boolean {
-    return testMode === 'true' && this.isValidTestToken(String(testToken));
+  private isValidTestToken(token: string): boolean {
+    if (!token || typeof token !== 'string') {
+      console.log(`[TestService] Invalid test token type: ${typeof token}`);
+      return false;
+    }
+
+    const isValid = this.testTokens.has(token);
+    if (!isValid) {
+      console.log(
+        `[TestService] Invalid test token attempted: ${token ? token.substring(0, 10) + '...' : 'null'}`,
+      );
+      console.log(
+        `[TestService] Valid tokens: ${Array.from(this.testTokens)
+          .map((t) => t.substring(0, 10) + '...')
+          .join(', ')}`,
+      );
+    }
+    return isValid;
   }
 
   generateTestUser(clientId: string): TestUser {

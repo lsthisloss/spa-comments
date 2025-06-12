@@ -47,7 +47,7 @@
 - **Дни 14-21:** Polish, optimization
 
 **Breakdown по технологиям:**
-- 🏗️ **Backend (NestJS):** ~8 дней
+- 🏗️ **Backend (NestJS):** ~9 дней
 - ⚛️ **Frontend (React):** ~11 дней  
 - 🔧 **DevOps & Testing:** ~2 дня
 
@@ -81,7 +81,7 @@
 - **Автоочистка** старых записей каждые 5 минут
 - **Гибкие ограничения** по IP + clientId для тестовых сценариев
 
-### RequestPatternGuard  
+### RequestPatternGuard  *требует глубокого теста*
 - **Обнаружение атак:** rapid fire (20+ req/5sec), endpoint hammering (15+ одинаковых запросов)
 - **Подозрительная активность:** множественные IP адреса, аномальные паттерны
 - **Автоматическое блокирование** подозрительных клиентов
@@ -181,25 +181,9 @@ curl http://localhost:3001/api/monitoring/health
 <summary><strong>🧪 Advanced Testing Infrastructure</strong></summary>
 
 **TestService на backend:**
-- **Генерация тестовых данных** - посты, комментарии, пользователи
-- **Stress testing endpoints** для проверки производительности  
+- **Генерация тестовых данных** - посты, пользователи
 - **Управление тестовыми пользователями** с особыми привилегиями
 - **Интеграция с guards** - тестовые клиенты получают повышенные лимиты
-
-**Возможности TestService:**
-```typescript
-// Массовая генерация контента
-@SubscribeMessage('generateTestPosts')
-async generateTestPosts(@MessageBody() { count, userId }: TestDataDto) {
-  // Создает множество тестовых постов для нагрузочного тестирования
-}
-
-// Создание тестовых пользователей
-@SubscribeMessage('createTestUser') 
-async createTestUser(@MessageBody() userData: CreateTestUserDto) {
-  // Создает пользователя с тестовыми привилегиями
-}
-```
 
 **Особенности тестовых клиентов:**
 - Обход CAPTCHA проверки
@@ -236,6 +220,7 @@ async createTestUser(@MessageBody() userData: CreateTestUserDto) {
 **Реализация:**
 
 ```typescript
+
 // Создание сторов с правильными зависимостями
 export function createStores(): Stores {
   const authStore = new AuthStore();
@@ -255,16 +240,8 @@ export function useUserStore() {
   const stores = useContext(StoresContext);
   return stores.userStore;
 }
+
 ```
-</details>
-
-<details>
-<summary><strong>🎯 Virtual Scrolling</strong></summary>
-
-Универсальный хук `useVirtualItems` для постов и комментариев:
-- **Adaptive buffering** по скорости скролла
-- **Memory efficiency** для больших списков  
-- **Type-safe API** для любого контента
 
 </details>
 
@@ -366,7 +343,7 @@ const TestPanel = () => {
 **Инновация:** Двухфазная обработка - мгновенное обновление UI + фоновая синхронизация с автооткатом при ошибках.
 
 ### 🧭 Контекстная навигация
-**Особенность:** Slug-based маршрутизация + сохранение позиции скролла + предзагрузка контекста.
+**Особенность:** Slug-based маршрутизация + сохранение позиции.
 
 ### 📊 Проактивный мониторинг системы
 **Инновация:** Real-time мониторинг очередей с TTL, автоматическими алертами и emergency cleanup для предотвращения перегрузок.
@@ -393,8 +370,6 @@ const TestPanel = () => {
 - ✅ Состояние сохраняется при переходах между лентами
 - ✅ Буферизация новых постов без потери позиции
 - ✅ Manual mode - контролируемые обновления
-- ✅ Межвкладочная синхронизация
-
 </details>
 
 <details>
@@ -402,7 +377,7 @@ const TestPanel = () => {
 
 - **Подписки на пользователей** с персонализированной лентой
 - **Лайки и реакции** с optimistic updates  
-- **Профили пользователей** с аватарами и статистикой
+- **Профили пользователей** с аватарами
 
 </details>
 
@@ -412,7 +387,7 @@ const TestPanel = () => {
 - **Неограниченная вложенность** с производительной оптимизацией
 - **Ленивая загрузка веток** + сворачивание с сохранением состояния  
 - **Real-time обновления** на любом уровне вложенности
-- **Threaded discussions** с навигацией по веткам
+- **Threaded navigation** с навигацией по веткам
 
 </details>
 
@@ -420,20 +395,9 @@ const TestPanel = () => {
 <summary><strong>👑 Admin Panel & Role Management</strong></summary>
 
 **Трёхуровневая система ролей:**
-- `user` - Базовые права (создание постов/комментариев)
-- `admin` - Модерация + Debug Tools + Привилегия бейджика над постом
-- `superadmin` - Полный контроль + управление админами
-
-**SuperAdmin возможности:**
-- 🛡️ Промоушен пользователей в админы
-- 📊 Статистика пользователей 
-- 🔧 Advanced Debug Tools с генерацией тестовых данных
-
-**Привилегии администраторов:**
-- 👑 Визуальные бейджи ролей в профилях и постах
-- ✅ Отправка контента без CAPTCHA-проверки
-- 🛠️ Расширенные возможности модерации
-- 📊 Доступ к системной статистике и debug-инструментам
+- `user` - Базовые права (создание постов/комментариев), VirtualList debug tool
+- `admin` - Привилегия бейджика над постом, VirtualList debug tool
+- `superadmin` - Привилегия бейджика над постом, VirtualList debug tool, юзеры в админке, управление админами
 
 **Безопасность:**
 - JWT-based авторизация с проверкой ролей
@@ -441,16 +405,13 @@ const TestPanel = () => {
 - Frontend/Backend синхронизация ролей в реальном времени
 - 🔐 Защита от множественного входа в учетную запись
 
-**UI интеграция:**
-- 🛠️ Admin Panel в Developer Settings
-
 </details>
 
 <details>
 <summary><strong>🔍 Elasticsearch Search</strong></summary>
 
 - Мультиентити поиск (посты/комментарии/пользователи) от 3 символов
-- Real-time подсказки с debounce + табы результатов
+- Различные табы результатов (для комментариев содержит текст поста)
 
 </details>
 
@@ -819,7 +780,7 @@ stateDiagram-v2
 
 1. **Клонируйте репозиторий:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/lsthisloss/spa-comments.git
    cd spa-comments
    ```
 
@@ -829,6 +790,7 @@ stateDiagram-v2
    ```
 
 3. **Выберите опцию `1` для development режима**
+Дождитесь полного запуска приложения
 
 ### 🌐 Доступные сервисы
 
@@ -846,11 +808,18 @@ stateDiagram-v2
 #### Проблема с бд\требование миграций
 Удалите базу, при первом билде она пересоздастся с дефолтным юзером
 
+#### Permission denied ошибки (EACCES)
+```bash
+# Исправляем права доступа
+sudo chown -R $USER:$USER /home/dev/spa-comments/
+sudo rm -rf backend/dist backend/node_modules frontend/node_modules
+```
+
 ### 🎯 Первый запуск
 
 1. **Создайте superadmin аккаунт** через интерфейс меню (пункт 10)
 2. **Настройте тестовые данные** через Settings → Admin Panel
-3. **Протестируйте систему** с помощью встроенных stress test инструментов
+3. **Протестируйте систему** с помощью встроенных stress test инструментов (только суперадмин)
 
 ### ⚠️ Важные заметки
 
@@ -858,6 +827,7 @@ stateDiagram-v2
 - Первая сборка может занять 5-10 минут
 - Frontend в development режиме поддерживает hot reload
 - Backend автоматически пересобирается при изменениях в коде
+- При тестах очищайте вкладку Network в  devtools. Клиенты спавнятся на стороне клиента тк это предусмотрено дабы не положить слабый сервер
 
 ---
 

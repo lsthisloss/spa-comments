@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { message } from 'antd';
-import { useUserStore } from '../../../hooks/useStore';
+import { useUserStore, useTestStore } from '../../../hooks/useStore';
 import { generateTestData, stopCrashTest } from "../../../utils/test/test-data-generator";
-import { highLoadTestManager, HighLoadTestConfig, HighLoadTestStats } from '../../../utils/test/high-load-test';
+import { highLoadTestManager, HighLoadTestConfig } from '../../../utils/test/high-load-test';
 
 interface TestDataPanelProps {
   isVisible: boolean;
@@ -16,52 +16,31 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
   onClose,
   parentPosition
 }) => {
-  const [usersCount, setUsersCount] = useState(5);
-  const [postsPerUser, setPostsPerUser] = useState(20);
-  const [generateWithMedia, setGenerateWithMedia] = useState(true);
-  const [isHighLoadMode, setIsHighLoadMode] = useState(false);
-  
-  // High Load параметры
-  const [concurrentUsers, setConcurrentUsers] = useState(10);
-  const [highLoadStats, setHighLoadStats] = useState<HighLoadTestStats | null>(null);
-  
-  // Состояние выполнения
-  const [isTestRunning, setIsTestRunning] = useState(false);
-
   const userStore = useUserStore();
+  const testStore = useTestStore();
   const canExecuteTests = userStore.canExecuteDebugTests;
-
-  // Позиционирование панели
-  const [position, setPosition] = useState<{ top: number; left: number }>(() => {
-    try {
-      const saved = localStorage.getItem('testDataPanelPosition');
-      return saved 
-        ? JSON.parse(saved) 
-        : { top: Math.max(100, parentPosition.top), left: Math.max(100, parentPosition.left + 360) };
-    } catch {
-      return { top: Math.max(100, parentPosition.top), left: Math.max(100, parentPosition.left + 360) };
-    }
-  });
-
-  // Сохранение позиции в localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('testDataPanelPosition', JSON.stringify(position));
-    } catch (e) {
-      console.error('Failed to save position to localStorage', e);
-    }
-  }, [position]);
 
   // Ссылки для перетаскивания
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
-  const currentPositionRef = useRef(position);
+  const currentPositionRef = useRef(testStore.panelPosition);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Обновляем ref при изменении позиции через state
+  // Синхронизируем текущую позицию с store
   useEffect(() => {
-    currentPositionRef.current = position;
-  }, [position]);
+    currentPositionRef.current = testStore.panelPosition;
+  }, [testStore.panelPosition]);
+
+  // Инициализация позиции при первом открытии
+  useEffect(() => {
+    if (isVisible && testStore.panelPosition.top === 100 && testStore.panelPosition.left === 100) {
+      const newPosition = {
+        top: Math.max(100, parentPosition.top),
+        left: Math.max(100, parentPosition.left + 360)
+      };
+      testStore.setPanelPosition(newPosition);
+    }
+  }, [isVisible, parentPosition, testStore]);
 
   // Настройка перетаскивания
   useEffect(() => {
@@ -92,7 +71,7 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
       if (panelRef.current) {
         panelRef.current.classList.remove('test-data-panel--dragging');
       }
-      setPosition(currentPositionRef.current);
+      testStore.setPanelPosition(currentPositionRef.current);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -102,7 +81,7 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [testStore]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.target instanceof HTMLElement &&
@@ -125,124 +104,112 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
 
   // Единый обработчик для запуска/остановки теста
   const handleTestAction = () => {
-    if (isTestRunning) {
+    if (testStore.isTestRunning) {
       // Остановка теста
       message.info({
         content: `⚠️ Остановка теста...`,
         duration: 2,
       });
-      
-      if (isHighLoadMode) {
+
+      if (testStore.isHighLoadMode) {
         highLoadTestManager.stopTest();
       } else {
         stopCrashTest();
       }
-      
-      setIsTestRunning(false);
+
+      testStore.setTestRunning(false);
       return;
     }
 
     // Проверка валидности данных
-    if (usersCount < 1 || usersCount > (isHighLoadMode ? 100000 : 100)) {
-      message.error(`Количество пользователей должно быть от 1 до ${isHighLoadMode ? '100000' : '100'}`);
+    if (!testStore.isDataValid) {
+      message.error(`Проверьте правильность введенных данных`);
       return;
     }
 
-    if (postsPerUser < 1 || postsPerUser > 1000) {
-      message.error(`Количество постов на пользователя должно быть от 1 до 1000`);
-      return;
-    }
-
-    const totalMessages = usersCount * postsPerUser;
-
-    if (!isHighLoadMode && totalMessages > 100000) {
+    if (!testStore.isHighLoadMode && testStore.totalMessages > 100000) {
       message.warning({
-        content: `Вы пытаетесь создать ${totalMessages.toLocaleString()} сообщений. Это больше 100000 и не имеет смысла для обычного тестирования.`,
+        content: `Вы пытаетесь создать ${testStore.totalMessages.toLocaleString()} сообщений. Это больше 100000 и не имеет смысла для обычного тестирования.`,
         duration: 8,
       });
       return;
     }
 
-    setIsTestRunning(true);
-    setHighLoadStats(null);
+    testStore.setTestRunning(true);
+    testStore.setHighLoadStats(null);
 
-    if (isHighLoadMode) {
+    if (testStore.isHighLoadMode) {
       // Запуск High Load теста
       message.warning({
-        content: `🚀 HIGH LOAD: Запускается тест с ${usersCount} пользователями × ${postsPerUser} постов = ${totalMessages.toLocaleString()} сообщений!`,
+        content: `🚀 HIGH LOAD: Запускается тест с ${testStore.usersCount} пользователями × ${testStore.postsPerUser} постов = ${testStore.totalMessages.toLocaleString()} сообщений!`,
         duration: 5,
       });
 
-      // Настраиваем конфигурацию теста
       const testConfig: Partial<HighLoadTestConfig> = {
-        totalUsers: usersCount,
-        postsPerUser,
-        withMedia: generateWithMedia,
-        concurrentUsers,
+        totalUsers: testStore.usersCount,
+        postsPerUser: testStore.postsPerUser,
+        withMedia: testStore.generateWithMedia,
+        concurrentUsers: testStore.concurrentUsers,
         testMode: 'normal'
       };
 
-      // Запускаем тест и обрабатываем результаты
       highLoadTestManager.startTest(testConfig)
         .then((stats) => {
-          setHighLoadStats(stats);
+          testStore.setHighLoadStats(stats);
           message.success(`High Load тест завершен: ${stats.users.created} пользователей, ${stats.posts.created + stats.posts.queued} постов`);
         })
         .catch((error) => {
           message.error(`Ошибка при выполнении High Load теста: ${error.message}`);
         })
         .finally(() => {
-          setIsTestRunning(false);
+          testStore.setTestRunning(false);
         });
     } else {
       // Запуск обычного теста
-      const mediaInfo = generateWithMedia ? 'с изображениями и файлами' : 'только текст';
-      
+      const mediaInfo = testStore.generateWithMedia ? 'с изображениями и файлами' : 'только текст';
+
       message.info({
-        content: `Генерируем ${usersCount} пользователей с ${postsPerUser} постами каждый (${totalMessages.toLocaleString()} сообщений, ${mediaInfo})...`,
+        content: `Генерируем ${testStore.usersCount} пользователей с ${testStore.postsPerUser} постами каждый (${testStore.totalMessages.toLocaleString()} сообщений, ${mediaInfo})...`,
         duration: 3,
       });
 
-      generateTestData(usersCount, postsPerUser, true, generateWithMedia)
+      // Очищаем предыдущую статистику
+      testStore.setRegularTestStats(null);
+
+      const startTime = Date.now();
+
+      generateTestData(testStore.usersCount, testStore.postsPerUser, true, testStore.generateWithMedia)
+        .then((result) => {
+          // Создаем статистику по результатам
+          const endTime = Date.now();
+          const stats = {
+            usersCreated: (result as any)?.usersCreated || testStore.usersCount,
+            postsCreated: (result as any)?.postsCreated || 0,
+            totalUsers: testStore.usersCount,
+            totalPosts: testStore.totalMessages,
+            durationMs: endTime - startTime,
+            withMedia: testStore.generateWithMedia,
+            errors: (result as any)?.errors || 0
+          };
+
+          testStore.setRegularTestStats(stats);
+
+          message.success({
+            content: `Regular тест завершен: ${stats.usersCreated} пользователей, ${stats.postsCreated} постов за ${(stats.durationMs / 1000).toFixed(2)}с`,
+            duration: 5,
+          });
+        })
+        .catch((error) => {
+          message.error(`Ошибка при выполнении Regular теста: ${error.message}`);
+        })
         .finally(() => {
-          setIsTestRunning(false);
+          testStore.setTestRunning(false);
         });
     }
   };
 
-  // Обработчики изменения полей
-  const handleUsersCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    const maxUsers = isHighLoadMode ? 100000 : 100;
-    setUsersCount(Math.max(1, Math.min(maxUsers, value)));
-  };
-
-  const handlePostsPerUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    setPostsPerUser(Math.max(1, Math.min(1000, value)));
-  };
-
-  const handleConcurrentUsersChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    setConcurrentUsers(Math.max(1, Math.min(50, value)));
-  };
-
   // Если панель не видима, не рендерим ее
   if (!isVisible) return null;
-
-  // Расчет общего количества сообщений
-  const totalMessages = usersCount * postsPerUser;
-
-  // Получаем границы проверки в зависимости от режима
-  const maxUsers = isHighLoadMode ? 100000 : 100;
-
-  // Проверка валидности данных для кнопки
-  const isDataValid = 
-    usersCount >= 1 && 
-    usersCount <= maxUsers && 
-    postsPerUser >= 1 && 
-    postsPerUser <= 1000 &&
-    (!isHighLoadMode || (concurrentUsers >= 1 && concurrentUsers <= 50));
 
   return (
     <div
@@ -250,8 +217,8 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
       className="test-data-panel"
       style={{
         position: 'fixed',
-        top: `${position.top}px`,
-        left: `${position.left}px`,
+        top: `${testStore.panelPosition.top}px`,
+        left: `${testStore.panelPosition.left}px`,
         zIndex: 10001
       }}
     >
@@ -261,11 +228,33 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
         onMouseDown={handleMouseDown}
       >
         <div className="test-data-panel__title-container">
-          <span className="test-data-panel__emoji">{isHighLoadMode ? '🚀' : '🧪'}</span>
+          <span className="test-data-panel__emoji">{testStore.isHighLoadMode ? '🚀' : '🧪'}</span>
           <span className="test-data-panel__title">TEST DATA GENERATOR</span>
+          {testStore.isTestRunning && (
+            <span className="test-data-panel__running-indicator">
+              ⚠️ RUNNING
+            </span>
+          )}
         </div>
 
+
+
         <div className="test-data-panel__controls">
+
+          {(testStore.highLoadStats || testStore.regularTestStats) && (
+            <button
+              className="test-data-panel__button test-data-panel__button--clear"
+              onClick={() => {
+                testStore.setHighLoadStats(null);
+                testStore.setRegularTestStats(null);
+                message.info('Статистика очищена');
+              }}
+              title="Clear test statistics"
+            >
+              🗑️
+            </button>
+          )}
+
           <button
             className="test-data-panel__button test-data-panel__button--close"
             onClick={onClose}
@@ -282,17 +271,17 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
           <>
             {/* Переключатель режимов */}
             <div className="test-data-panel__mode-selector">
-              <button 
-                className={`mode-button ${!isHighLoadMode ? 'active' : ''}`}
-                onClick={() => setIsHighLoadMode(false)}
-                disabled={isTestRunning}
+              <button
+                className={`mode-button ${!testStore.isHighLoadMode ? 'active' : ''}`}
+                onClick={() => testStore.setHighLoadMode(false)}
+                disabled={testStore.isTestRunning}
               >
                 🧪 Regular Mode
               </button>
-              <button 
-                className={`mode-button ${isHighLoadMode ? 'active' : ''}`}
-                onClick={() => setIsHighLoadMode(true)}
-                disabled={isTestRunning}
+              <button
+                className={`mode-button ${testStore.isHighLoadMode ? 'active' : ''}`}
+                onClick={() => testStore.setHighLoadMode(true)}
+                disabled={testStore.isTestRunning}
               >
                 🚀 High Load Mode
               </button>
@@ -303,21 +292,21 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
               {/* Настройка пользователей */}
               <div className="form-group">
                 <label htmlFor="testUsersCount">
-                  Users ({isHighLoadMode ? '1-100000' : '1-100'}):
+                  Users ({testStore.isHighLoadMode ? '1-100000' : '1-100'}):
                 </label>
                 <input
                   id="testUsersCount"
                   type="number"
-                  value={usersCount}
-                  onChange={handleUsersCountChange}
+                  value={testStore.usersCount}
+                  onChange={(e) => testStore.setUsersCount(parseInt(e.target.value) || 0)}
                   min={1}
-                  max={maxUsers}
-                  className={usersCount < 1 || usersCount > maxUsers ? 'error' : ''}
-                  disabled={isTestRunning}
+                  max={testStore.maxUsers}
+                  className={testStore.usersCount < 1 || testStore.usersCount > testStore.maxUsers ? 'error' : ''}
+                  disabled={testStore.isTestRunning}
                 />
-                {(usersCount < 1 || usersCount > maxUsers) && (
+                {(testStore.usersCount < 1 || testStore.usersCount > testStore.maxUsers) && (
                   <div className="error-message">
-                    ⚠️ Должно быть от 1 до {maxUsers}
+                    ⚠️ Должно быть от 1 до {testStore.maxUsers}
                   </div>
                 )}
               </div>
@@ -330,14 +319,14 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
                 <input
                   id="testPostsPerUser"
                   type="number"
-                  value={postsPerUser}
-                  onChange={handlePostsPerUserChange}
+                  value={testStore.postsPerUser}
+                  onChange={(e) => testStore.setPostsPerUser(parseInt(e.target.value) || 0)}
                   min={1}
                   max={1000}
-                  className={postsPerUser < 1 || postsPerUser > 1000 ? 'error' : ''}
-                  disabled={isTestRunning}
+                  className={testStore.postsPerUser < 1 || testStore.postsPerUser > 1000 ? 'error' : ''}
+                  disabled={testStore.isTestRunning}
                 />
-                {(postsPerUser < 1 || postsPerUser > 1000) && (
+                {(testStore.postsPerUser < 1 || testStore.postsPerUser > 1000) && (
                   <div className="error-message">
                     ⚠️ Должно быть от 1 до 1000
                   </div>
@@ -345,7 +334,7 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
               </div>
 
               {/* Настройка одновременных пользователей для High Load */}
-              {isHighLoadMode && (
+              {testStore.isHighLoadMode && (
                 <div className="form-group">
                   <label htmlFor="concurrentUsers">
                     Concurrent Users (1-50):
@@ -353,14 +342,14 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
                   <input
                     id="concurrentUsers"
                     type="number"
-                    value={concurrentUsers}
-                    onChange={handleConcurrentUsersChange}
+                    value={testStore.concurrentUsers}
+                    onChange={(e) => testStore.setConcurrentUsers(parseInt(e.target.value) || 0)}
                     min={1}
                     max={50}
-                    className={concurrentUsers < 1 || concurrentUsers > 50 ? 'error' : ''}
-                    disabled={isTestRunning}
+                    className={testStore.concurrentUsers < 1 || testStore.concurrentUsers > 50 ? 'error' : ''}
+                    disabled={testStore.isTestRunning}
                   />
-                  {(concurrentUsers < 1 || concurrentUsers > 50) && (
+                  {(testStore.concurrentUsers < 1 || testStore.concurrentUsers > 50) && (
                     <div className="error-message">
                       ⚠️ Должно быть от 1 до 50
                     </div>
@@ -370,12 +359,12 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
 
               {/* Чекбокс для медиа */}
               <div className="checkbox-group">
-                <label className={`checkbox-label ${generateWithMedia ? 'active media-active' : ''}`}>
+                <label className={`checkbox-label ${testStore.generateWithMedia ? 'active media-active' : ''}`}>
                   <input
                     type="checkbox"
-                    checked={generateWithMedia}
-                    onChange={(e) => setGenerateWithMedia(e.target.checked)}
-                    disabled={isTestRunning}
+                    checked={testStore.generateWithMedia}
+                    onChange={(e) => testStore.setGenerateWithMedia(e.target.checked)}
+                    disabled={testStore.isTestRunning}
                   />
                   <div className="checkbox-content">
                     <div className="checkbox-title">
@@ -390,22 +379,22 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
 
               {/* Счетчик сообщений */}
               <div className="total-counter">
-                {isHighLoadMode ? '🚀' : '📈'} Total messages: 
+                {testStore.isHighLoadMode ? '🚀' : '📈'} Total messages:
                 <span>
-                  <strong> {totalMessages.toLocaleString()}</strong>
+                  <strong> {testStore.totalMessages.toLocaleString()}</strong>
                 </span>
               </div>
 
               {/* Информация о High Load режиме */}
-              {isHighLoadMode && (
+              {testStore.isHighLoadMode && (
                 <div className="info-panel">
-                  High Load режим: одновременно создаётся до {concurrentUsers} пользователей, 
-                  каждый генерирует до {postsPerUser} постов.
+                  High Load режим: одновременно создаётся до {testStore.concurrentUsers} пользователей,
+                  каждый генерирует до {testStore.postsPerUser} постов.
                 </div>
               )}
 
               {/* Кнопка запуска/остановки */}
-              {isTestRunning ? (
+              {testStore.isTestRunning ? (
                 <button
                   onClick={handleTestAction}
                   className="generate-button test-button--stop"
@@ -418,26 +407,104 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
               ) : (
                 <button
                   onClick={handleTestAction}
-                  className={`generate-button ${isDataValid ? 'enabled' : 'disabled'}`}
-                  disabled={!isDataValid}
+                  className={`generate-button ${testStore.isDataValid ? 'enabled' : 'disabled'}`}
+                  disabled={!testStore.isDataValid}
                 >
-                  {isHighLoadMode ? '🚀 START HIGH LOAD TEST' : '✨ GENERATE TEST DATA'}
+                  {testStore.isHighLoadMode ? '🚀 START HIGH LOAD TEST' : '✨ GENERATE TEST DATA'}
                 </button>
               )}
 
-              {/* Отображение статистики High Load теста */}
-              {isHighLoadMode && highLoadStats && (
+              {/* Отображение результатов High Load теста */}
+              {testStore.isHighLoadMode && testStore.highLoadStats && (
                 <div className="high-load-stats">
-                  <h4>Результаты теста:</h4>
+                  <h4>Результаты High Load теста:</h4>
                   <div className="stats-grid">
-                    <div>Время: {highLoadStats.durationMs ? (highLoadStats.durationMs / 1000).toFixed(2) + "s" : "N/A"}</div>
-                    <div>Пользователи: {highLoadStats.users.created}/{highLoadStats.users.total}</div>
-                    <div>Посты: {highLoadStats.posts.created + highLoadStats.posts.queued}/{highLoadStats.posts.total}</div>
-                    <div>В очереди: {highLoadStats.posts.queued}</div>
-                    <div>Ошибки: {highLoadStats.posts.failed}</div>
+                    <div className="stat-item">
+                      <span className="stat-label">Время выполнения:</span>
+                      <span className="stat-value">
+                        {testStore.highLoadStats.durationMs ? (testStore.highLoadStats.durationMs / 1000).toFixed(2) + "s" : "N/A"}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Пользователи:</span>
+                      <span className="stat-value">
+                        {testStore.highLoadStats.users.created}/{testStore.highLoadStats.users.total}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Посты созданы:</span>
+                      <span className="stat-value">
+                        {testStore.highLoadStats.posts.created}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">В очереди:</span>
+                      <span className="stat-value">
+                        {testStore.highLoadStats.posts.queued || 0}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Ошибки:</span>
+                      <span className="stat-value error">
+                        {testStore.highLoadStats.posts.failed || 0}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Всего постов:</span>
+                      <span className="stat-value">
+                        {(testStore.highLoadStats.posts.created || 0) + (testStore.highLoadStats.posts.queued || 0)}/{testStore.highLoadStats.posts.total || 0}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
+
+              {!testStore.isHighLoadMode && testStore.regularTestStats && (
+                <div className="regular-test-stats">
+                  <h4>Результаты Regular теста:</h4>
+                  <div className="stats-grid">
+                    <div className="stat-item">
+                      <span className="stat-label">Время выполнения:</span>
+                      <span className="stat-value">
+                        {(testStore.regularTestStats.durationMs / 1000).toFixed(2)}s
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Пользователи:</span>
+                      <span className="stat-value">
+                        {testStore.regularTestStats.usersCreated}/{testStore.regularTestStats.totalUsers}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Посты созданы:</span>
+                      <span className="stat-value">
+                        {testStore.regularTestStats.postsCreated}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Всего постов:</span>
+                      <span className="stat-value">
+                        {testStore.regularTestStats.postsCreated}/{testStore.regularTestStats.totalPosts}
+                      </span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-label">Медиа контент:</span>
+                      <span className="stat-value">
+                        {testStore.regularTestStats.withMedia ? '🖼️ Включен' : '📝 Только текст'}
+                      </span>
+                    </div>
+                    {testStore.regularTestStats.errors > 0 && (
+                      <div className="stat-item">
+                        <span className="stat-label">Ошибки:</span>
+                        <span className="stat-value error">
+                          {testStore.regularTestStats.errors}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
           </>
         ) : (
@@ -452,7 +519,6 @@ export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
           </div>
         )}
       </div>
-
     </div>
   );
 });
