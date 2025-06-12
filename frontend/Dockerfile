@@ -11,8 +11,8 @@ ENV NODE_ENV=development
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --no-audit --progress=false && npm cache clean --force
+# Install dependencies - заменяем npm ci на npm install
+RUN npm install --no-audit --progress=false && npm cache clean --force
 
 # Copy source code
 COPY . .
@@ -32,8 +32,8 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --no-audit --progress=false && npm cache clean --force
+# Install dependencies - заменяем npm ci на npm install
+RUN npm install --no-audit --progress=false && npm cache clean --force
 
 # Copy source code
 COPY . .
