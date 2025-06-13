@@ -101,9 +101,7 @@ export class HealthController {
       logging:
         process.env.NODE_ENV !== 'production' ? ['error', 'warn'] : false,
       ssl:
-        process.env.NODE_ENV === 'production'
-          ? { rejectUnauthorized: false }
-          : false,
+        process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
       connectTimeoutMS: 60000,
       extra: {
         connectionTimeoutMillis: 60000,
