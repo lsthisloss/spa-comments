@@ -14,10 +14,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments}"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments} && psql -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments} -c 'SELECT 1'"]
+      interval: 10s
+      timeout: 10s
       retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   elasticsearch:
@@ -91,14 +92,16 @@ services:
         condition: service_healthy
     environment:
       # Database
-      DATABASE_URL: ${DB_URL:-postgresql://postgres:password@postgres:5432/spa_comments}
+      DATABASE_URL: ${DB_URL:-postgresql://postgres:password@postgres:5432/spa_comments?sslmode=disable}
       DB_HOST: postgres
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-password}
       DB_NAME: ${DB_NAME:-spa_comments}
-      DB_SSL: false
-      DATABASE_SSL: false
+      DB_SSL: "false"
+      DATABASE_SSL: "false"
+      PGSSLMODE: "disable"
+      TYPEORM_SSL: "false"
       # Elasticsearch
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME:-}
@@ -126,7 +129,12 @@ services:
       NODE_OPTIONS: "--max-old-space-size=512"  # Уменьшаем для VPS
       NODE_ENV: production
       LOG_LEVEL: info
-    command: npm run start:prod
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL to be fully ready...' &&
+        sleep 10 &&
+        npm run start:prod
+      "
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]

@@ -42,6 +42,7 @@ async function createDatabaseIfNotExists(): Promise<void> {
     database: 'postgres',
     connectionTimeoutMillis: 5000,
     query_timeout: 10000,
+    ssl: false, // Explicitly disable SSL
   };
 
   console.log(`🔧 Checking if database "${dbName}" exists...`);
