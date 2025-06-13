@@ -6,6 +6,9 @@ import * as fs from 'fs';
 import { AuthenticatedSocketIoAdapter } from './socket-io.adapter';
 import { createConnection } from 'net';
 import { Client, ClientConfig } from 'pg';
+import { DataSource } from 'typeorm';
+import { User } from './users/entities/user.entity';
+import { Post } from './posts/entities/post.entity';
 
 interface ErrorLike {
   message: unknown;
@@ -26,6 +29,31 @@ function toError(err: unknown): Error {
     return new Error(String(err.message));
   }
   return new Error('Unknown error occurred');
+}
+
+async function runMigrations(): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🔄 Running database migrations...');
+    try {
+      const dataSource = await new DataSource({
+        type: 'postgres',
+        host: process.env.DB_HOST || 'postgres',
+        port: parseInt(process.env.DB_PORT ?? '5432', 10),
+        username: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        database: process.env.DB_NAME || 'spa_comments',
+        entities: [User, Post, Comment],
+        migrations: ['dist/migrations/*.js'],
+      }).initialize();
+
+      await dataSource.runMigrations();
+      console.log('✅ Migrations completed successfully');
+      await dataSource.destroy();
+    } catch (err) {
+      console.error('❌ Migration failed:', toError(err).message);
+      throw err;
+    }
+  }
 }
 
 async function createDatabaseIfNotExists(): Promise<void> {
@@ -125,6 +153,7 @@ async function bootstrap(): Promise<void> {
   try {
     await waitForPostgres();
     await createDatabaseIfNotExists();
+    await runMigrations();
 
     console.log('🚀 Starting NestJS application...');
     console.log('[MAIN] 🔍 About to create app...');
