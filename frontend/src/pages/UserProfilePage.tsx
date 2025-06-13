@@ -196,7 +196,7 @@ const UserProfilePage = observer(() => {
     };
 
     loadUser();
-  }, [searchParam, isOwnProfile, userStore]);
+  }, [searchParam, isOwnProfile, userStore, usernameParam, navigate, currentUser]);
 
   return (
     <div className="user-profile">
