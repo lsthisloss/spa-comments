@@ -266,6 +266,7 @@ export class UsersService {
           avatarUrl: updatedUser.avatarUrl || '',
           avatarShape: updatedUser.avatarShape || 'circle',
           slug: updatedUser.slug,
+          role: updatedUser.role,
         },
         doc_as_upsert: true,
       });

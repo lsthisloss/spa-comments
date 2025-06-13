@@ -37,7 +37,7 @@ const UserProfilePage = observer(() => {
   const userSlug = usernameParam;
   const [profileUser, setProfileUser] = useState<User | null>(null); // Профиль пользователя, который загружается по слагу или ID
   const [activeTab, setActiveTab] = useState("posts"); // Активная вкладка профиля
-  
+
   const [isEditModalVisible, setIsEditModalVisible] = useState(false); // Модальное окно редактирования профиля
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false); // Модальное окно изменения аватара
   const [followLoading, setFollowLoading] = useState(false); // Состояние загрузки при подписке/отписке
@@ -51,7 +51,7 @@ const UserProfilePage = observer(() => {
   const stableUserId = useMemo(() => user?.id, [user?.id]);
 
   const [isLoading, setIsLoading] = useState(!isOwnProfile); // true для внешних профилей
-  
+
   // Флаг загрузки профиля пользователя
   const handleGoBack = useCallback(() => {
     logger.log(`[UserProfilePage] Navigating back from profile: ${userSlug}`);
@@ -86,7 +86,7 @@ const UserProfilePage = observer(() => {
     return { letter, color };
   }, [user?.userName]);
 
-// Обработчик для изменения аватара
+  // Обработчик для изменения аватара
   const handleAvatarSave = useCallback(async (avatarData: {
     type: 'upload' | 'initial',
     value: string,
@@ -152,6 +152,13 @@ const UserProfilePage = observer(() => {
         if (cachedUser) {
           logger.log(`[UserProfilePage] Found user in cache: ${cachedUser.userName}`);
           setProfileUser(cachedUser);
+
+          // Check if URL needs to be updated (username changed)
+          if (usernameParam && usernameParam !== cachedUser.slug) {
+            logger.log(`[UserProfilePage] Username changed, redirecting to new URL: ${cachedUser.slug}`);
+            navigate(`/user/${cachedUser.slug}`, { replace: true });
+          }
+
           setIsLoading(false);
           return;
         }
@@ -160,7 +167,23 @@ const UserProfilePage = observer(() => {
         if (loadedUser) {
           logger.log(`[UserProfilePage] Loaded user: ${loadedUser.userName}`);
           setProfileUser(loadedUser);
+
+          // Also check here if URL needs to be updated
+          if (usernameParam && usernameParam !== loadedUser.slug) {
+            logger.log(`[UserProfilePage] Username changed, redirecting to new URL: ${loadedUser.slug}`);
+            navigate(`/user/${loadedUser.slug}`, { replace: true });
+          }
         } else {
+          // Try to fetch by user ID as a fallback
+          if (!isUUID(searchParam) && currentUser) {
+            const userById = await userStore.getUserById(currentUser.id);
+            if (userById) {
+              setProfileUser(userById);
+              navigate(`/user/${userById.slug}`, { replace: true });
+              return;
+            }
+          }
+
           logger.warn(`[UserProfilePage] User not found: ${searchParam}`);
           setProfileUser(null);
         }
@@ -198,8 +221,8 @@ const UserProfilePage = observer(() => {
       ) : !user ? (
         <Empty
           description={
-            isOwnProfile 
-              ? "Please log in to view your profile" 
+            isOwnProfile
+              ? "Please log in to view your profile"
               : `User "${userSlug}" not found`
           }
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -348,3 +371,8 @@ const UserProfilePage = observer(() => {
 });
 
 export default UserProfilePage;
+
+function isUUID(searchParam: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(searchParam);
+}

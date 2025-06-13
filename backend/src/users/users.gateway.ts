@@ -259,6 +259,10 @@ export class UsersGateway
             id: updatedUser.id,
             email: updatedUser.email,
             userName: updatedUser.userName,
+            role: updatedUser.role,
+            avatarUrl: updatedUser.avatarUrl,
+            avatarShape: updatedUser.avatarShape,
+            slug: updatedUser.slug,
           },
         };
       }
