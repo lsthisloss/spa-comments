@@ -97,7 +97,8 @@ export class HealthController {
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'spa_comments',
       entities: [User, Post, Comment],
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: true, // Temporarily enable for first run
+      //synchronize: process.env.NODE_ENV !== 'production',
       logging:
         process.env.NODE_ENV !== 'production' ? ['error', 'warn'] : false,
       ssl:
