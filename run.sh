@@ -130,6 +130,122 @@ function app_setup_local_dev() {
     
     echo -e "\n${GREEN}✅ Local development dependencies installed!${NORMAL}"
 }
+function app_clean_project() {
+    echo -e "\n${YELLOW}Cleaning only project-related containers, volumes and databases...${NORMAL}\n"
+    
+    # Get project name from directory for better targeting
+    PROJECT_NAME="spa-comments"
+    echo -e "${CYAN}Project: ${PROJECT_NAME}${NORMAL}"
+    
+    # Stop and remove containers from both dev and prod compose files with timeouts
+    echo -e "${CYAN}Stopping development containers...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    
+    echo -e "${CYAN}Stopping production containers...${NORMAL}"
+    docker-compose -f docker-compose.prod.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    
+    # Clean PostgreSQL database (both dev and prod)
+    echo -e "${CYAN}Cleaning PostgreSQL databases...${NORMAL}"
+    
+    # Try with dev postgres container
+    POSTGRES_DEV=$(docker ps -a | grep postgres-dev | awk '{print $1}' | head -n 1)
+    if [ -n "$POSTGRES_DEV" ]; then
+        echo -e "${CYAN}Found dev PostgreSQL container, resetting database...${NORMAL}"
+        docker start $POSTGRES_DEV 2>/dev/null || true
+        sleep 5 # Wait for PostgreSQL to start
+        
+        docker exec -i $POSTGRES_DEV psql -U postgres -c "DROP DATABASE IF EXISTS spa_comments;" 2>/dev/null || true
+        docker exec -i $POSTGRES_DEV psql -U postgres -c "CREATE DATABASE spa_comments;" 2>/dev/null || true
+        
+        docker stop $POSTGRES_DEV 2>/dev/null || true
+        echo -e "${GREEN}✅ Dev database reset${NORMAL}"
+    fi
+    
+    # Try with prod postgres container
+    POSTGRES_PROD=$(docker ps -a | grep postgres$ | awk '{print $1}' | head -n 1)
+    if [ -n "$POSTGRES_PROD" ]; then
+        echo -e "${CYAN}Found prod PostgreSQL container, resetting database...${NORMAL}"
+        docker start $POSTGRES_PROD 2>/dev/null || true
+        sleep 5 # Wait for PostgreSQL to start
+        
+        docker exec -i $POSTGRES_PROD psql -U postgres -c "DROP DATABASE IF EXISTS spa_comments;" 2>/dev/null || true
+        docker exec -i $POSTGRES_PROD psql -U postgres -c "CREATE DATABASE spa_comments;" 2>/dev/null || true
+        
+        docker stop $POSTGRES_PROD 2>/dev/null || true
+        echo -e "${GREEN}✅ Prod database reset${NORMAL}"
+    fi
+    
+    # Remove volumes - this will force fresh database on restart
+    echo -e "${CYAN}Removing project volumes...${NORMAL}"
+    docker volume rm postgres_data elasticsearch_data rabbitmq_data 2>/dev/null || true
+    
+    # Clean docker build cache for this project
+    echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
+    docker builder prune -f 2>/dev/null || true
+    
+    # Remove any remaining containers related to the project
+    echo -e "${CYAN}Removing any remaining project containers...${NORMAL}"
+    for container in postgres-dev elasticsearch-dev rabbitmq-dev backend-dev frontend-dev postgres elasticsearch rabbitmq backend; do
+        docker rm -f $container 2>/dev/null || true
+    done
+    
+    # Clean data directories if they exist locally
+    echo -e "${CYAN}Cleaning local data directories...${NORMAL}"
+    rm -rf ./data/postgres ./data/elasticsearch ./data/rabbitmq 2>/dev/null || true
+    
+    echo -e "${GREEN}✅ Project-specific cleanup complete!${NORMAL}"
+}
+
+function app_run_dev_with_timeouts() {
+    echo -e "\n${YELLOW}Starting development environment with improved timeouts...${NORMAL}\n"
+    
+    # Copy .env files
+    if [ -f .env.example ] && [ ! -f .env ]; then
+        cp .env.example .env
+        echo -e "${CYAN}Copied .env.example to .env for frontend${NORMAL}"
+    fi
+
+    if [ -f backend/.env.example ] && [ ! -f backend/.env ]; then
+        cp backend/.env.example backend/.env
+        echo -e "${CYAN}Copied backend/.env.example to backend/.env${NORMAL}"
+    fi
+
+    echo -e "${CYAN}Preparing Docker environment...${NORMAL}"
+    
+    # Stop old containers with timeout
+    docker-compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    
+    # Clean Docker builder cache
+    echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
+    docker builder prune -f 2>/dev/null || true
+    
+    echo -e "${CYAN}Building development images...${NORMAL}"
+    docker-compose -f docker-compose.dev.yml build
+    
+    if [ $? -ne 0 ]; then
+        echo -e "\n${RED}Error building Docker images.${NORMAL}"
+        exit 1
+    fi
+
+    echo -e "${CYAN}Starting development containers with extended timeouts...${NORMAL}"
+    # Set longer timeout for docker-compose operations
+    export COMPOSE_HTTP_TIMEOUT=180
+    docker-compose -f docker-compose.dev.yml up -d
+    
+    # Wait for services to be ready
+    echo -e "${CYAN}Waiting for services to be ready...${NORMAL}"
+    for i in {1..30}; do
+        if docker-compose -f docker-compose.dev.yml ps | grep -q "healthy"; then
+            echo -e "${GREEN}✅ Services are ready!${NORMAL}"
+            break
+        fi
+        echo -e "${YELLOW}Waiting for services to be ready (attempt $i/30)...${NORMAL}"
+        sleep 5
+    done
+    
+    # Show logs
+    docker-compose -f docker-compose.dev.yml logs -f
+}
 
 function app_dev_logs() {
     echo -e "\n${YELLOW}Showing recent development logs...${NORMAL}\n"
@@ -436,6 +552,7 @@ if [ -z $choice ]; then
     echo "  7 - Install Local Dependencies (npm install)"
     echo "  8 - Clean Orphan Containers"
     echo "  9 - Clean Uploads Directory"
+    echo "  10 - Clean Project Resources Only (containers, volumes, database)"
     echo "  --------------------------------------------------  "
     echo -e "${CYAN}Input action number > ${NORMAL}"
 
@@ -451,6 +568,7 @@ if [ -z $choice ]; then
     7) app_setup_local_dev ;;
     8) app_clean_orphans ;;
     9) app_clean_uploads ;;
+    10) app_clean_project ;;
     *) echo -e "\n${RED}Invalid action number${NORMAL}\n" ;;
     esac
 fi

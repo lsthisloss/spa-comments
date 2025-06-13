@@ -17,7 +17,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 30
     restart: unless-stopped
     
   elasticsearch:
@@ -38,9 +38,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=60s || exit 1"]
       interval: 30s
-      timeout: 60s
+      timeout: 120s
       retries: 10
-      start_period: 120s
+      start_period: 360s
     restart: unless-stopped
 
   rabbitmq:
@@ -62,7 +62,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 120s
     restart: unless-stopped
 
   backend:
@@ -114,7 +114,7 @@ services:
       NODE_OPTIONS: ${NODE_OPTIONS}
       NODE_ENV: ${NODE_ENV}
       LOG_LEVEL: debug
-      
+
       FORCE_UPDATE: ${FORCE_UPDATE}
     command: npm run dev
     restart: unless-stopped

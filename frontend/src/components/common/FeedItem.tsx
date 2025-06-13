@@ -23,7 +23,7 @@ const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 
 const PreloadImage = ({ src, alt, onLoad }: { src: string; alt: string; onLoad: () => void }) => {
   const [loaded, setLoaded] = useState(false);
-  const [naturalWidth, setNaturalWidth] = useState(120); // Изменено начальное значение на 120px
+  const [naturalWidth, setNaturalWidth] = useState(120); 
 
   useEffect(() => {
     const img = new window.Image();

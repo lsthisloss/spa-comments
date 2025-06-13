@@ -136,10 +136,10 @@ services:
       start_period: 60s
     # Ограничения памяти для backend
     deploy:
-    resources:
-      limits:
-        memory: 1g
-        cpus: "0.5"
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.5"
 
 volumes:
   postgres_data:
