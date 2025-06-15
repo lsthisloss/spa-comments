@@ -1,7 +1,7 @@
 import { memo, useCallback, useRef } from 'react';
 import CommentItem from '../../comments/CommentsItem';
 import { Comment } from '../../../types/interfaces';
-import { useNavigationHelper } from '../../../hooks/useNavigationHelper';
+import  useNavigationHelper  from '../../../hooks/useNavigation';
 
 interface MemoizedCommentItemProps {
   comment: Comment;

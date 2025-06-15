@@ -10,6 +10,8 @@ import CommentItem from '../components/comments/CommentsItem';
 import SendForm from '../components/common/SendForm';
 import CommentsThread from '../components/comments/CommentsThread';
 import { reaction } from 'mobx';
+import useNavigation from '../hooks/useNavigation';
+
 
 /*
   Страница комментария, отображает отдельный комментарий и его ответы.
@@ -21,8 +23,9 @@ const CommentPage = observer(() => {
   const userStore = useUserStore();
   const postStore = usePostStore();
 
-  const navigate = useNavigate();
   const params = useParams();
+  const { getState, } = useNavigation();
+  const navigate = useNavigate();
 
   // Для отслеживания монтирования компонента
   const mountedRef = useRef(true);
@@ -233,13 +236,18 @@ const CommentPage = observer(() => {
   }, []);
 
   // Умная навигация назад к посту
-const handleGoBack = useCallback(() => {
-  logger.log(`[CommentPage] Going back from comment ${comment?.slug}`);
-  
-  // 🔥 ПРОСТОЕ РЕШЕНИЕ: всегда используем браузерную навигацию
-  navigate(-1);
-  
-}, [navigate, comment?.slug]);
+  const handleGoBack = useCallback(() => {
+    logger.log(`[CommentPage] Going back from comment ${comment?.slug}`);
+    const initialState = getState();
+
+    if (initialState?.forceRefresh) {
+      logger.log('[CommentPage] Force refresh detected');
+      // Handle special navigation case
+    }
+
+    // Default back navigation
+    navigate(-1);
+  }, [navigate, comment?.slug, getState]);
 
   return (
     <section className="post-page-container">

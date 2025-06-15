@@ -2,8 +2,8 @@ import { memo, useCallback, useRef, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Post } from '../../../types/interfaces';
 import PostItem from '../../posts/PostItem';
-import { useNavigationHelper } from '../../../hooks/useNavigationHelper';
 import { useLocation } from 'react-router-dom';
+import useNavigationHelper from '../../../hooks/useNavigation';
 
 /*
   Компонент для отображения поста с комментариями.

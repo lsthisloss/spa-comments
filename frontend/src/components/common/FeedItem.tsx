@@ -10,7 +10,7 @@ import { Comment as CommentType, Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
 import { formatDistance } from "date-fns";
 import { useUserStore, useCommentStore, usePostStore } from '../../hooks/useStore';
-import { useNavigationHelper } from '../../hooks/useNavigationHelper';
+import  useNavigationHelper  from '../../hooks/useNavigation';
 
 const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
 /*

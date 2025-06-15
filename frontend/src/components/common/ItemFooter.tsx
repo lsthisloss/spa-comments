@@ -7,7 +7,7 @@ import { observer } from "mobx-react-lite";
 import { useMemo, useCallback } from 'react';
 import React from 'react';
 import CommentPreviewDropdown from "../comments/CommentPreviewDropdown";
-import { useNavigationHelper } from '../../hooks/useNavigationHelper';
+import  useNavigationHelper  from '../../hooks/useNavigation';
 
 /*
   Компонент для отображения футера элемента ленты (пост или комментарий).

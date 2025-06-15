@@ -4,6 +4,7 @@ import { observer } from "mobx-react";
 import { useUserStore, useSocketStore } from '../hooks/useStore';
 import { LoginFormValues, RegisterFormValues } from '../types/interfaces';
 import { useNavigate } from 'react-router-dom';
+import useNavigation from '../hooks/useNavigation';
 
 /*
   Компонент страницы авторизации, который позволяет пользователям входить в систему или регистрироваться.
@@ -18,14 +19,22 @@ const AuthPage = observer(() => {
   const [showRegister, setShowRegister] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const navigate = useNavigate();
+  const { getState } = useNavigation();
 
   const handleAuthSuccess = async () => {
     try {
       // Небольшая задержка для завершения инициализации сокетов
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Переходим на главную
-      navigate('/');
+      // Check if navigation has a special state
+      const initialState = getState();
+      if (initialState?.forceRefresh) {
+        navigate('/', { replace: true });
+      } else {
+        // Переходим на главную
+        navigate('/');
+      }
+      
       setShowRegister(false);
       setShowLogin(false);
     } catch (error) {

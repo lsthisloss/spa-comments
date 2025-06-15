@@ -4,9 +4,9 @@ import { Comment } from '../../types/interfaces';
 import { getAvatarColor } from '../ui/particles/avatarColor';
 import { observer } from 'mobx-react-lite';
 import { logger } from '../../utils/Logger';
-import { useNavigationHelper } from '../../hooks/useNavigationHelper';
 import AdminBadge from '../ui/particles/AdminBadge';
 import { useCommentStore, usePostStore, useUserStore, } from '../../hooks/useStore';
+import useNavigation from '../../hooks/useNavigation';
 
 /*  
   Компонент для отображения превью комментария в выпадающем списке.
@@ -115,7 +115,7 @@ const CommentPreviewDropdown = observer(({ children, postSlug }: CommentPreviewD
   const isMountedRef = useRef(true);
   const postStore = usePostStore();
   const commentStore = useCommentStore();
-  const { navigateToEntity } = useNavigationHelper();
+  const { navigateToEntity } = useNavigation();
 
   // Лайфхук для отслеживания монтирования компонента
   // Используем useRef для хранения состояния монтирования

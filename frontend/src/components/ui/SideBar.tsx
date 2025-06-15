@@ -8,8 +8,7 @@ import { observer } from 'mobx-react-lite';
 import { logger } from '../../utils/Logger';
 import { SearchModal } from './modals/SearchModal';
 import { useUserStore, useAuthStore } from '../../hooks/useStore';
-import { useNavigationHelper } from '../../hooks/useNavigationHelper';
-
+import useNavigation from '../../hooks/useNavigation';
 /*
   Компонент боковой панели (Sidebar) с навигацией по приложению.
   Содержит меню для перехода к различным разделам, включая домашнюю страницу,
@@ -21,7 +20,7 @@ const Sidebar = observer(() => {
   const [collapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   
-  const navigationHelper = useNavigationHelper();
+  const navigationHelper = useNavigation();
   const userStore = useUserStore();
   const authStore = useAuthStore();
   

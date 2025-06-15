@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Spin } from 'antd';
 import { observer } from 'mobx-react-lite';
-import { useWindowVirtualizer } from '@tanstack/react-virtual';
+import { debounce, useWindowVirtualizer } from '@tanstack/react-virtual';
 import { DebugInfo } from '../ui/modals/DebugInfo';
 import { logger } from '../../utils/Logger';
 import { LoadingIndicator } from '../ui/particles/LoadingIndicator';
@@ -69,7 +69,7 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
   const prevLoadingRef = useRef(loading);
   const lastLoadTriggeredRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
-  
+
   /*
     Счетчик для принудительного обновления компонента
     - Используем useState для создания счетчика
@@ -284,14 +284,13 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     logger.log(`[VirtualList] Feed context changed to: ${feedContextId}`);
   }, [feedContextId]);
 
-
   /*
-    Автоподгрузка при достижении конца списка
-    - Проверяем, что onEndReached задан и не в ручном режиме
-    - Проверяем, что есть элементы в списке
-    - Проверяем, что пользователь близко к концу списка
-    - Загружаем новые элементы, если прошло достаточно времени с последней загрузки
-  */
+  Автоподгрузка при достижении конца списка
+  - Проверяем, что onEndReached задан и не в ручном режиме
+  - Проверяем, что есть элементы в списке
+  - Проверяем, что пользователь близко к концу списка
+  - Загружаем новые элементы, если прошло достаточно времени с последней загрузки
+*/
   useEffect(() => {
     // Автоподгрузка работает независимо от manualMode LoadingIndicator
     if (!onEndReached || allLoaded || loading) {
@@ -303,28 +302,38 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
       return;
     }
 
-    const lastVisibleIndex = virtualItems[virtualItems.length - 1].index;
-    const totalItems = items.length;
-    const remainingItems = totalItems - lastVisibleIndex - 1;
+    // Создаем дебаунсированную функцию проверки и загрузки
+    const checkAndLoadMore = debounce(window, () => {
+      // Считаем оставшиеся элементы
+      const remainingItems = items.length - (virtualItems[virtualItems.length - 1]?.index || 0) - 1;
 
-    // Загружаем только если пользователь близко к концу
-    if (remainingItems < 10) {
-      const now = Date.now();
+      // Загружаем только если пользователь близко к концу
+      if (remainingItems < 10) {
+        const now = Date.now();
 
-      if (now - lastLoadTriggeredRef.current > 1000) {
-        const scrollY = window.scrollY;
-        const windowHeight = window.innerHeight;
-        const documentHeight = document.documentElement.scrollHeight;
-        const isNearBottom = scrollY + windowHeight >= documentHeight - 500;
+        if (now - lastLoadTriggeredRef.current > 1000) {
+          const scrollY = window.scrollY;
+          const windowHeight = window.innerHeight;
+          const documentHeight = document.documentElement.scrollHeight;
+          const isNearBottom = scrollY + windowHeight >= documentHeight - 500;
 
-        if (isNearBottom) {
-          lastLoadTriggeredRef.current = now;
-          logger.log(`[VirtualList] Auto-load triggered: remaining=${remainingItems}${manualMode ? ' (manual mode)' : ''}`);
-          onEndReached();
+          if (isNearBottom) {
+            lastLoadTriggeredRef.current = now;
+            logger.log(`[VirtualList] Auto-load triggered: remaining=${remainingItems}${manualMode ? ' (manual mode)' : ''}`);
+            onEndReached();
+          }
         }
       }
-    }
+    }, 300);
 
+    // Добавляем обработчик скролла
+    const handleScroll = () => checkAndLoadMore();
+    window.addEventListener('scroll', handleScroll);
+
+    // Очистка при размонтировании
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, [virtualItems, items.length, onEndReached, allLoaded, loading, manualMode]);
 
   // Дебаг объект для отладки

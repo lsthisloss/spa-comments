@@ -20,6 +20,7 @@ import { logger } from "../utils/Logger";
 import AdminBadge from "../components/ui/particles/AdminBadge";
 import { User } from "../types/interfaces";
 import { useUserStore } from "../hooks/useStore";
+import useNavigation from '../hooks/useNavigation';
 
 const TABS = [
   { key: "posts", label: "Posts", icon: <InboxOutlined /> },
@@ -37,6 +38,7 @@ const UserProfilePage = observer(() => {
   const userSlug = usernameParam;
   const [profileUser, setProfileUser] = useState<User | null>(null); // Профиль пользователя, который загружается по слагу или ID
   const [activeTab, setActiveTab] = useState("posts"); // Активная вкладка профиля
+  const { getState } = useNavigation();
 
   const [isEditModalVisible, setIsEditModalVisible] = useState(false); // Модальное окно редактирования профиля
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false); // Модальное окно изменения аватара
@@ -53,10 +55,19 @@ const UserProfilePage = observer(() => {
   const [isLoading, setIsLoading] = useState(!isOwnProfile); // true для внешних профилей
 
   // Флаг загрузки профиля пользователя
-  const handleGoBack = useCallback(() => {
+    const handleGoBack = useCallback(() => {
     logger.log(`[UserProfilePage] Navigating back from profile: ${userSlug}`);
+    const initialState = getState();
+    
+    if (initialState?.forceRefresh) {
+      // Go to home with refresh if needed
+      navigate('/', { replace: true });
+      return;
+    }
+    
+    // Default navigation
     navigate(-1);
-  }, [navigate, userSlug]);
+  }, [navigate, userSlug, getState]);
 
   // Проверяем, является ли профиль текущим пользователем
   const isFollowing = useMemo(() => {
@@ -155,7 +166,6 @@ const UserProfilePage = observer(() => {
 
           // Check if URL needs to be updated (username changed)
           if (usernameParam && usernameParam !== cachedUser.slug) {
-            logger.log(`[UserProfilePage] Username changed, redirecting to new URL: ${cachedUser.slug}`);
             navigate(`/user/${cachedUser.slug}`, { replace: true });
           }
 
@@ -165,12 +175,10 @@ const UserProfilePage = observer(() => {
 
         const loadedUser = await userStore.getUserById(searchParam);
         if (loadedUser) {
-          logger.log(`[UserProfilePage] Loaded user: ${loadedUser.userName}`);
           setProfileUser(loadedUser);
 
           // Also check here if URL needs to be updated
           if (usernameParam && usernameParam !== loadedUser.slug) {
-            logger.log(`[UserProfilePage] Username changed, redirecting to new URL: ${loadedUser.slug}`);
             navigate(`/user/${loadedUser.slug}`, { replace: true });
           }
         } else {

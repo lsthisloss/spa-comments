@@ -14,6 +14,7 @@ import { Spin } from 'antd';
 import { useUserStore, useAuthStore } from './hooks/useStore';
 import { StoresProvider } from './contexts/StoresContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { NavigationProvider } from './hooks';
 
 // QueryClient конфигурация
 const queryClient = new QueryClient({
@@ -239,10 +240,11 @@ const AppContent = observer(() => {
 
 const App = () => {
   return (
-    <QueryClientProvider client={queryClient}>
+   <QueryClientProvider client={queryClient}>
       <StoresProvider>
-        <AppContent />
-
+        <NavigationProvider>
+          <AppContent />
+        </NavigationProvider>
       </StoresProvider>
     </QueryClientProvider>
   );

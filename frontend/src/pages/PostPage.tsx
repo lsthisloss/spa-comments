@@ -8,8 +8,8 @@ import { LeftOutlined, HomeOutlined } from '@ant-design/icons';
 import { logger } from "../utils/Logger";
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
-import { useNavigationHelper } from '../hooks/useNavigationHelper';
 import { Post } from '../types/interfaces';
+import useNavigation from '../hooks/useNavigation';
 
 /*
   Страница отдельного поста с комментариями.
@@ -26,7 +26,7 @@ const PostPage = observer(() => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   // Подключаем хук для навигации
-  const { smartGoBack } = useNavigationHelper();
+  const { getState, } = useNavigation();
 
   // Ссылка для отслеживания монтирования компонента
   const mountedRef = useRef(true);
@@ -70,10 +70,10 @@ const PostPage = observer(() => {
 
     const cacheKey = `slug:${slug}`;
     const activePromise = postStore.fetchPostPromises.get(cacheKey);
-    
+
     if (activePromise) {
       console.log(`[PostPage] Request already in progress for: ${slug}, reusing promise`);
-      
+
       activePromise
         .then(fetchedPost => {
           if (!mountedRef.current) return;
@@ -121,7 +121,7 @@ const PostPage = observer(() => {
         setLoading(false);
       });
 
-  }, [slug, postStore]); 
+  }, [slug, postStore]);
 
   const handleLoadMoreComments = useCallback(() => {
     if (!post?.id || commentsLoading) return;
@@ -135,18 +135,20 @@ const PostPage = observer(() => {
   }, []);
 
   // Умная навигация назад
+
+  // Use the navigation context
   const handleGoBack = useCallback(() => {
     logger.log(`[PostPage] Going back from post`);
-    smartGoBack();
-  }, [smartGoBack]);
+    const initialState = getState();
 
-  console.log(`[PostPage] Render state:`, {
-    slug,
-    loading,
-    error,
-    hasPost: !!post,
-    postId: post?.id
-  });
+    if (initialState?.forceRefresh) {
+      logger.log('[PostPage] Force refresh requested in navigation state');
+      // Handle special refresh case
+    }
+
+    // Simple back navigation
+    navigate(-1);
+  }, [navigate, getState]);
 
   return (
     <section className="post-page-container">

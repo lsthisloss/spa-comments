@@ -131,9 +131,12 @@ services:
       LOG_LEVEL: info
     command: >
       sh -c "
-        echo 'Waiting for PostgreSQL to be fully ready...' &&
-        sleep 10 &&
-        npm run start:prod
+      echo 'Waiting for PostgreSQL to be fully ready...' &&
+      until pg_isready -h postgres -U ${DB_USER:-postgres}; do
+        echo 'Waiting for PostgreSQL...'
+        sleep 2
+      done &&
+      npm run start:prod
       "
     restart: unless-stopped
     healthcheck:
@@ -151,5 +154,9 @@ services:
 
 volumes:
   postgres_data:
+    name: spa_comments_postgres_data
+    external: false
   elasticsearch_data:
+    name: spa_comments_elasticsearch_data
   rabbitmq_data:
+    name: spa_comments_rabbitmq_data

@@ -81,6 +81,9 @@ USER nestjs
 
 EXPOSE 3001
 
+RUN mkdir -p /app/uploads/avatars
+RUN chmod 777 /app/uploads /app/uploads/avatars
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1

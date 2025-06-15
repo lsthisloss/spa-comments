@@ -9,6 +9,7 @@ import { Client, ClientConfig } from 'pg';
 import { DataSource } from 'typeorm';
 import { User } from './users/entities/user.entity';
 import { Post } from './posts/entities/post.entity';
+import { Comment } from './comments/entities/comment.entity';
 
 interface ErrorLike {
   message: unknown;

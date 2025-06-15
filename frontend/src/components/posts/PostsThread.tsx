@@ -8,7 +8,7 @@ import { Post } from "../../types/interfaces";
 import { logger } from "../../utils/Logger";
 import { usePostStore, useUserStore } from "../../hooks/useStore";
 import { FeedType } from "../../types/enums";
-import { useNavigationHelper } from "../../hooks/useNavigationHelper";
+import  useNavigation  from "../../hooks/useNavigation";
 import { reaction } from "mobx";
 
 /*
@@ -28,7 +28,7 @@ const PostsThread = observer(({ activeTab, userId: propsUserId, forceTopScroll }
   // Используем MobX для управления состоянием постов и пользователя
   const postStore = usePostStore();
   const userStore = useUserStore();
-  const navigationHelper = useNavigationHelper();
+  const navigationHelper = useNavigation();
   // Получаем MobX store для навигации
   const actualUserId = propsUserId || userStore.user?.id;
   // Если userId не передан, используем текущего пользователя из MobX store

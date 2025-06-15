@@ -786,7 +786,30 @@ class PostStore extends BaseStore<Post> implements IPostStore {
       return Promise.resolve();
     }
 
-    return this.fetchPosts("user", page, userId);
+    // Ретрай механизм для получения постов пользователя
+    const maxRetries = 20;
+    let attempt = 0;
+    let lastError: Error | null = null;
+
+    while (attempt < maxRetries) {
+      try {
+        return await this.fetchPosts("user", page, userId);
+      } catch (error) {
+        lastError = error as Error;
+        attempt++;
+        logger.warn(`[PostStore] Attempt ${attempt}/${maxRetries} failed to fetch user posts: ${lastError.message}`);
+
+        if (attempt < maxRetries) {
+          // Wait a bit before retrying (500ms, 1000ms)
+          await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          logger.log(`[PostStore] Retrying fetch for user ${userId}...`);
+        }
+      }
+    }
+
+    // If we're here, all retries failed
+    logger.error(`[PostStore] All ${maxRetries} attempts to fetch user posts failed`);
+    throw lastError;
   }
 
   /*
