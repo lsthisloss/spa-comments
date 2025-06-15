@@ -61,7 +61,7 @@ const PostPage = observer(() => {
     // Проверяем есть ли уже пост в store
     const existingPost = postStore.getPostBySlug(slug);
     if (existingPost) {
-      console.log(`[PostPage] Post already exists:`, existingPost.id);
+      logger.log(`[PostPage] Post already exists:`, existingPost.id);
       setLoadedPost(existingPost); // Устанавливаем в локальное состояние
       setLoading(false);
       setError(null);
@@ -72,13 +72,13 @@ const PostPage = observer(() => {
     const activePromise = postStore.fetchPostPromises.get(cacheKey);
 
     if (activePromise) {
-      console.log(`[PostPage] Request already in progress for: ${slug}, reusing promise`);
+      logger.log(`[PostPage] Request already in progress for: ${slug}, reusing promise`);
 
       activePromise
         .then(fetchedPost => {
           if (!mountedRef.current) return;
           if (fetchedPost) {
-            console.log(`[PostPage] Post loaded from active promise:`, fetchedPost.id);
+            logger.log(`[PostPage] Post loaded from active promise:`, fetchedPost.id);
             setLoadedPost(fetchedPost); // Устанавливаем в локальное состояние
             setLoading(false);
             setError(null);
@@ -96,7 +96,7 @@ const PostPage = observer(() => {
       return;
     }
 
-    console.log(`[PostPage] Starting NEW fetch for:`, slug);
+    logger.log(`[PostPage] Starting NEW fetch for:`, slug);
     setLoading(true);
     setError(null);
 
@@ -105,7 +105,7 @@ const PostPage = observer(() => {
       .then(fetchedPost => {
         if (!mountedRef.current) return;
         if (fetchedPost) {
-          console.log(`[PostPage] Post loaded:`, fetchedPost.id);
+          logger.log(`[PostPage] Post loaded:`, fetchedPost.id);
           setLoadedPost(fetchedPost); // Устанавливаем в локальное состояние
           setLoading(false);
           setError(null);

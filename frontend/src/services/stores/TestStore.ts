@@ -1,5 +1,6 @@
 import { makeAutoObservable } from 'mobx';
 import { HighLoadTestStats } from '../../utils/test/high-load-test';
+import { logger } from '../../utils/Logger';
 
 // Добавляем интерфейс для Regular Test статистики
 export interface RegularTestStats {
@@ -79,7 +80,7 @@ export default class TestStore {
                 }
             };
 
-            console.log(`[TestStore] 🔄 Moving ${queuedCount} queued posts to created`);
+            logger.log(`[TestStore] 🔄 Moving ${queuedCount} queued posts to created`);
             this.setHighLoadStats(updatedStats);
 
             return queuedCount;
@@ -110,7 +111,7 @@ export default class TestStore {
             };
 
 
-            console.log(`[TestStore] Setting stats:`, correctedStats);
+            logger.log(`[TestStore] Setting stats:`, correctedStats);
             this.highLoadStats = correctedStats;
         } else {
             this.highLoadStats = null;

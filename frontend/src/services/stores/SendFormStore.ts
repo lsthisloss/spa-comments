@@ -171,7 +171,7 @@ class SendFormStore {
           avatarUrl?: string;
           avatarShape?: string;
         }) => {
-          console.log('[SendFormStore] Avatar updated event received:', response);
+          logger.log('[SendFormStore] Avatar updated event received:', response);
 
           if (response.success && response.user && this.userStore.user) {
             // Обновляем данные формы из события
@@ -194,7 +194,7 @@ class SendFormStore {
             avatarShape?: string;
           };
         }) => {
-          console.log('[SendFormStore] Avatar shape updated event received:', response);
+          logger.log('[SendFormStore] Avatar shape updated event received:', response);
 
           // Если событие содержит пользователя, обновляем данные
           if (response.success && response.user && this.userStore.user) {
@@ -223,11 +223,11 @@ class SendFormStore {
       this.avatarShape !== (avatarShape || 'circle');
 
     if (!needsUpdate) {
-      console.log('[SendFormStore] No update needed, data is the same');
+      logger.log('[SendFormStore] No update needed, data is the same');
       return; // Не обновляем, если данные не изменились
     }
 
-    console.log('[SendFormStore] Updating user data:', {
+    logger.log('[SendFormStore] Updating user data:', {
       from: { userId: this.userId, userName: this.userName, avatarUrl: this.avatarUrl, avatarShape: this.avatarShape },
       to: { userId, userName, avatarUrl, avatarShape }
     });
@@ -454,7 +454,7 @@ class SendFormStore {
     const eventName = type === "post" ? "postAdded" : "commentAdded";
 
     const handleSuccess = (response: { success?: boolean; message?: string; postId?: string; commentId?: string }) => {
-      console.log(`[SendFormStore] Received ${eventName} event:`, response);
+      logger.log(`[SendFormStore] Received ${eventName} event:`, response);
 
       if (response && response.success !== false) {
         // Показываем дополнительное сообщение о queue с задержкой

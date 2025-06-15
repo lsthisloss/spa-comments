@@ -1,4 +1,5 @@
 import { message } from 'antd';
+import { logger } from './Logger';
 
 /**
  * Утилиты для работы с файлами и изображениями
@@ -105,7 +106,7 @@ export class FileUtils {
           callback(dataUrl);
         }
 
-        console.log(`[FileUtils] Image resized: ${img.width}x${img.height} → ${newWidth}x${newHeight}, quality: ${quality}`);
+        logger.log(`[FileUtils] Image resized: ${img.width}x${img.height} → ${newWidth}x${newHeight}, quality: ${quality}`);
       };
       
       img.src = e.target?.result as string;

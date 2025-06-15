@@ -1,4 +1,5 @@
 import { TestConfig } from '../../utils/test/config';
+import { logger } from '../../utils/Logger';
 
 export interface TestEnvironment {
   isActive: boolean;
@@ -37,7 +38,7 @@ export class TestService {
       token: config.testToken,
       config,
     };
-    console.log('[TestService] Test environment activated:', {
+    logger.log('[TestService] Test environment activated:', {
       token: config.testToken,
       socketURL: config.socketURL,
     });
@@ -90,22 +91,22 @@ export class TestService {
   }
 
   cleanup(): void {
-    console.log('[TestService] Cleaning up test environment');
+    logger.log('[TestService] Cleaning up test environment');
     this.disconnectTestSockets();
     this.environment = null;
   }
 
   reset(): void {
-    console.log('[TestService] Resetting test environment');
+    logger.log('[TestService] Resetting test environment');
     this.cleanup();
   }
 
   disconnectTestSockets(): void {
-    console.log('[TestService] Disconnecting test sockets');
+    logger.log('[TestService] Disconnecting test sockets');
     if (typeof window !== 'undefined' && 
         window.stores?.socketStore?.reconnectAll) {
       try {
-        console.log('[TestService] Forcing socket reconnection');
+        logger.log('[TestService] Forcing socket reconnection');
         window.stores.socketStore.reconnectAll();
       } catch (e) {
         console.error('[TestService] Error reconnecting sockets:', e);

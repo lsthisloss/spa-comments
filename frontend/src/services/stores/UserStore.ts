@@ -137,9 +137,9 @@ class UserStore implements IUserStore {
 
         this.user = validatedUser;
 
-        console.log(`[UserStore] Setting user with role: ${validatedUser.role}`);
-        console.log(`[UserStore] Is superadmin: ${this.isSuperAdmin}`);
-        console.log(`[UserStore] Can manage admins: ${this.canManageAdmins}`);
+        logger.log(`[UserStore] Setting user with role: ${validatedUser.role}`);
+        logger.log(`[UserStore] Is superadmin: ${this.isSuperAdmin}`);
+        logger.log(`[UserStore] Can manage admins: ${this.canManageAdmins}`);
 
         this.addCachedUser(validatedUser);
         localStorage.setItem('user', JSON.stringify(validatedUser));
@@ -180,7 +180,7 @@ class UserStore implements IUserStore {
         this.user = user;
         this.usersCache.set(user.id, user);
 
-        console.log(`[UserStore] Loaded user from storage with role: ${user.role}`);
+        logger.log(`[UserStore] Loaded user from storage with role: ${user.role}`);
       } catch (error) {
         console.error("Failed to parse stored user:", error);
         localStorage.removeItem("user");
@@ -972,7 +972,7 @@ class UserStore implements IUserStore {
             avatarShape?: string;
             message?: string;
           }) => {
-            console.log('[UserStore] Avatar upload event received:', response);
+            logger.log('[UserStore] Avatar upload event received:', response);
 
             if (response.success && response.user) {
               const updatedUser: User = {
@@ -1028,7 +1028,7 @@ class UserStore implements IUserStore {
                   avatarShape: avatarData.shape
                 },
                 (res: { success: boolean; user?: User; message?: string }) => {
-                  console.log('[UserStore] Upload avatar callback:', res);
+                  logger.log('[UserStore] Upload avatar callback:', res);
 
                   // Callback может не содержать полных данных, основное обновление через событие
                   if (!res.success) {

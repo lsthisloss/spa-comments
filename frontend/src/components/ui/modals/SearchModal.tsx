@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { useNavigate } from "react-router-dom";
 import { useSocketStore } from "../../../hooks/useStore";
+import { logger } from "../../../utils/Logger";
 
 /*
   Компонент для отображения модального окна поиска по пользователям, постам и комментариям.
@@ -120,12 +121,12 @@ export const SearchModal = observer(function SearchModal({
     }
   };
 const handlePostClick = (post: SearchResults['posts'][0]) => {
-  console.log('[SearchModal] Post data:', post);
+  logger.log('[SearchModal] Post data:', post);
   
   const identifier = post.slug || post.id;
   
   if (identifier) {
-    console.log('[SearchModal] Navigating to post:', identifier);
+    logger.log('[SearchModal] Navigating to post:', identifier);
     
     // Если есть slug - используем его, если нет - используем ID через другой роут
     if (post.slug) {

@@ -4,6 +4,7 @@ import { Button, Input, message, Typography, Divider, Card, List, Avatar, Tag } 
 import { UserAddOutlined, UserDeleteOutlined, SearchOutlined, CrownOutlined, UserOutlined } from '@ant-design/icons';
 import { User } from '../../types/interfaces';
 import { useUserStore } from '../../hooks/useStore';
+import { logger } from '../../utils/Logger';
 
 const { Title, Text } = Typography;
 
@@ -36,7 +37,7 @@ const AdminPanel: React.FC = observer(() => {
 
     try {
       setIsPromoting(true);
-      console.log(`[AdminPanel] Promoting user: "${targetUserId}"`);
+      logger.log(`[AdminPanel] Promoting user: "${targetUserId}"`);
       
       await userStore.promoteToAdmin(targetUserId.trim());
       message.success(`User promoted to admin successfully!`);
@@ -58,7 +59,7 @@ const AdminPanel: React.FC = observer(() => {
       ) {
         try {
           const lowerCaseId = targetUserId.trim().toLowerCase();
-          console.log(`[AdminPanel] Retrying with lowercase: "${lowerCaseId}"`);
+          logger.log(`[AdminPanel] Retrying with lowercase: "${lowerCaseId}"`);
           
           await userStore.promoteToAdmin(lowerCaseId);
           message.success(`User promoted to admin successfully!`);
@@ -104,7 +105,7 @@ const AdminPanel: React.FC = observer(() => {
         return acc;
       }, {} as Record<string, number>);
       
-      console.log('📊 User statistics:', stats);
+      logger.log('📊 User statistics:', stats);
       message.success(`Found ${fetchedUsers.length} users. Details shown below.`);
     } catch (error) {
       console.error('Failed to get users:', error);
@@ -146,7 +147,7 @@ const AdminPanel: React.FC = observer(() => {
           (error as { message: string }).message.includes('User not found')
         ) {
           const lowerCaseId = targetUserId.trim().toLowerCase();
-          console.log(`[AdminPanel] Retrying demote with lowercase: "${lowerCaseId}"`);
+          logger.log(`[AdminPanel] Retrying demote with lowercase: "${lowerCaseId}"`);
           
           await userStore.demoteFromAdmin(lowerCaseId);
           message.success(`Admin demoted to User successfully`);
