@@ -8,7 +8,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     watch: {
-      usePolling: true, // Важно для Docker, особенно на Windows/Mac
+      usePolling: true,
     },
     hmr: {
       port: 3000,
@@ -16,18 +16,18 @@ export default defineConfig({
     proxy: {
       // WebSocket proxy для socket.io
       '/socket.io': {
-        target: 'http://backend:3001',
+        target: 'http://backend-dev:3001',
         ws: true,
         changeOrigin: true,
       },
       // Proxy для загрузки файлов
       '/uploads': {
-        target: 'http://backend:3001',
+        target: 'http://backend-dev:3001', 
         changeOrigin: true,
       },
-      // Дополнительно можно добавить API proxy если нужно
+      // API proxy
       '/api': {
-        target: 'http://backend:3001',
+        target: 'http://backend-dev:3001', 
         changeOrigin: true,
       },
     },

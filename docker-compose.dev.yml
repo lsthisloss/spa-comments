@@ -17,6 +17,8 @@ services:
       timeout: 5s
       retries: 30
     restart: unless-stopped
+    networks:
+      - dev-network
     
   elasticsearch-dev:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
@@ -40,6 +42,8 @@ services:
       retries: 10
       start_period: 360s
     restart: unless-stopped
+    networks:
+      - dev-network
 
   rabbitmq-dev:
     image: rabbitmq:3-management
@@ -62,6 +66,8 @@ services:
       retries: 10
       start_period: 120s
     restart: unless-stopped
+    networks:
+      - dev-network
 
   backend-dev:
     build:
@@ -108,6 +114,8 @@ services:
       FORCE_UPDATE: ${FORCE_UPDATE}
     command: npm run dev
     restart: unless-stopped
+    networks:
+      - dev-network
 
   frontend-dev:
     build:
@@ -128,6 +136,12 @@ services:
       NODE_OPTIONS: "--max-old-space-size=4096"
       NODE_ENV: development
     restart: unless-stopped
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    driver: bridge
 
 volumes:
   elasticsearch_data:

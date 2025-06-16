@@ -1,13 +1,12 @@
 services:
   postgres:
     image: postgres:15
-    container_name: postgres
+    container_name: postgres-prod
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-strongpassword}
       POSTGRES_DB: ${POSTGRES_DB:-spa_comments}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-    # No ports exposed to host in production - only services in the same network can access
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -26,10 +25,12 @@ services:
       resources:
         limits:
           memory: 1G
+    networks:
+      - prod-network
 
   elasticsearch:
     image: elasticsearch:8.9.0
-    container_name: elasticsearch
+    container_name: elasticsearch-prod
     environment:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
@@ -55,10 +56,12 @@ services:
       resources:
         limits:
           memory: 1G
+    networks:
+      - prod-network
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: rabbitmq
+    container_name: rabbitmq-prod
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-strongpassword}
@@ -80,19 +83,20 @@ services:
       resources:
         limits:
           memory: 1G
+    networks:
+      - prod-network
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    container_name: backend
+    container_name: backend-prod
     depends_on:
       - postgres
       - rabbitmq
       - elasticsearch
     environment:
-      # Use environment variables in production
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-strongpassword}@postgres:5432/${POSTGRES_DB:-spa_comments}?sslmode=require
       ELASTICSEARCH_URL: https://elastic:${ELASTIC_PASSWORD:-strongpassword}@elasticsearch:9200
       RABBITMQ_HOST: rabbitmq
@@ -100,7 +104,6 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-strongpassword}
       NODE_ENV: production
     restart: unless-stopped
-    # Only expose what's needed via reverse proxy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -115,13 +118,14 @@ services:
       resources:
         limits:
           memory: 512M
-    # Use non-root user
     user: nestjs
+    networks:
+      - prod-network
 
 networks:
-  default:
+  prod-network:
     driver: bridge
-    internal: true  # No direct external access
+    internal: true
 
 volumes:
   postgres_data:
