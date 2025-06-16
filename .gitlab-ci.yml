@@ -1,0 +1,21 @@
+stages:
+  - build
+  - test
+  - security
+
+build:
+  stage: build
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ./backend
+  
+security_scan:
+  stage: security
+  before_script:
+    - apt-get update && apt-get install -y wget apt-transport-https gnupg lsb-release
+    - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add -
+    - echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | tee -a /etc/apt/sources.list.d/trivy.list
+    - apt-get update && apt-get install -y trivy
+  script:
+    - trivy image $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  only:
+    - main

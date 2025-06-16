@@ -81,8 +81,9 @@ USER nestjs
 
 EXPOSE 3001
 
-RUN mkdir -p /app/uploads/avatars
-RUN chmod 777 /app/uploads /app/uploads/avatars
+RUN mkdir -p /app/uploads/avatars /app/uploads/images /app/uploads/files
+RUN chown -R nestjs:nodejs /app/uploads
+RUN chmod 755 /app/uploads /app/uploads/avatars /app/uploads/images /app/uploads/files
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  postgres:
+  postgres-dev:
     image: postgres:15
     container_name: postgres-dev
     environment:
@@ -20,7 +20,7 @@ services:
       retries: 30
     restart: unless-stopped
     
-  elasticsearch:
+  elasticsearch-dev:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
     container_name: elasticsearch-dev
     environment:
@@ -43,13 +43,13 @@ services:
       start_period: 360s
     restart: unless-stopped
 
-  rabbitmq:
+  rabbitmq-dev:
     image: rabbitmq:3-management
     container_name: rabbitmq-dev
     hostname: rabbitmq-dev
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-password}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
       RABBITMQ_DEFAULT_VHOST: /
       RABBITMQ_ERLANG_COOKIE: dev_cookie_123
     ports:
@@ -65,7 +65,7 @@ services:
       start_period: 120s
     restart: unless-stopped
 
-  backend:
+  backend-dev:
     build:
       context: ./backend
       target: development
@@ -76,14 +76,13 @@ services:
       - ./backend:/app
       - /app/node_modules
     depends_on:
-      postgres:
+      postgres-dev:
         condition: service_healthy
-      rabbitmq:
+      rabbitmq-dev:
         condition: service_healthy
-      elasticsearch:
+      elasticsearch-dev:
         condition: service_healthy
     environment:
-      # Database - используем переменные из .env
       DATABASE_URL: ${DB_URL}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
@@ -91,35 +90,28 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
       
-      # Elasticsearch
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
       ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME}
       ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD}
       
-      # RabbitMQ
       RABBITMQ_HOST: ${RABBITMQ_HOST}
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       
-      # RabbitMQ Queue Limits
       RABBITMQ_QUEUE_MAX_LENGTH: ${RABBITMQ_QUEUE_MAX_LENGTH}
       RABBITMQ_QUEUE_MAX_BYTES: ${RABBITMQ_QUEUE_MAX_BYTES}
       RABBITMQ_MESSAGE_TTL: ${RABBITMQ_MESSAGE_TTL}
       
-      # JWT
       JWT_SECRET: ${JWT_SECRET}
-      
-      # Development settings - убираем --expose-gc
       NODE_OPTIONS: ${NODE_OPTIONS}
       NODE_ENV: ${NODE_ENV}
       LOG_LEVEL: debug
-
       FORCE_UPDATE: ${FORCE_UPDATE}
     command: npm run dev
     restart: unless-stopped
 
-  frontend:
+  frontend-dev:
     build:
       context: ./frontend
       target: development
@@ -130,7 +122,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
-      - backend
+      - backend-dev
     environment:
       VITE_API_URL: ${VITE_API_URL}
       VITE_WS_URL: ${VITE_WS_URL}
@@ -140,6 +132,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   elasticsearch_data:
+    name: spa-comments_elasticsearch_data
+  postgres_data:
+    name: spa_comments_postgres_data_dev
   rabbitmq_data:
+    name: spa-comments_rabbitmq_data

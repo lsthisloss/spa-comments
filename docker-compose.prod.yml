@@ -5,156 +5,128 @@ services:
     image: postgres:15
     container_name: postgres
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-      POSTGRES_DB: ${DB_NAME:-spa_comments}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-strongpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-spa_comments}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-    ports:
-      - "5432:5432"
+    # No ports exposed to host in production - only services in the same network can access
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments} && psql -U ${DB_USER:-postgres} -d ${DB_NAME:-spa_comments} -c 'SELECT 1'"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    user: postgres
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   elasticsearch:
     image: elasticsearch:8.9.0
     container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms256m -Xmx512m  # Уменьшаем память для VPS
-      - xpack.security.enabled=false
-      - xpack.security.http.ssl.enabled=false
-      - bootstrap.memory_lock=false
-      - cluster.routing.allocation.disk.threshold_enabled=false
-      - http.cors.enabled=true
-      - http.cors.allow-origin="*"
-    ports:
-      - "9200:9200"
-      - "9300:9300"
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-strongpassword}
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.transport.ssl.enabled=true
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=60s || exit 1"]
-      interval: 30s
-      timeout: 60s
-      retries: 10
-      start_period: 120s
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
-          memory: 768m
-        reservations:
-          memory: 256m
+          memory: 1G
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    hostname: rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_DEFAULT_VHOST: /
-      RABBITMQ_ERLANG_COOKIE: prod_cookie_456
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-strongpassword}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_COOKIE:-unique_cookie_value}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 30s
-      timeout: 30s
-      retries: 5
-      start_period: 60s
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
       target: production
     container_name: backend
-    ports:
-      - "3001:3001"
-    volumes:
-      - ./backend/uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
+      - postgres
+      - rabbitmq
+      - elasticsearch
     environment:
-      # Database
-      DATABASE_URL: ${DB_URL:-postgresql://postgres:password@postgres:5432/spa_comments?sslmode=disable}
-      DB_HOST: postgres
-      DB_PORT: ${DB_PORT:-5432}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-password}
-      DB_NAME: ${DB_NAME:-spa_comments}
-      DB_SSL: "false"
-      DATABASE_SSL: "false"
-      PGSSLMODE: "disable"
-      TYPEORM_SSL: "false"
-      # Elasticsearch
-      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
-      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME:-}
-      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-}
-      
-      # RabbitMQ
-      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
-      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_DEFAULT_HOST: rabbitmq
-      RABBITMQ_DEFAULT_PORT: 5672
-      
-      # RabbitMQ Queue Limits
-      RABBITMQ_QUEUE_MAX_LENGTH: 5000
-      RABBITMQ_QUEUE_MAX_BYTES: 50000000
-      RABBITMQ_MESSAGE_TTL: 300000
-      
-      # JWT
-      JWT_SECRET: ${JWT_SECRET:-production_jwt_secret_change_me}
-      
-      # Production settings
-      NODE_OPTIONS: "--max-old-space-size=512"  # Уменьшаем для VPS
+      # Use environment variables in production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-strongpassword}@postgres:5432/${POSTGRES_DB:-spa_comments}?sslmode=require
+      ELASTICSEARCH_URL: https://elastic:${ELASTIC_PASSWORD:-strongpassword}@elasticsearch:9200
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-strongpassword}
       NODE_ENV: production
-      LOG_LEVEL: info
-    command: >
-      sh -c "
-      echo 'Waiting for PostgreSQL to be fully ready...' &&
-      until pg_isready -h postgres -U ${DB_USER:-postgres}; do
-        echo 'Waiting for PostgreSQL...'
-        sleep 2
-      done &&
-      npm run start:prod
-      "
     restart: unless-stopped
+    # Only expose what's needed via reverse proxy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
-    # Ограничения памяти для backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
-          memory: 1g
-          cpus: "0.5"
+          memory: 512M
+    # Use non-root user
+    user: nestjs
+
+networks:
+  default:
+    driver: bridge
+    internal: true  # No direct external access
 
 volumes:
   postgres_data:
-    name: spa_comments_postgres_data
     external: false
   elasticsearch_data:
     name: spa_comments_elasticsearch_data
