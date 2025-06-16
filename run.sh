@@ -24,14 +24,14 @@ function app_run_dev() {
     echo -e "${CYAN}Preparing Docker environment...${NORMAL}"
     
     # Останавливаем старые контейнеры
-    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
     
     # Очищаем Docker builder cache
     echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
     docker builder prune -f 2>/dev/null || true
     
     echo -e "${CYAN}Building development images...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml build --no-cache
+    docker compose -f docker-compose.dev.yml build --no-cache
     
     if [ $? -ne 0 ]; then
         echo -e "\n${RED}Error building Docker images.${NORMAL}"
@@ -40,7 +40,7 @@ function app_run_dev() {
     fi
 
     echo -e "${CYAN}Starting development containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml up
+    docker compose -f docker-compose.dev.yml up
     
     if [ $? -eq 0 ]; then
         echo -e "\n${GREEN}✅ Development environment ready!${NORMAL}"
@@ -51,15 +51,15 @@ function app_run_dev() {
         
         # Показываем статус контейнеров
         echo -e "\n${CYAN}Docker services:${NORMAL}"
-        docker-compose -f docker-compose.dev.yml ps
+        docker compose -f docker-compose.dev.yml ps
         
         # Показываем последние логи
         echo -e "\n${CYAN}Recent container logs:${NORMAL}"
-        docker-compose -f docker-compose.dev.yml logs --tail=10
+        docker compose -f docker-compose.dev.yml logs --tail=10
         
     else
         echo -e "\n${RED}Docker startup failed${NORMAL}"
-        echo -e "${CYAN}Check logs: docker-compose -f docker-compose.dev.yml logs${NORMAL}"
+        echo -e "${CYAN}Check logs: docker compose -f docker-compose.dev.yml logs${NORMAL}"
     fi
 }
 
@@ -130,6 +130,7 @@ function app_setup_local_dev() {
     
     echo -e "\n${GREEN}✅ Local development dependencies installed!${NORMAL}"
 }
+
 function app_clean_project() {
     echo -e "\n${YELLOW}Cleaning only project-related containers, volumes and databases...${NORMAL}\n"
     
@@ -139,10 +140,10 @@ function app_clean_project() {
     
     # Stop and remove containers from both dev and prod compose files with timeouts
     echo -e "${CYAN}Stopping development containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
     
     echo -e "${CYAN}Stopping production containers...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.prod.yml down --timeout 30 --remove-orphans 2>/dev/null || true
     
     # Clean PostgreSQL database (both dev and prod)
     echo -e "${CYAN}Cleaning PostgreSQL databases...${NORMAL}"
@@ -177,7 +178,7 @@ function app_clean_project() {
     
     # Remove volumes - this will force fresh database on restart
     echo -e "${CYAN}Removing project volumes...${NORMAL}"
-    docker volume rm postgres_data elasticsearch_data rabbitmq_data 2>/dev/null || true
+    docker volume rm postgres_data spa-comments_elasticsearch_data spa-comments_rabbitmq_data spa_comments_postgres_data_dev 2>/dev/null || true
     
     # Clean docker build cache for this project
     echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
@@ -213,14 +214,14 @@ function app_run_dev_with_timeouts() {
     echo -e "${CYAN}Preparing Docker environment...${NORMAL}"
     
     # Stop old containers with timeout
-    docker-compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml down --timeout 30 --remove-orphans 2>/dev/null || true
     
     # Clean Docker builder cache
     echo -e "${CYAN}Cleaning Docker build cache...${NORMAL}"
     docker builder prune -f 2>/dev/null || true
     
     echo -e "${CYAN}Building development images...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml build
+    docker compose -f docker-compose.dev.yml build
     
     if [ $? -ne 0 ]; then
         echo -e "\n${RED}Error building Docker images.${NORMAL}"
@@ -228,14 +229,14 @@ function app_run_dev_with_timeouts() {
     fi
 
     echo -e "${CYAN}Starting development containers with extended timeouts...${NORMAL}"
-    # Set longer timeout for docker-compose operations
+    # Set longer timeout for docker compose operations
     export COMPOSE_HTTP_TIMEOUT=180
-    docker-compose -f docker-compose.dev.yml up -d
+    docker compose -f docker-compose.dev.yml up -d
     
     # Wait for services to be ready
     echo -e "${CYAN}Waiting for services to be ready...${NORMAL}"
     for i in {1..30}; do
-        if docker-compose -f docker-compose.dev.yml ps | grep -q "healthy"; then
+        if docker compose -f docker-compose.dev.yml ps | grep -q "healthy"; then
             echo -e "${GREEN}✅ Services are ready!${NORMAL}"
             break
         fi
@@ -244,17 +245,17 @@ function app_run_dev_with_timeouts() {
     done
     
     # Show logs
-    docker-compose -f docker-compose.dev.yml logs -f
+    docker compose -f docker-compose.dev.yml logs -f
 }
 
 function app_dev_logs() {
     echo -e "\n${YELLOW}Showing recent development logs...${NORMAL}\n"
     
     echo -e "${CYAN}Available services:${NORMAL}"
-    docker-compose -f docker-compose.dev.yml ps --services 2>/dev/null || echo "No services running"
+    docker compose -f docker-compose.dev.yml ps --services 2>/dev/null || echo "No services running"
     
     echo -e "\n${CYAN}Recent logs (last 50 lines):${NORMAL}"
-    docker-compose -f docker-compose.dev.yml logs --tail=50
+    docker compose -f docker-compose.dev.yml logs --tail=50
 }
 
 function app_run_production() {
@@ -267,15 +268,15 @@ function app_run_production() {
     fi
     
     echo -e "${CYAN}Stopping any running containers...${NORMAL}"
-    docker-compose -f docker-compose.prod.yml down --remove-orphans
+    docker compose -f docker-compose.prod.yml down --remove-orphans
     
     echo -e "${CYAN}Building backend production image...${NORMAL}"
     # Собираем только backend сервисы (без frontend)
-    docker-compose -f docker-compose.prod.yml build --no-cache backend postgres rabbitmq elasticsearch
+    docker compose -f docker-compose.prod.yml build --no-cache backend postgres rabbitmq elasticsearch
     
     echo -e "${CYAN}Starting backend production containers...${NORMAL}"
     # Запускаем только backend сервисы
-    docker-compose -f docker-compose.prod.yml up -d postgres rabbitmq elasticsearch backend
+    docker compose -f docker-compose.prod.yml up -d postgres rabbitmq elasticsearch backend
     
     echo -e "${GREEN}✅ Backend production environment started!${NORMAL}"
     echo -e "${CYAN}Backend API: http://localhost:3001${NORMAL}"
@@ -284,7 +285,7 @@ function app_run_production() {
     
     # Показываем статус только backend сервисов
     echo -e "\n${CYAN}Backend services status:${NORMAL}"
-    docker-compose -f docker-compose.prod.yml ps
+    docker compose -f docker-compose.prod.yml ps
 }
 
 function app_build_frontend_prod() {
@@ -323,11 +324,11 @@ EOF
     echo -e "${CYAN}Clearing npm cache...${NORMAL}"
     npm cache clean --force 2>/dev/null || true
     
-    #4096Более агрессивная очистка
+    # Более агрессивная очистка
     echo -e "${CYAN}Cleaning temporary files...${NORMAL}"
     rm -rf package-lock.json node_modules dist .vite tsconfig.tsbuildinfo .npm 2>/dev/null || true
     
-    #4096Настройки npm для решения проблемы с Rollup
+    # Настройки npm для решения проблемы с Rollup
     echo -e "${CYAN}Configuring npm for Rollup fix...${NORMAL}"
     npm config set registry https://registry.npmjs.org/
     npm config set fetch-retry-mintimeout 20000
@@ -364,7 +365,7 @@ EOF
         fi
     fi
     
-    #4096Проверяем что Rollup работает
+    # Проверяем что Rollup работает
     echo -e "${CYAN}Verifying Rollup installation...${NORMAL}"
     if npx rollup --version; then
         echo -e "${GREEN}✅ Rollup is working correctly${NORMAL}"
@@ -375,7 +376,7 @@ EOF
     
     echo -e "${CYAN}Building frontend for production...${NORMAL}"
     
-    #4096Используем более стабильные команды сборки
+    # Используем более стабильные команды сборки
     echo -e "${CYAN}Running TypeScript compilation...${NORMAL}"
     if NODE_ENV=production timeout 1200 npx tsc --noEmit; then
         echo -e "${GREEN}✅ TypeScript compilation successful${NORMAL}"
@@ -420,8 +421,8 @@ function app_clean_all() {
     
     # Удаляем контейнеры с таймаутом
     echo -e "${YELLOW}Removing containers...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.prod.yml down --timeout 10 -v --remove-orphans 2>/dev/null || true
     
     # Принудительно удаляем все контейнеры
     echo -e "${YELLOW}Force removing all containers...${NORMAL}"
@@ -448,9 +449,9 @@ function app_stop_all() {
     # Быстрая остановка всех контейнеров
     docker stop $(docker ps -aq) 2>/dev/null || true
     
-    # Остановка через docker-compose
-    docker-compose -f docker-compose.dev.yml down --timeout 5 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --timeout 5 2>/dev/null || true
+    # Остановка через docker compose
+    docker compose -f docker-compose.dev.yml down --timeout 5 2>/dev/null || true
+    docker compose -f docker-compose.prod.yml down --timeout 5 2>/dev/null || true
     
     echo -e "${GREEN}All containers stopped!${NORMAL}"
     docker ps
@@ -460,8 +461,8 @@ function app_clean_orphans() {
     echo -e "\n${YELLOW}Cleaning orphan containers...${NORMAL}\n"
     
     echo -e "${CYAN}Stopping all services...${NORMAL}"
-    docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
-    docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
     
     echo -e "${CYAN}Removing orphan containers...${NORMAL}"
     docker container prune -f
