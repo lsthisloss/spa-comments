@@ -21,6 +21,7 @@ import { WsJwtGuard } from '../auth/ws-jwt.guard';
 import { isUUID } from 'class-validator';
 import { PostResponseDto } from './dto/post-response.dto';
 import { TestService } from '../test/test.service';
+import { SessionService } from '../auth/session.service';
 
 @Injectable()
 @WebSocketGateway({ cors: { origin: '*' }, namespace: '/posts' })
@@ -46,6 +47,7 @@ export class PostsGateway
     private readonly usersService: UsersService,
     private readonly rabbitMQService: RabbitMQService,
     private readonly testService: TestService,
+    private readonly sessionService: SessionService,
   ) {}
 
   afterInit(server: Server) {
@@ -95,6 +97,7 @@ export class PostsGateway
 
   handleDisconnect(client: Socket) {
     console.log('Posts WS disconnected:', client.id);
+    this.sessionService.removeSession(client.id);
   }
 
   @SubscribeMessage('fetchPosts')

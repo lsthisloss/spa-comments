@@ -6,6 +6,7 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { SessionService } from './auth/session.service';
 
 @WebSocketGateway({
   namespace: '/', // Основной namespace
@@ -25,6 +26,8 @@ export class AppGateway
 
   private interval: NodeJS.Timeout;
 
+  constructor(private readonly sessionService: SessionService) {}
+
   afterInit() {
     console.log('[AppGateway] Socket.IO server initialized');
 
@@ -42,6 +45,7 @@ export class AppGateway
 
   handleDisconnect(client: Socket) {
     console.log(`[AppGateway] Client disconnected: ${client.id}`);
+    this.sessionService.removeSession(client.id);
   }
 
   broadcastEvent(event: string, data: any) {

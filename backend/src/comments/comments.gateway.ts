@@ -14,6 +14,7 @@ import { PostsGateway } from '../posts/posts.gateway';
 import { CommonWsService } from '../common/common-ws.service';
 import { UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from '../auth/ws-jwt.guard';
+import { SessionService } from '../auth/session.service';
 
 interface FileProcessResult {
   imageUrl?: string;
@@ -33,6 +34,7 @@ export class CommentsGateway
     private readonly commonWsService: CommonWsService,
     private readonly commentsService: CommentsService,
     private readonly postsGateway: PostsGateway,
+    private readonly sessionService: SessionService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -46,6 +48,7 @@ export class CommentsGateway
 
   handleDisconnect(client: Socket) {
     console.log('Comments WS disconnected:', client.id);
+    this.sessionService.removeSession(client.id);
   }
 
   /**

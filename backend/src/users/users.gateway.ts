@@ -66,6 +66,8 @@ export class UsersGateway
 
   handleDisconnect(client: Socket) {
     console.log(`[UsersGateway] ❌ Client disconnected: ${client.id}`);
+    // Удаляем сессию при отключении
+    this.sessionService.removeSession(client.id);
   }
 
   // Добавим простой тестовый метод
@@ -100,23 +102,12 @@ export class UsersGateway
           `[LOGIN SUCCESS] User: ${userResponse.userName}, Role: ${userResponse.role}`,
         );
 
-        // Проверяем, есть ли уже активная сессия
-        const existingSession = this.sessionService.registerSession(
+        // Регистрируем сессию - SessionService сам обработает существующие сессии
+        this.sessionService.registerSession(
           result.user.id,
           result.user.userName,
           client,
         );
-
-        // Если была активная сессия, отключаем её
-        if (existingSession) {
-          console.log(
-            `[LOGIN] Terminating previous session for user ${result.user.userName}`,
-          );
-          this.sessionService.disconnectUser(
-            result.user.id,
-            'Ваша учетная запись была открыта на другом устройстве. Если это были не вы, возможно ваша учетная запись была скомпрометирована.',
-          );
-        }
 
         // Отправляем ответ новому клиенту
         client.emit('loginResponse', {

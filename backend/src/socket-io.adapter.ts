@@ -168,12 +168,10 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
       }
 
       // Список namespace, которые разрешены без аутентификации
+      // /users нужен для логина, остальные требуют токен
       const anonymousNamespaces = [
         '/',
         '/users',
-        '/posts',
-        '/comments',
-        '/search',
       ];
 
       if (anonymousNamespaces.includes(socket.nsp.name)) {
@@ -216,21 +214,13 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
         } as SocketData;
 
         if (this.sessionService) {
-          const existingSession = this.sessionService.registerSession(
+          // Добавляем сокет к существующей сессии (НЕ отключаем предыдущие)
+          // Отключение предыдущих сессий происходит только при логине через users.gateway.ts
+          this.sessionService.addSocketToSession(
             payload.sub,
             payload.userName,
             socket,
           );
-
-          if (existingSession) {
-            console.log(
-              `[SOCKET AUTH] Terminating previous session for user ${payload.userName}`,
-            );
-            this.sessionService.disconnectUser(
-              payload.sub,
-              'Ваша учетная запись была открыта на другом устройстве.',
-            );
-          }
         }
 
         next();
@@ -270,6 +260,9 @@ export class AuthenticatedSocketIoAdapter extends IoAdapter {
       // Проверяем, не добавляли ли мы уже обработчик для этого namespace
       if (!createdNamespaces.has(namespaceName)) {
         createdNamespaces.add(namespaceName);
+
+        // ВАЖНО: Применяем middleware к каждому namespace отдельно!
+        namespace.use(authMiddleware);
 
         // Добавляем обработчик соединений только один раз для каждого namespace
         namespace.on('connection', (socket: AuthenticatedSocket) => {
