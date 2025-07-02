@@ -144,6 +144,7 @@ cd spa-comments
 
 <details>
 <summary>🎨 Demo </summary>
+    
 ---
 
 ![image](https://github.com/user-attachments/assets/a9378a59-b3c3-419b-a7ee-aef8e4bae2f5)
@@ -153,5 +154,6 @@ cd spa-comments
 ---
 **Timeline:** 3 weeks   
 **What I learned:** Scalable architecture, real-time systems, performance optimization, security patterns      
-Developed w/ ❤️ by **sk8**
-Coda doc: https://coda.io/@oleh-khad/jeez
+**Coda:** https://coda.io/@oleh-khad/jeez        
+Developed w/ ❤️ by **sk8**        
+
