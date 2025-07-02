@@ -154,3 +154,4 @@ cd spa-comments
 **Timeline:** 3 weeks   
 **What I learned:** Scalable architecture, real-time systems, performance optimization, security patterns      
 Developed w/ ❤️ by **sk8**
+Coda doc: https://coda.io/@oleh-khad/jeez
