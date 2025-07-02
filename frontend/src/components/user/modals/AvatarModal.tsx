@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal, Upload, Button, message, Avatar, Tabs, Segmented } from 'antd';
 import { UserOutlined, UploadOutlined, PictureOutlined, FontSizeOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
@@ -19,14 +19,14 @@ interface AvatarModalProps {
   userName: string;
 }
 
-const AvatarModal: React.FC<AvatarModalProps> = ({ 
+const AvatarModal = ({ 
   visible, 
   onClose, 
   onSave, 
   currentAvatarUrl,
   currentAvatarShape = 'circle',
   userName 
-}) => {
+}: AvatarModalProps) => {
   const [avatarType, setAvatarType] = useState<'upload' | 'initial'>(currentAvatarUrl ? 'upload' : 'initial');
   const [avatarShape, setAvatarShape] = useState<'circle' | 'square'>(currentAvatarShape);
   const [fileList, setFileList] = useState<UploadFile[]>([]);

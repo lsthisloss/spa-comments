@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useUserStore } from '../../../hooks/useStore';
 import { TestDataPanel } from './TestDataPanel';
@@ -17,7 +17,7 @@ interface DebugInfoProps {
   forceShow?: boolean;
 }
 
-export const DebugInfo: React.FC<DebugInfoProps> = observer(({
+export const DebugInfo = observer(({
   itemsCount,
   virtualItems,
   loading,
@@ -28,7 +28,7 @@ export const DebugInfo: React.FC<DebugInfoProps> = observer(({
   newPostsCount = 0,
   currentPage = 1,
   totalPosts = 0,
-}) => {
+}: DebugInfoProps) => {
   // Состояние для видимости формы
   const [isVisible, setIsVisible] = useState(() => {
     const saved = localStorage.getItem('debugInfoVisible');

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useCallback, useState } from "react";
+import { useMemo, useRef, useEffect, useCallback, useState, memo } from "react";
 
 interface OptimizedTextProps {
   content: string;
@@ -16,7 +16,7 @@ interface OptimizedTextProps {
   Оптимизирован для производительности и стабильности при изменении высоты.
   Использует ResizeObserver для отслеживания изменений высоты контейнера.
 */
-const OptimizedText: React.FC<OptimizedTextProps> = ({ 
+const OptimizedText = ({ 
   content, 
   maxLength = 250,
   expanded, 
@@ -25,7 +25,7 @@ const OptimizedText: React.FC<OptimizedTextProps> = ({
   onResize,
   itemId = "unknown",
   onShowMoreToggle
-}) => {
+}: OptimizedTextProps) => {
   // Refs for tracking container, height and state
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -158,7 +158,6 @@ const OptimizedText: React.FC<OptimizedTextProps> = ({
             wordBreak: 'break-word',
             overflowWrap: 'break-word',
             lineHeight: '1.5',
-            marginBottom: '4px',
           })
         }}
         dangerouslySetInnerHTML={{ 
@@ -198,7 +197,7 @@ const OptimizedText: React.FC<OptimizedTextProps> = ({
   );
 };
 
-export default React.memo(OptimizedText, (prevProps, nextProps) => {
+export default memo(OptimizedText, (prevProps, nextProps) => {
   return (
     prevProps.content === nextProps.content &&
     prevProps.expanded === nextProps.expanded &&

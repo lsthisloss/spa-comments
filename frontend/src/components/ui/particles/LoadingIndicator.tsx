@@ -1,4 +1,4 @@
-import React from 'react';
+import { ReactNode } from 'react';
 import { Spin, Button, Typography } from 'antd';
 import { ReloadOutlined, CheckCircleOutlined, MessageOutlined, FileTextOutlined } from '@ant-design/icons';
 
@@ -13,7 +13,7 @@ interface LoadingIndicatorProps {
   hasItems: boolean;
   onVisible: () => void;
   emptyMessage?: string;
-  emptyIcon?: React.ReactNode;
+  emptyIcon?: ReactNode;
   onRetry?: () => void;
   showRetryButton?: boolean;
   itemCount?: number;

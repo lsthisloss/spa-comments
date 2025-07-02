@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { message } from 'antd';
 import { useUserStore, useTestStore } from '../../../hooks/useStore';
@@ -11,11 +11,11 @@ interface TestDataPanelProps {
   parentPosition: { top: number; left: number };
 }
 
-export const TestDataPanel: React.FC<TestDataPanelProps> = observer(({
+export const TestDataPanel = observer(({
   isVisible,
   onClose,
   parentPosition
-}) => {
+}: TestDataPanelProps) => {
   const userStore = useUserStore();
   const testStore = useTestStore();
   const canExecuteTests = userStore.canExecuteDebugTests;

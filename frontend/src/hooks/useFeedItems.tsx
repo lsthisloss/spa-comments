@@ -5,21 +5,32 @@ import { Comment, Post } from '../types/interfaces';
 export const usePostsFeed = () => {
   // оценка высоты поста
   const estimateItemHeight = useCallback((item: Post) => {
-    // Базовая высота (аватар, заголовок, кнопки)
-    const BASE_HEIGHT = 140;
+    // Базовые компоненты поста
+    const HEADER_HEIGHT = 60; // Аватар + имя + время
+    const FOOTER_HEIGHT = 50; // Кнопки лайка/комментариев
+    const PADDING = 20; // Отступы
     
-    // Высота для изображения, если оно есть
-    const imageHeight = item.imageUrl ? 208 : 0; // Изображение + отступы
-    
-    // Оценка высоты текста на основе количества символов
+    // Оценка высоты текста
     const contentLength = item.content?.length || 0;
-    const contentLines = Math.min(10, Math.ceil(contentLength / 80)); // ~80 символов на строку
-    const contentHeight = contentLines * 20; // 20px на строку
+    const contentLines = Math.max(1, Math.ceil(contentLength / 80)); // ~80 символов на строку
+    const textHeight = Math.max(40, contentLines * 20); // минимум 40px, 20px за строку
     
-   
+    // Высота изображения
+    let imageHeight = 0;
+    if (item.imageUrl) {
+      imageHeight = 120; // Фиксированная высота изображения + отступы
+    }
+    
+    // Высота файла (если есть)
+    let fileHeight = 0;
+    if (item.fileName || item.fileUrl) {
+      fileHeight = 40;
+    }
+    
+    const totalHeight = HEADER_HEIGHT + textHeight + imageHeight + fileHeight + FOOTER_HEIGHT + PADDING;
     
     // Возвращаем итоговую оценку высоты
-    return Math.max(BASE_HEIGHT, BASE_HEIGHT + imageHeight + contentHeight + 40);
+    return totalHeight;
   }, []);
 
   const getItemKey = useCallback((post: Post): string => {

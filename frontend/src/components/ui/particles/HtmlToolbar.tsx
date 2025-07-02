@@ -1,4 +1,3 @@
-import React from 'react';
 import { Button } from 'antd';
 
 /*
@@ -12,7 +11,7 @@ interface HtmlToolbarProps {
   onInsertTag: (tag: string) => void;
 }
 
-const HtmlToolbar: React.FC<HtmlToolbarProps> = ({ onInsertTag }) => {
+const HtmlToolbar = ({ onInsertTag }: HtmlToolbarProps) => {
   const tags = [
     { label: '[i]', tag: 'i' },
     { label: '[strong]', tag: 'strong' },

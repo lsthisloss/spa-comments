@@ -1,4 +1,3 @@
-import React from 'react';
 import { Tooltip } from 'antd';
 import { CrownOutlined, StarOutlined } from '@ant-design/icons';
 import { UserRole } from '../../../types/interfaces';
@@ -13,7 +12,7 @@ interface AdminBadgeProps {
   Показывает иконку и текст в зависимости от роли пользователя.
   Используется для обозначения уровня доступа администратора.
 */
-export const AdminBadge: React.FC<AdminBadgeProps> = ({ role, className = '' }) => {
+export const AdminBadge = ({ role, className = '' }: AdminBadgeProps) => {
   if (role === 'user') {
     return null;
   }

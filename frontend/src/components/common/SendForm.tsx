@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, DragEvent} from "react";
 import { Form, Input, Avatar, Image } from "antd";
 import { observer } from "mobx-react-lite";
 import SendFormFooter from "./SendFormFooter";
@@ -84,7 +84,7 @@ const SendForm = observer(({
     * Управляют состоянием перетаскивания и загрузкой файлов
   */
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
+  const handleDragEnter = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current++;
@@ -93,7 +93,7 @@ const SendForm = observer(({
     }
   }, [sendFormStore]);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current--;
@@ -102,12 +102,12 @@ const SendForm = observer(({
     }
   }, [sendFormStore]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     sendFormStore.setDragActive(false);

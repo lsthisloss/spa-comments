@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Button, Input, message, Typography, Divider, Card, List, Avatar, Tag } from 'antd';
 import { UserAddOutlined, UserDeleteOutlined, SearchOutlined, CrownOutlined, UserOutlined } from '@ant-design/icons';
@@ -13,7 +13,7 @@ const { Title, Text } = Typography;
   Только для SuperAdmins
 */
 
-const AdminPanel: React.FC = observer(() => {
+const AdminPanel = observer(() => {
   // Состояния для управления панелью администратора
   const [targetUserId, setTargetUserId] = useState('');
   const [loading, setLoading] = useState(false);

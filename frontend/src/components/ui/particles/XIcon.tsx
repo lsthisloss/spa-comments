@@ -1,6 +1,6 @@
-import React from "react";
+import { SVGProps } from "react";
 // :p 
-export const XIcon = (props: React.SVGProps<SVGSVGElement>) => (
+export const XIcon = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width={24}
     height={24}

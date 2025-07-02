@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState, ReactNode } from 'react';
 import { Spin } from 'antd';
 import { observer } from 'mobx-react-lite';
 import { debounce, useWindowVirtualizer } from '@tanstack/react-virtual';
@@ -25,12 +25,12 @@ import { LoadingIndicator } from '../ui/particles/LoadingIndicator';
 
 interface VirtualListProps<T> {
   items: T[];
-  renderItem: (item: T, index: number) => React.ReactNode;
+  renderItem: (item: T, index: number) => ReactNode;
   getItemKey: (item: T) => string;
   estimateItemHeight: (item: T) => number;
   onEndReached?: () => void;
   loading?: boolean;
-  emptyComponent?: React.ReactNode;
+  emptyComponent?: ReactNode;
   emptyMessage?: string;
   className?: string;
   allLoaded?: boolean;
@@ -69,71 +69,41 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
   const prevLoadingRef = useRef(loading);
   const lastLoadTriggeredRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
+  
+  // Реф больше не нужен для window scroll
 
   /*
     Счетчик для принудительного обновления компонента
     - Используем useState для создания счетчика
     - Используем useCallback для мемоизации функции forceUpdate
   */
-  const [forceUpdateCounter, setForceUpdateCounter] = React.useState(0);
+  const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
+  
   const forceUpdate = useCallback(() => {
     setForceUpdateCounter(prev => prev + 1);
-    //logger.log('[VirtualList] Force update triggered');
+    setDataVersion(prev => prev + 1);
+    logger.log('[VirtualList] Force update triggered');
   }, []);
-
-  //  Кеш измеренных высот
-  const measuredHeights = useRef(new Map<string, number>());
 
   const stableEstimateSize = useCallback((index: number) => {
     if (index < 0 || index >= items.length) {
-      return 128;
+      return 200; // Default fallback height
     }
 
     const item = items[index];
     if (!item) {
-      return 128;
+      return 200;
     }
 
     try {
-      const itemKey = getItemKey(item);
-
-      //  кешированную высоту если есть
-      if (measuredHeights.current.has(itemKey)) {
-        return measuredHeights.current.get(itemKey)!;
-      }
-
-      const baseHeight = estimateItemHeight(item);
-
-      // Проверяем наличие изображения
-      const hasImage = item.imageUrl || item.fileName || item.fileUrl;
-
-      let estimatedHeight;
-
-      if (hasImage) {
-        const content = typeof item.content === 'string' ? item.content : '';
-        const textHeight = Math.max(40, content.length * 0.6);
-        const headerHeight = 60;
-        const imageMinHeight = 80;
-        const imageMaxHeight = 240;
-        const footerHeight = 50;
-        const padding = 20;
-
-        const imageHeight = Math.min(imageMaxHeight, Math.max(imageMinHeight, 120));
-        estimatedHeight = headerHeight + imageHeight + textHeight + footerHeight + padding;
-      } else {
-        const content = item.content || '';
-        if (typeof content === 'string' && content.length > 200) {
-          estimatedHeight = Math.max(baseHeight, 180);
-        } else {
-          estimatedHeight = Math.max(baseHeight, 100);
-        }
-      }
-
-      //  Округляем до целого числа
-      estimatedHeight = Math.round(estimatedHeight);
-
-      // КЕШИРУЕМ оценку СРАЗУ
-      measuredHeights.current.set(itemKey, estimatedHeight);
+      // Полностью доверяем TanStack Virtual's внутреннему кешированию
+      // и используем только функцию оценки из хука
+      const estimatedHeight = estimateItemHeight(item);
+      
+      // Логирование закомментировано для производительности
+      // const itemKey = getItemKey(item);
+      // console.log(`[VirtualList] Using hook estimation for ${itemKey}: ${estimatedHeight}px`);
 
       return estimatedHeight;
     } catch {
@@ -145,17 +115,75 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     Объект виртуализатора
     - Используем useWindowVirtualizer из tanstack/react-virtual
     - Передаем количество элементов, оценку размера и параметры оверскана
-    - Устанавливаем scrollMargin в 0, чтобы избежать проблем с отступами
+    - Работает со скроллом окна (window scroll)
+    - Мемоизируем конфигурацию с dataVersion для принудительного пересоздания
   */
-  const virtualizer = useWindowVirtualizer({
-    count: items.length,
-    estimateSize: stableEstimateSize,
-    overscan: 5,
-    scrollMargin: 0,
-  });
+  
+  // Мемоизируем конфигурацию virtualizer с зависимостью от dataVersion
+  const virtualizerConfig = useMemo(() => {
+    // Более консервативные значения overscan для лучшей производительности
+    // Но достаточные, чтобы элементы не исчезали при скролле небольших списков
+    let dynamicOverscan;
+    if (items.length <= 10) {
+      // Для очень маленьких списков можем позволить показать все
+      dynamicOverscan = items.length;
+    } else if (items.length <= 20) {
+      // До 20 элементов - overscan 10 (половина от размера)
+      dynamicOverscan = 10;
+    } else if (items.length <= 50) {
+      // До 50 элементов - overscan 8
+      dynamicOverscan = 8;
+    } else if (items.length <= 100) {
+      // До 100 элементов - overscan 6
+      dynamicOverscan = 6;
+    } else {
+      // Для больших списков - стандартный overscan для производительности
+      dynamicOverscan = 5;
+    }
+    
+    return {
+      count: items.length,
+      estimateSize: stableEstimateSize,
+      overscan: dynamicOverscan,
+    };
+  }, [items.length, stableEstimateSize, dataVersion]);
+  
+  const virtualizer = useWindowVirtualizer(virtualizerConfig);
 
   // Наконец получаем виртуализированные элементы 
   const virtualItems = virtualizer.getVirtualItems();
+
+  // Отладка виртуализированных элементов (закомментировано для производительности)
+  /*useEffect(() => {
+    const visibleItemIds = virtualItems.map((vi: any) => {
+      const item = items[vi.index];
+      return item && ('id' in item) ? String(item.id) : `index-${vi.index}`;
+    });
+    
+    // Вычисляем overscan точно так же, как в конфигурации
+    let overscanValue;
+    if (items.length <= 10) {
+      overscanValue = items.length;
+    } else if (items.length <= 20) {
+      overscanValue = 10;
+    } else if (items.length <= 50) {
+      overscanValue = 8;
+    } else if (items.length <= 100) {
+      overscanValue = 6;
+    } else {
+      overscanValue = 5;
+    }
+    
+    console.log(`[VirtualList] Rendering ${virtualItems.length} virtual items (overscan: ${overscanValue}):`, {
+      totalItems: items.length,
+      visibleRange: virtualItems.length > 0 ? `${virtualItems[0].index}-${virtualItems[virtualItems.length - 1].index}` : 'none',
+      visibleItemIds: visibleItemIds.slice(0, 5), // Показываем первые 5 ID
+      firstItemId: items[0] && ('id' in items[0]) ? String(items[0].id) : 'no-first-item',
+      forceUpdateCounter,
+      overscan: overscanValue,
+      listCategory: items.length <= 10 ? 'tiny' : items.length <= 20 ? 'small' : items.length <= 50 ? 'medium' : items.length <= 100 ? 'large' : 'huge'
+    });
+  }, [virtualItems, items.length, forceUpdateCounter]);*/
 
   /*
     Ссылки на предыдущие значения для логирования
@@ -212,12 +240,14 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
 
       logger.log(`[VirtualList] Height recalculation requested for ${feedType}: ${reason} (+${addedCount} items)`);
 
-      // Обрабатываем comments точно так же как feed/following
+      // Только для новых элементов очищаем кеш - но НЕ весь кеш!
       if (reason === 'newComment' || reason === 'newPost') {
-        // Очищаем кеш высот для новых элементов
-        measuredHeights.current.clear();
+        // Вместо полной очистки кеша, просто принудительно обновляем компонент
+        // TanStack Virtual сам пересчитает высоты по мере необходимости
+        console.log(`[VirtualList] New ${reason} detected, triggering re-render without cache manipulation`);
       }
 
+      // Просто обновляем компонент, позволяя TanStack Virtual делать свою работу
       forceUpdate();
       logger.log(`[VirtualList] Force update completed for ${feedType} (immediate)`);
     };
@@ -238,31 +268,31 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
 
   /*
     Обработчики событий для обновления состояния
-    - bufferedPostsLoaded: просто логируем
-    - newPost: делаем force update и скроллим вверх, если это текущий пользователь
+    - bufferedPostsLoaded: просто логируем, НЕ вмешиваемся в virtualizer
+    - newPost: делаем force update, НЕ скроллим принудительно 
     - appendNewItems: просто логируем, не делаем force update
   */
   useEffect(() => {
     const handleBufferedPostsLoaded = () => {
-      logger.log('[VirtualList] Buffered posts loaded, maintaining scroll position');
+      logger.log('[VirtualList] Buffered posts loaded, triggering force update for virtualizer recalculation');
+      // ИСПРАВЛЕНИЕ: также вызываем forceUpdate для буферных постов
+      // Иначе TanStack Virtual не пересчитает высоты после добавления постов извне
+      forceUpdate();
     };
 
-    const handleNewPost = (event: CustomEvent) => {
-      // Force update при получении нового поста, иначе виртуальный список сломает размеры
-      // Если это событие от текущего пользователя, то скроллим вверх
+    const handleNewPost = () => {
+      // Force update при получении нового поста для обновления состояния
       forceUpdate();
       logger.log('[VirtualList] Force update triggered by new post');
 
-      if (event.detail?.isCurrentUser) {
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 100);
-      }
+      // НЕ скроллим принудительно - пусть пользователь сам решает
+      // TanStack Virtual правильно обработает изменения через forceUpdate
     };
 
-    const handleAppendNewItems = (event: CustomEvent) => {
-      logger.log('[VirtualList] appendNewItems event received:', event.detail);
-      // НЕ делаем force update для обычной подгрузки
+    const handleAppendNewItems = () => {
+      logger.log('[VirtualList] appendNewItems event received');
+      // НЕ делаем force update для обычной подгрузки - TanStack Virtual
+      // автоматически обновится когда данные изменятся через MobX
     };
     /*
       Добавляем обработчики событий
@@ -312,10 +342,8 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
         const now = Date.now();
 
         if (now - lastLoadTriggeredRef.current > 1000) {
-          const scrollY = window.scrollY;
-          const windowHeight = window.innerHeight;
-          const documentHeight = document.documentElement.scrollHeight;
-          const isNearBottom = scrollY + windowHeight >= documentHeight - 500;
+          // Проверяем позицию скролла окна
+          const isNearBottom = window.scrollY + window.innerHeight >= document.body.scrollHeight - 200;
 
           if (isNearBottom) {
             lastLoadTriggeredRef.current = now;
@@ -326,7 +354,7 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
       }
     }, 300);
 
-    // Добавляем обработчик скролла
+    // Добавляем обработчик скролла к окну
     const handleScroll = () => checkAndLoadMore();
     window.addEventListener('scroll', handleScroll);
 
@@ -336,8 +364,21 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
     };
   }, [virtualItems, items.length, onEndReached, allLoaded, loading, manualMode]);
 
+  /*
+    Отслеживание изменений в данных MobX
+    - Когда изменяется количество элементов, обновляем dataVersion
+    - Это заставляет virtualizer пересоздаться и правильно пересчитать все высоты
+  */
+  useEffect(() => {
+    if (itemsChanged) {
+      console.log(`[VirtualList] Items count changed: ${prevItemsLengthRef.current} -> ${items.length}, bumping dataVersion`);
+      console.log(`[VirtualList] Current forceUpdateCounter: ${forceUpdateCounter}, will bump dataVersion`);
+      setDataVersion(prev => prev + 1);
+    }
+  }, [items.length, itemsChanged, forceUpdateCounter]);
+
   // Дебаг объект для отладки
-  const debugProps = React.useMemo(() => {
+  const debugProps = useMemo(() => {
     const firstIndex = virtualItems[0]?.index ?? -1;
     const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
 
@@ -387,7 +428,13 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
 
   // Основной рендер виртуального списка
   return (
-    <div className={`virtual-list-container ${className}`} style={{ width: '100%' }}>
+    <div 
+      className={`virtual-list-container ${className}`} 
+      style={{ 
+        width: '100%',
+        // Убираем фиксированную высоту и overflow для window scroll
+      }}
+    >
       <div
         key={forceUpdateCounter > 0 ? `newpost-${forceUpdateCounter}` : 'stable'}
         style={{
@@ -396,7 +443,7 @@ const VirtualList = observer(<T extends Record<string, unknown>>(props: VirtualL
           position: 'relative',
         }}
       >
-        {virtualItems.map((virtualItem) => {
+        {virtualItems.map((virtualItem: any) => {
           const item = items[virtualItem.index];
 
           if (!item) {
