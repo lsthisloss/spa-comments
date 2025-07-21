@@ -204,15 +204,17 @@ Scripts: ✅
 Health check: ✅
 Posts API: ❌
 Comments API: ❌
-\n🌐 Full Stack Status Check:
+🌐 Full Stack Status Check:
 ✅ Frontend (React): 200
 ✅ Backend (NestJS): 404
 ✅ RabbitMQ Management: 200
 ✅ Elasticsearch: 200
-\n📊 Доступно сервисов: 4/4
+📊 Доступно сервисов: 4/4
 ✅ E2E тесты пройдены за 1903ms
 
 Основной функционал работает корректно
+```
+
 </details>
 
 ---
