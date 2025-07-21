@@ -102,7 +102,7 @@ npm run test-menu
 ## 🎨 Example Test Runs
 
 <details>
-<summary><strong>Unit Test Execution</strong></summary>
+<summary><strong>Smoke Test Execution</strong></summary>
 
 ```bash
 Выберите действие (1-4, 0 для выхода): 1
