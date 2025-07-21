@@ -17,7 +17,8 @@ class TestRunner {
       output: process.stdout
     });
   }
-// Логотип и заголовок
+
+  // Логотип и заголовок
   private showLogo(): void {
     // НЕ очищаем экран, чтобы сохранить историю тестов
     console.log(`${colors.purple}${colors.bold}`);
@@ -74,29 +75,43 @@ class TestRunner {
 
   private showCleanTestOutput(output: string): void {
     const lines = output.split('\n');
+    let isProcessingConsoleLog = false;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Ищем строки с console.log
+      // Начинаем обработку console.log блока
       if (line.trim().startsWith('console.log')) {
-        // Следующая строка содержит реальное содержимое
-        if (i + 1 < lines.length) {
-          const contentLine = lines[i + 1];
-          
-          // Убираем escape последовательности и лишние пробелы
-          const cleanContent = contentLine
-            .replace(/\\n/g, '') // Убираем \n
-            .replace(/^\s{4,}/, '') // Убираем отступы
-            .trim();
-          
-          // Показываем только если есть содержимое и это не техническая информация
-          if (cleanContent && 
-              !cleanContent.includes('at Object.<anonymous>') && 
-              !cleanContent.includes('at src/') && 
-              !cleanContent.includes('at Array.forEach')) {
-            console.log(cleanContent);
-          }
+        isProcessingConsoleLog = true;
+        continue;
+      }
+      
+      // Если мы в блоке console.log
+      if (isProcessingConsoleLog) {
+        // Пропускаем пустые строки
+        if (!line.trim()) {
+          continue;
+        }
+        
+        // Пропускаем строки со стек-трейсом
+        if (line.includes('at ') || 
+            line.includes('Object.<anonymous>') ||
+            line.includes('.test.') ||
+            line.includes('(src/') ||
+            line.includes('node_modules') ||
+            line.includes('Array.forEach')) {
+          isProcessingConsoleLog = false;
+          continue;
+        }
+        
+        // Это содержимое console.log - показываем его
+        const cleanContent = line
+          .replace(/^\s+/, '') // Убираем начальные пробелы
+          .trim();
+        
+        if (cleanContent) {
+          console.log(cleanContent);
+          isProcessingConsoleLog = false;
         }
       }
     }
@@ -118,99 +133,66 @@ class TestRunner {
 
   // 🔥 Дымовые тесты
   async runSmokeTests(): Promise<void> {
-    console.log(`\n${colors.yellow}🔥 Запуск дымовых тестов...${colors.reset}`);
-    console.log(`${colors.cyan}Проверяем основную функциональность приложения${colors.reset}\n`);
-    
-    // Сначала показываем проверку сервисов  
-    await this.checkServices();
+    console.log(`\nДымовые тесты - проверка основной функциональности\n`);
     
     const result = await this.executeTest('npm run test:smoke', 'Дымовые тесты');
     
     if (result.success) {
-      console.log(`\n${colors.green}✅ Основной функционал работает корректно!${colors.reset}`);
+      console.log(`\nОсновной функционал работает корректно`);
     } else {
-      console.log(`\n${colors.red}❌ Обнаружены критические проблемы!${colors.reset}`);
+      console.log(`\nОбнаружены критические проблемы`);
     }
-  }
-
-  private async checkServices(): Promise<void> {
-    console.log(`${colors.cyan}🔥 Smoke Test Results:${colors.reset}\n`);
-    
-    const services = [
-      { name: 'Frontend (React)', url: 'http://localhost:3000', emoji: '⚛️' },
-      { name: 'Backend (NestJS)', url: 'http://localhost:3001', emoji: '🚀' },
-      { name: 'RabbitMQ Management', url: 'http://localhost:15672', emoji: '🐰' },
-      { name: 'Elasticsearch', url: 'http://localhost:9200', emoji: '🔍' }
-    ];
-
-    let availableCount = 0;
-
-    for (const service of services) {
-      try {
-        const response = await fetch(service.url);
-        console.log(`     ${colors.green}✅ ${service.name}: ${response.status}${colors.reset}`);
-        availableCount++;
-      } catch (error) {
-        console.log(`     ${colors.red}❌ ${service.name}: недоступен${colors.reset}`);
-      }
-    }
-
-    console.log(`\n${colors.blue}📊 Статус: ${availableCount}/${services.length} сервисов доступно${colors.reset}`);
-    
-    if (availableCount === services.length) {
-      console.log(`\n${colors.green}🎉 Все сервисы доступны!${colors.reset}`);
-    } else {
-      console.log(`\n${colors.yellow}⚠️ Некоторые сервисы недоступны${colors.reset}`);
-    }
-
-    console.log(`\n${colors.green}✅ Test configuration valid:${colors.reset}`);
-    console.log(`     Backend: http://localhost:3001`);
-    console.log(`     Frontend: http://localhost:3000`);
-    console.log(`     RabbitMQ: amqp://localhost:5672`);
-    console.log(`     Elasticsearch: http://localhost:9200`);
-    
-    console.log(`\n${colors.green}✅ JavaScript runtime OK${colors.reset}\n`);
   }
 
   // 🔬 Юнит-тесты
   async runUnitTests(): Promise<void> {
-    console.log(`\n${colors.yellow}🔬 Запуск юнит-тестов...${colors.reset}`);
-    console.log(`${colors.cyan}Тестируем отдельные компоненты, функции и модули${colors.reset}\n`);
+    console.log(`\nЮнит-тесты - тестирование реальных компонентов\n`);
     
     const result = await this.executeTest('npm run test:unit', 'Юнит-тесты');
     
     if (result.success) {
-      console.log(`\n${colors.green}✅ Компоненты работают корректно!${colors.reset}`);
+      console.log(`\nВсе компоненты работают правильно`);
     } else {
-      console.log(`\n${colors.red}❌ Обнаружены проблемы в компонентах!${colors.reset}`);
+      console.log(`\nОбнаружены проблемы в компонентах`);
+    }
+  }
+
+  // ⚛️ React тесты  
+  async runReactTests(): Promise<void> {
+    console.log(`\nReact тесты - тестирование UI компонентов\n`);
+    
+    const result = await this.executeTest('npm run test:react', 'React тесты');
+    
+    if (result.success) {
+      console.log(`\nReact компоненты работают корректно`);
+    } else {
+      console.log(`\nПроблемы в React компонентах`);
     }
   }
 
   // 🔗 Интеграционные тесты
   async runIntegrationTests(): Promise<void> {
-    console.log(`\n${colors.yellow}🔗 Запуск интеграционных тестов...${colors.reset}`);
-    console.log(`${colors.cyan}Тестируем взаимодействие между компонентами, API и базой данных${colors.reset}\n`);
+    console.log(`\nИнтеграционные тесты - взаимодействие между сервисами\n`);
     
     const result = await this.executeTest('npm run test:integration', 'Интеграционные тесты');
     
     if (result.success) {
-      console.log(`\n${colors.green}✅ Модули хорошо взаимодействуют!${colors.reset}`);
+      console.log(`\nМодули взаимодействуют корректно`);
     } else {
-      console.log(`\n${colors.red}❌ Проблемы во взаимодействии модулей!${colors.reset}`);
+      console.log(`\nПроблемы во взаимодействии модулей`);
     }
   }
 
   // 🌐 E2E тесты
   async runE2ETests(): Promise<void> {
-    console.log(`\n${colors.yellow}🌐 Запуск E2E тестов...${colors.reset}`);
-    console.log(`${colors.cyan}Тестируем полные пользовательские сценарии в браузере${colors.reset}\n`);
+    console.log(`\nE2E тесты - полные пользовательские сценарии\n`);
     
     const result = await this.executeTest('npm run test:e2e', 'E2E тесты');
     
     if (result.success) {
-      console.log(`\n${colors.green}✅ Пользовательские сценарии работают!${colors.reset}`);
+      console.log(`\nПользовательские сценарии работают`);
     } else {
-      console.log(`\n${colors.red}❌ Проблемы в пользовательском опыте!${colors.reset}`);
+      console.log(`\nПроблемы в пользовательском опыте`);
     }
   }
 
@@ -218,13 +200,14 @@ class TestRunner {
   private showMenu(): void {
     this.showLogo();
     
-    console.log(`  ${colors.cyan}──────────────────────────────────────────────────${colors.reset}`);
-    console.log(`  ${colors.green}1${colors.reset}  - 🔥 Дымовые тесты ${colors.yellow}(критический функционал)${colors.reset}`);
-    console.log(`  ${colors.green}2${colors.reset}  - 🔬 Юнит-тесты ${colors.yellow}(отдельные компоненты)${colors.reset}`);
-    console.log(`  ${colors.green}3${colors.reset}  - 🔗 Интеграционные тесты ${colors.yellow}(взаимодействие модулей)${colors.reset}`);
-    console.log(`  ${colors.green}4${colors.reset}  - 🌐 E2E тесты ${colors.yellow}(пользовательские сценарии)${colors.reset}`);
-    console.log(`  ${colors.green}0${colors.reset}  - 🚪 Выход`);
-    console.log(`  ${colors.cyan}──────────────────────────────────────────────────${colors.reset}`);
+    console.log(`  ──────────────────────────────────────────────────`);
+    console.log(`  1  - Дымовые тесты (критический функционал)`);
+    console.log(`  2  - Юнит-тесты (отдельные компоненты)`);
+    console.log(`  3  - React тесты (компоненты интерфейса)`);
+    console.log(`  4  - Интеграционные тесты (взаимодействие модулей)`);
+    console.log(`  5  - E2E тесты (пользовательские сценарии)`);
+    console.log(`  0  - Выход`);
+    console.log(`  ──────────────────────────────────────────────────`);
     console.log('');
   }
 
@@ -233,7 +216,7 @@ class TestRunner {
     while (true) {
       this.showMenu();
       
-      const choice = await this.getUserInput(`${colors.cyan}Выберите действие (1-4, 0 для выхода): ${colors.reset}`);
+      const choice = await this.getUserInput(`${colors.cyan}Выберите действие (1-5, 0 для выхода): ${colors.reset}`);
       
       try {
         switch (choice.trim()) {
@@ -246,10 +229,14 @@ class TestRunner {
             await this.waitForEnter();
             break;
           case '3':
-            await this.runIntegrationTests();
+            await this.runReactTests();
             await this.waitForEnter();
             break;
           case '4':
+            await this.runIntegrationTests();
+            await this.waitForEnter();
+            break;
+          case '5':
             await this.runE2ETests();
             await this.waitForEnter();
             break;
@@ -277,8 +264,9 @@ class TestRunner {
     switch (choice) {
       case '1': await this.runSmokeTests(); break;
       case '2': await this.runUnitTests(); break;
-      case '3': await this.runIntegrationTests(); break;
-      case '4': await this.runE2ETests(); break;
+      case '3': await this.runReactTests(); break;
+      case '4': await this.runIntegrationTests(); break;
+      case '5': await this.runE2ETests(); break;
       default:
         console.log(`\n${colors.red}Неверный номер действия${colors.reset}\n`);
         break;

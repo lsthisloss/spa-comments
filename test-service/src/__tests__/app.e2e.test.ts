@@ -48,30 +48,47 @@ describe('SPA Comments E2E Tests', () => {
   test('should simulate API workflow', async () => {
     const apiUrl = backendUrl + testConfig.backend.apiPrefix;
     
+    let authIssues = 0;
+    let workingEndpoints = 0;
+    let totalChecks = 3;
+    
     try {
       // 1. Проверяем health endpoint
       const healthResponse = await fetch(`${apiUrl}/health`);
       const healthOk = healthResponse.ok;
+      if (healthOk) workingEndpoints++;
       
-      // 2. Проверяем posts endpoint  
+      // 2. Проверяем posts endpoint (может требовать авторизацию)
       const postsResponse = await fetch(`${apiUrl}/posts`);
       const postsOk = postsResponse.ok;
+      if (postsOk) workingEndpoints++;
+      else if (postsResponse.status === 401 || postsResponse.status === 403) authIssues++;
       
-      // 3. Проверяем comments endpoint
+      // 3. Проверяем comments endpoint (может требовать авторизацию)
       const commentsResponse = await fetch(`${apiUrl}/comments`);
       const commentsOk = commentsResponse.ok;
+      if (commentsOk) workingEndpoints++;
+      else if (commentsResponse.status === 401 || commentsResponse.status === 403) authIssues++;
       
       console.log(`✅ API Workflow симуляция:`);
       console.log(`   Health check: ${healthOk ? '✅' : '❌'}`);
       console.log(`   Posts API: ${postsOk ? '✅' : '❌'}`);
       console.log(`   Comments API: ${commentsOk ? '✅' : '❌'}`);
       
-      // Тест проходит если хотя бы один endpoint работает
-      expect(healthOk || postsOk || commentsOk).toBe(true);
+      if (authIssues > 0) {
+        console.log(`⚠️ ${authIssues} endpoint(s) требуют авторизацию`);
+      }
+      
+      // Тест ПРОВАЛИВАЕТСЯ если есть проблемы с авторизацией
+      if (authIssues > 0) {
+        expect(authIssues).toBe(0); // Принудительно проваливаем тест
+      } else {
+        expect(workingEndpoints).toBeGreaterThan(0);
+      }
       
     } catch (error) {
       console.log('❌ API workflow недоступен');
-      expect(true).toBe(true);
+      expect(false).toBe(true);
     }
   });
 

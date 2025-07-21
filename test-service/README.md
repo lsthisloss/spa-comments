@@ -32,43 +32,57 @@ Quick health checks ensuring basic functionality works:
 - Core component instantiation
 - Environment validation
 
-### 🔬 Unit Tests  
-Isolated component testing with mocks:
-- ThreadService business logic
-- Component state management
-- Utility function behavior
-- Error handling scenarios
+### 🔬 Unit Tests (White Box Testing)
+Isolated component testing with full internal knowledge:
+- Real project component validation
+- Backend health endpoint testing
+- WebSocket server configuration
+- Project configuration verification
 
-### 🔗 Integration Tests
-Service interaction verification:
-- Real API endpoint testing
-- RabbitMQ queue operations
-- Database query validation
-- WebSocket event handling
+### ⚛️ React Tests (White Box Testing)
+Component-level testing with React Testing Library:
+- Component structure and styling verification
+- Internal state management testing
+- Props and callback behavior validation
+- Image loading logic and error handling
+- Width calculation algorithms
 
-### 🌐 E2E Tests
+### 🔗 Integration Tests (Behavior Testing)
+Service interaction verification through black box approach:
+- Real API endpoint testing with WebSocket connections
+- Service health percentage calculations
+- Authentication flow validation
+- Cross-service communication patterns
+
+### 🌐 E2E Tests (Behavior Testing)
 Complete user journey simulation:
-- Frontend page loading
-- User authentication flows
-- Thread creation workflows
-- Real-time update delivery
+- Frontend page loading workflows
+- User authentication scenarios
+- API endpoint interaction flows
+- Real-time feature testing
 
 ---
 
-## 📊 Test Coverage
+## 📊 Test Coverage & Methodologies
 
-The service provides multiple coverage metrics:
+The service provides comprehensive testing with two main approaches:
 
-### Traditional Coverage
+### 🔍 White Box Testing
+**Internal implementation knowledge used:**
+- **Unit Tests**: Real component validation, configuration testing
+- **React Tests**: Component structure, state management, internal algorithms
+- **Coverage**: Function calls, branch logic, state transitions
+
+### 🎭 Behavior Testing (Black Box)
+**External behavior verification:**
+- **Integration Tests**: Service interactions, API responses, authentication flows
+- **E2E Tests**: User workflows, complete scenarios, real-world usage
+- **Coverage**: User interaction patterns, feature adoption, error scenarios
+
+### Traditional Metrics
 - **Line Coverage** - Executed code lines percentage
 - **Branch Coverage** - Conditional paths testing
 - **Function Coverage** - Called functions ratio
-
-### Behavioral Coverage
-- **User Interaction Patterns** - UI component usage
-- **API Endpoint Utilization** - Backend route coverage  
-- **Feature Adoption** - Real-world usage simulation
-- **Error Scenario Handling** - Exception path testing
 
 ---
 
@@ -91,9 +105,10 @@ npm run test-menu
   ╚══════════════════════════════════════════════╝
 
   1  - 🔥 Smoke Tests (health checks)
-  2  - 🔬 Unit Tests (mocked components)  
-  3  - � Integration Tests (real API calls)
-  4  - 🌐 E2E Tests (user flows)
+  2  - 🔬 Unit Tests (white box - real components)
+  3  - ⚛️ React Tests (white box - UI components)  
+  4  - 🔗 Integration Tests (behavior - service interaction)
+  5  - 🌐 E2E Tests (behavior - user flows)
   0  - 🚪 Exit
 ```
 
@@ -102,50 +117,93 @@ npm run test-menu
 ## 🎨 Example Test Runs
 
 <details>
+<summary><strong>Unit Test Execution</strong></summary>
+
+```bash
+Юнит-тесты - тестирование реальных компонентов
+Запуск: Юнит-тесты...
+Тестируем валидацию изображений FileUtils...
+Валидные изображения проходят проверку
+Тестируем отклонение невалидных изображений...
+Невалидные изображения отклоняются
+Тестируем валидацию текстовых файлов...
+Валидация текстовых файлов работает корректно
+Тестируем расчет размеров изображения...
+Расчет размеров изображения работает правильно
+Тестируем граничные случаи расчета размеров...
+Граничные случаи обработаны корректно
+Тестируем константы размеров файлов...
+Константы файлов настроены правильно
+Unit тесты реальных компонентов завершены
+Валидация изображений
+Валидация текстовых файлов
+Расчет размеров изображений
+Обработка граничных случаев
+Проверка констант и настроек
+✅ Юнит-тесты пройдены за 1587ms
+```
+
+</details>
+## 🎨 Example Test Runs
+
+<details>
+<summary><strong>React Test Execution</strong></summary>
+
+```bash
+React тесты - тестирование UI компонентов
+Запуск: React тесты...
+✅ React Testing Library setup готов
+Тестируем структуру и стили компонента PreloadImage...
+Структура компонента корректна
+Тестируем начальное состояние - skeleton loader...
+Skeleton loader отображается корректно
+Тестируем успешную загрузку изображения...
+Успешная загрузка изображения обработана
+Тестируем обработку ошибки загрузки изображения...
+Ошибка загрузки изображения обработана корректно
+Тестируем расчет пропорциональной ширины...
+Пропорциональная ширина рассчитана корректно
+Тестируем минимальную ширину 120px...
+Минимальная ширина 120px применена
+Тестируем передачу props в элемент изображения...
+Props переданы в изображение корректно
+Тестируем вызов onLoad callback...
+onLoad callback вызван корректно
+White Box тесты PreloadImage завершены
+Структура и стили компонента
+Логика загрузки изображений
+Расчет пропорциональной ширины
+Обработка props и callbacks
+Обработка ошибок загрузки
+✅ React тесты пройдены за 2074ms
+React компоненты работают корректно
+```
+
+</details>
+
+<details>
 <summary><strong>Smoke Test Execution</strong></summary>
 
 ```bash
-Выберите действие (1-4, 0 для выхода): 1
-
-🔥 Запуск дымовых тестов...
-Проверяем основную функциональность приложения
-
-🔥 Smoke Test Results:
-
-     ✅ Frontend (React): 200
-     ✅ Backend (NestJS): 404
-     ✅ RabbitMQ Management: 200
-     ✅ Elasticsearch: 200
-
-📊 Статус: 4/4 сервисов доступно
-
-🎉 Все сервисы доступны!
-
-✅ Test configuration valid:
-     Backend: http://localhost:3001
-     Frontend: http://localhost:3000
-     RabbitMQ: amqp://localhost:5672
-     Elasticsearch: http://localhost:9200
-
-✅ JavaScript runtime OK
+Дымовые тесты - проверка основной функциональности
 
 Запуск: Дымовые тесты...
-🔥 Smoke Test Results:
-✅ Frontend (React): 200
-✅ Backend (NestJS): 404
-✅ RabbitMQ Management: 200
-✅ Elasticsearch: 200
-📊 Статус: 4/4 сервисов доступно
-🎉 Все сервисы доступны!
-✅ Test configuration valid:
+Smoke Test Results:
+OK Frontend (React): 200
+OK Backend (NestJS): 404
+OK RabbitMQ Management: 200
+OK Elasticsearch: 200
+Статус: 4/4 сервисов доступно
+Все сервисы доступны
+Test configuration valid:
 Backend: http://localhost:3001
 Frontend: http://localhost:3000
 RabbitMQ: amqp://localhost:5672
 Elasticsearch: http://localhost:9200
-✅ JavaScript runtime OK
-✅ Дымовые тесты пройдены за 1711ms
+JavaScript runtime OK
+✅ Дымовые тесты пройдены за 1789ms
 
-✅ Основной функционал работает корректно!
+Основной функционал работает корректно
 ```
 
 </details>
@@ -154,22 +212,30 @@ Elasticsearch: http://localhost:9200
 <summary><strong>Integration Test Execution</strong></summary>
 
 ```bash
-$ npm run test:integration
-
-🔗 Запуск интеграционных тестов...
-Тестируем взаимодействие между компонентами, API и базой данных
+Интеграционные тесты - взаимодействие между сервисами
 
 Запуск: Интеграционные тесты...
-🔍 http://localhost:3001/health: 200
-✅ Backend API найден на http://localhost:3001/health
-⚠️ Posts endpoint вернул статус: 404
-⚠️ Comments endpoint вернул статус: 404
-⚠️ Users endpoint вернул статус: 404
-⚠️ RabbitMQ Management недоступен (401)
-✅ Elasticsearch доступен, статус кластера: yellow
-✅ Интеграционные тесты пройдены за 1735ms
-
-✅ Модули хорошо взаимодействуют!
+HTTP Health: 200
+Backend WebSocket сервер работает на http://localhost:3001
+Попытка подключения к WebSocket...
+WebSocket подключен! ID: jJKz3FMK...
+WebSocket отключен: io client disconnect
+Тестируем авторизацию и список пользователей...
+✅ WebSocket авторизация успешна! ID: 70OIxeMb...
+Запрашиваем список пользователей через WebSocket...
+🔐 Тестируем авторизацию WebSocket...
+✅ WebSocket авторизация успешна!
+RabbitMQ требует авторизацию (сервис работает)
+Elasticsearch поиск доступен, статус: yellow
+WebSocket интеграция: 6/6 (100%)
+WebSocket интеграция в отличном состоянии
+WebSocket архитектура:
+Backend: NestJS + Socket.IO
+Users: только для авторизованных через WS
+Messages: через RabbitMQ очереди
+Search: через Elasticsearch
+✅ Интеграционные тесты пройдены за 3483ms
+Модули взаимодействуют корректно
 ```
 
 </details>

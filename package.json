@@ -23,5 +23,9 @@
   "license": "MIT",
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.10"
+  },
+  "devDependencies": {
+    "@types/socket.io-client": "^1.4.36",
+    "socket.io-client": "^4.8.1"
   }
 }
